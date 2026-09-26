@@ -24,7 +24,11 @@ import {
   type DeltaPrintConfig,
   DEFAULT_DELTA_CONFIG,
 } from '@/analysis/deltaPrint'
-import { VolumeProfileOverlay, type ProfileWindow } from '@/analysis/volumeProfile'
+import {
+  VolumeProfileOverlay,
+  type ProfileConfig,
+  DEFAULT_PROFILE_CONFIG,
+} from '@/analysis/volumeProfile'
 import {
   DeepTradesOverlay,
   type DeepTradesConfig,
@@ -106,7 +110,7 @@ export interface ChartContainerProps {
   deltaEnabled?: boolean
   deltaConfig?: DeltaPrintConfig
   profileEnabled?: boolean
-  profileWindow?: ProfileWindow
+  profileConfig?: ProfileConfig
   deepTradesEnabled?: boolean
   deepTradesConfig?: DeepTradesConfig
   deepDomEnabled?: boolean
@@ -126,7 +130,7 @@ export function ChartContainer({
   deltaEnabled = false,
   deltaConfig = DEFAULT_DELTA_CONFIG,
   profileEnabled = false,
-  profileWindow = 'visible',
+  profileConfig = DEFAULT_PROFILE_CONFIG,
   deepTradesEnabled = false,
   deepTradesConfig = DEFAULT_DEEP_TRADES_CONFIG,
   deepDomEnabled = false,
@@ -308,7 +312,7 @@ export function ChartContainer({
         containerRef={containerRef}
         exchange={exchange}
         symbol={symbol}
-        windowMode={profileWindow}
+        config={profileConfig}
       />
 
       <DeepTradesOverlay

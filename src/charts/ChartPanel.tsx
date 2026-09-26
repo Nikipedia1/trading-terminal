@@ -15,6 +15,7 @@ import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
 import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
 import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
 import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
+import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
@@ -39,7 +40,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
     delta: false,
     deltaCfg: DEFAULT_DELTA_CONFIG,
     profile: false,
-    profileWindow: 'visible',
+    profileCfg: DEFAULT_PROFILE_CONFIG,
     trades: false,
     tradesCfg: DEFAULT_DEEP_TRADES_CONFIG,
     dom: false,
@@ -209,7 +210,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           deltaEnabled={of.delta}
           deltaConfig={of.deltaCfg}
           profileEnabled={of.profile}
-          profileWindow={of.profileWindow}
+          profileConfig={of.profileCfg}
           deepTradesEnabled={of.trades}
           deepTradesConfig={of.tradesCfg}
           deepDomEnabled={of.dom}

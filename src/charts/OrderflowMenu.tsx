@@ -3,27 +3,37 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import type { ProfileWindow } from '@/analysis/volumeProfile'
-import { PROFILE_WINDOW_LABELS } from '@/analysis/volumeProfile'
+import type {
+  ProfileWindow,
+  ProfileConfig,
+  FixedProfileKind,
+} from '@/analysis/volumeProfile'
+import {
+  PROFILE_WINDOW_LABELS,
+  FIXED_PROFILE_LABELS,
+  SESSION_NOTE,
+} from '@/analysis/volumeProfile'
 import type { DeepTradesConfig, ThresholdMode } from '@/analysis/deepTrades'
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
 import type { ExchangeId } from '@/types'
 
-const PROFILE_WINDOWS: ProfileWindow[] = [
+const DEVELOPING_WINDOWS: ProfileWindow[] = [
   'visible',
   'session',
   'last_30m',
   'session_open_30m',
 ]
 
+const FIXED_OPTIONS: FixedProfileKind[] = ['none', 'session_open_30m', 'previous_day']
+
 export interface OrderflowState {
   print: boolean
   delta: boolean
   deltaCfg: DeltaPrintConfig
   profile: boolean
-  profileWindow: ProfileWindow
+  profileCfg: ProfileConfig
   trades: boolean
   tradesCfg: DeepTradesConfig
   dom: boolean
@@ -103,7 +113,7 @@ export function OrderflowMenu({
 
       {open && (
         <div
-          className="absolute left-0 top-full mt-1 z-50 w-[300px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
+          className="absolute left-0 top-full mt-1 z-50 w-[310px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
           onMouseDown={(e) => e.stopPropagation()}
         >
           {row('Deep Print', state.print, onPrintToggle)}
@@ -164,33 +174,78 @@ export function OrderflowMenu({
                   {state.deltaCfg.minBarPct}%
                 </span>
               </div>
-              <p className="text-[9px] text-[#5e6673] leading-snug">
-                Divergence = annotation only, not a trade signal. CVD from real
-                trade stream.
-              </p>
             </div>
           )}
 
-          {row(
-            'Profile',
-            state.profile,
-            () => onChange({ profile: !state.profile }),
-            state.profile ? (
-              <select
-                className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px] max-w-[120px]"
-                value={state.profileWindow}
-                onChange={(e) =>
-                  onChange({ profileWindow: e.target.value as ProfileWindow })
-                }
-              >
-                {PROFILE_WINDOWS.map((w) => (
-                  <option key={w} value={w}>
-                    {PROFILE_WINDOW_LABELS[w]}
-                  </option>
-                ))}
-              </select>
-            ) : null
+          {row('Profile', state.profile, () => onChange({ profile: !state.profile }))}
+
+          {state.profile && (
+            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
+              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
+                <span className="w-16 shrink-0">Developing</span>
+                <select
+                  className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                  value={state.profileCfg.developing}
+                  onChange={(e) =>
+                    onChange({
+                      profileCfg: {
+                        ...state.profileCfg,
+                        developing: e.target.value as ProfileWindow,
+                      },
+                    })
+                  }
+                >
+                  {DEVELOPING_WINDOWS.map((w) => (
+                    <option key={w} value={w}>
+                      {PROFILE_WINDOW_LABELS[w]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
+                <span className="w-16 shrink-0">Fixed</span>
+                <select
+                  className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                  value={state.profileCfg.fixed}
+                  onChange={(e) =>
+                    onChange({
+                      profileCfg: {
+                        ...state.profileCfg,
+                        fixed: e.target.value as FixedProfileKind,
+                      },
+                    })
+                  }
+                >
+                  {FIXED_OPTIONS.map((f) => (
+                    <option key={f} value={f}>
+                      {FIXED_PROFILE_LABELS[f]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
+                <span className="w-16 shrink-0">VA %</span>
+                <select
+                  className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                  value={state.profileCfg.vaTarget}
+                  onChange={(e) =>
+                    onChange({
+                      profileCfg: {
+                        ...state.profileCfg,
+                        vaTarget: Number(e.target.value) as 0.68 | 0.7 | 0.8,
+                      },
+                    })
+                  }
+                >
+                  <option value={0.68}>68%</option>
+                  <option value={0.7}>70%</option>
+                  <option value={0.8}>80%</option>
+                </select>
+              </div>
+              <p className="text-[9px] text-[#5e6673] leading-snug">{SESSION_NOTE}</p>
+            </div>
           )}
+
           {row(
             'Deep Trades',
             state.trades,
