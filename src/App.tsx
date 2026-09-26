@@ -4,6 +4,8 @@ import { useLayoutStore } from '@/stores/layoutStore'
 import { PanelGrid } from '@/layout/PanelGrid'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
+import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
+import type { Interval } from '@/types'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -37,46 +39,110 @@ function ErrorBanner() {
   )
 }
 
+/** Normalize free-typed symbol to exchange-style pair (A-Z0-9 only, upper). */
+function normalizeSymbol(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
 function Controls() {
-  const symbol = useMarketStore((s) => s.symbol)
-  const interval = useMarketStore((s) => s.interval)
+  const marketSymbol = useMarketStore((s) => s.symbol)
+  const marketInterval = useMarketStore((s) => s.interval)
   const setSymbol = useMarketStore((s) => s.setSymbol)
-  const setInterval = useMarketStore((s) => s.setInterval)
+  const setIntervalStore = useMarketStore((s) => s.setInterval)
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
   const stopLive = useMarketStore((s) => s.stopLive)
   const status = useMarketStore((s) => s.status)
 
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const panels = useLayoutStore((s) => s.panels)
   const updatePanel = useLayoutStore((s) => s.updatePanel)
 
+  const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
+  // Primary panel is source of truth for top-bar display (synced with chart header)
+  const symbol = primary?.symbol ?? marketSymbol
+  const interval = primary?.interval ?? marketInterval
+
+  const [symbolDraft, setSymbolDraft] = useState(symbol)
+  useEffect(() => {
+    setSymbolDraft(symbol)
+  }, [symbol])
+
+  const applySymbol = (raw: string) => {
+    const v = normalizeSymbol(raw)
+    if (!v || v === symbol) {
+      setSymbolDraft(symbol)
+      return
+    }
+    setSymbol(v)
+    updatePanel(primaryPanelId, { symbol: v })
+  }
+
+  const applyInterval = (v: Interval) => {
+    if (v === interval) return
+    setIntervalStore(v)
+    updatePanel(primaryPanelId, { interval: v })
+  }
+
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-terminal-border bg-terminal-panel">
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel">
+      {/* Instrument – same presets as ChartPanel */}
       <input
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm w-28 font-mono-nums"
-        value={symbol}
-        onChange={(e) => {
-          const v = e.target.value
-          setSymbol(v)
-          updatePanel(primaryPanelId, { symbol: v.toUpperCase() })
-        }}
+        value={symbolDraft}
+        list="top-symbol-presets"
         placeholder="BTCUSDT"
+        title="Symbol (type or pick from list) – synced with primary chart ★"
+        onChange={(e) => setSymbolDraft(normalizeSymbol(e.target.value))}
+        onBlur={() => applySymbol(symbolDraft)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur()
+          }
+        }}
       />
+      <datalist id="top-symbol-presets">
+        {SYMBOL_PRESETS.map((p) => (
+          <option key={p.symbol} value={p.symbol}>
+            {p.label} · {p.group}
+          </option>
+        ))}
+      </datalist>
+
+      <select
+        className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm max-w-[7rem]"
+        title="Quick symbol"
+        value={SYMBOL_PRESETS.some((p) => p.symbol === symbol) ? symbol : ''}
+        onChange={(e) => {
+          if (e.target.value) applySymbol(e.target.value)
+        }}
+      >
+        <option value="">Pairs…</option>
+        {(['Major', 'L1', 'DeFi', 'Meme', 'Other'] as const).map((g) => (
+          <optgroup key={g} label={g}>
+            {SYMBOL_PRESETS.filter((p) => p.group === g).map((p) => (
+              <option key={p.symbol} value={p.symbol}>
+                {p.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+
+      {/* Timeframe – full list, same as ChartPanel */}
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
         value={interval}
-        onChange={(e) => {
-          const v = e.target.value as any
-          setInterval(v)
-          updatePanel(primaryPanelId, { interval: v })
-        }}
+        title="Timeframe – synced with primary chart ★"
+        onChange={(e) => applyInterval(e.target.value as Interval)}
       >
-        {['1m', '5m', '15m', '1h', '4h', '1d'].map((i) => (
+        {ALL_INTERVALS.map((i) => (
           <option key={i} value={i}>
             {i}
           </option>
         ))}
       </select>
+
       <button
         onClick={() => loadHistorical()}
         className="px-3 py-1 bg-terminal-blue/20 text-terminal-blue rounded text-sm hover:bg-terminal-blue/30"
@@ -99,7 +165,7 @@ function Controls() {
         </button>
       )}
       <StatusBadge />
-      <span className="text-xxs text-terminal-muted ml-2">
+      <span className="text-xxs text-terminal-muted ml-1">
         Side panels ← primary chart (★)
       </span>
     </div>
@@ -295,7 +361,7 @@ function usePrimarySync() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
   const setSymbol = useMarketStore((s) => s.setSymbol)
-  const setInterval = useMarketStore((s) => s.setInterval)
+  const setIntervalStore = useMarketStore((s) => s.setInterval)
   const setExchange = useMarketStore((s) => s.setExchange)
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
@@ -307,7 +373,7 @@ function usePrimarySync() {
     if (!primary) return
     stopLive()
     setSymbol(primary.symbol)
-    setInterval(primary.interval)
+    setIntervalStore(primary.interval)
     setExchange(primary.exchange)
     loadHistorical().then(() => startLive())
   }, [primary?.symbol, primary?.interval, primary?.exchange, primaryPanelId])
