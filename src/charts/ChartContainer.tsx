@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + orderflow overlays + DOM ladder + footprint + replay + indicators.
+ * ChartContainer – price chart on top; oscillator panes stacked below.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -14,6 +14,7 @@ import {
 import type { Candle, ConnectionStatus, MarketError, ExchangeId, Interval } from '@/types'
 import { SeriesManager } from './series-manager'
 import { IndicatorSeriesManager } from './indicator-series'
+import { IndicatorPanes } from './IndicatorPanes'
 import { IndicatorValuesHud } from './IndicatorValuesHud'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
@@ -84,7 +85,7 @@ function buildChartOptions(canvas: {
     },
     rightPriceScale: {
       borderColor: canvas.border,
-      scaleMargins: { top: 0.05, bottom: 0.32 },
+      scaleMargins: { top: 0.05, bottom: 0.28 },
     },
     timeScale: {
       borderColor: canvas.border,
@@ -157,6 +158,7 @@ export function ChartContainer({
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
+  const [mainChart, setMainChart] = useState<IChartApi | null>(null)
   const seriesMgrRef = useRef<SeriesManager | null>(null)
   const indicatorMgrRef = useRef<IndicatorSeriesManager | null>(null)
   const [seriesMgr, setSeriesMgr] = useState<SeriesManager | null>(null)
@@ -193,6 +195,7 @@ export function ChartContainer({
     if (candleSeries) bridgeInstance.attach(chart, candleSeries)
 
     chartRef.current = chart
+    setMainChart(chart)
     seriesMgrRef.current = mgr
     indicatorMgrRef.current = indMgr
     setSeriesMgr(mgr)
@@ -212,6 +215,7 @@ export function ChartContainer({
       mgr.detach()
       chart.remove()
       chartRef.current = null
+      setMainChart(null)
       seriesMgrRef.current = null
       indicatorMgrRef.current = null
       setSeriesMgr(null)
@@ -263,7 +267,7 @@ export function ChartContainer({
         to: (focusRequest.timeSec + pad) as Time,
       })
     } catch {
-      /* range may be outside data */
+      /* */
     }
   }, [focusRequest, isPrimary])
 
@@ -326,7 +330,7 @@ export function ChartContainer({
           })
         }
       } catch {
-        /* ignore */
+        /* */
       } finally {
         requestAnimationFrame(() => {
           applyingRemoteRef.current = false
@@ -343,100 +347,108 @@ export function ChartContainer({
 
   return (
     <div
-      className="relative w-full h-full"
+      className="w-full h-full flex flex-col"
       style={{ backgroundColor: chartStyle.canvas.background }}
     >
-      <div ref={containerRef} className="absolute inset-0" />
+      {/* Main price chart */}
+      <div className="relative flex-1 min-h-0">
+        <div ref={containerRef} className="absolute inset-0" />
 
-      <IndicatorValuesHud candles={candles} params={indicatorParams} />
+        <IndicatorValuesHud candles={candles} params={indicatorParams} />
 
-      <RangeDiscoveryBadge
-        enabled={profileEnabled || deltaEnabled}
-        exchange={exchange}
-        symbol={symbol}
-        interval={interval}
-        candles={candles}
-        profileWindow={profileConfig.developing === 'visible' ? 'session' : profileConfig.developing}
-      />
+        <RangeDiscoveryBadge
+          enabled={profileEnabled || deltaEnabled}
+          exchange={exchange}
+          symbol={symbol}
+          interval={interval}
+          candles={candles}
+          profileWindow={
+            profileConfig.developing === 'visible' ? 'session' : profileConfig.developing
+          }
+        />
 
-      <DeepDomOverlay
-        enabled={deepDomEnabled}
-        bridge={bridge}
-        containerRef={containerRef}
-        exchange={exchange}
-        symbol={symbol}
-        config={deepDomConfig}
-      />
+        <DeepDomOverlay
+          enabled={deepDomEnabled}
+          bridge={bridge}
+          containerRef={containerRef}
+          exchange={exchange}
+          symbol={symbol}
+          config={deepDomConfig}
+        />
 
-      <FootprintOverlay
-        enabled={footprintEnabled}
-        bridge={bridge}
-        containerRef={containerRef}
-        exchange={exchange}
-        symbol={symbol}
-        interval={interval}
-        candles={candles}
-        config={footprintConfig}
-      />
+        <FootprintOverlay
+          enabled={footprintEnabled}
+          bridge={bridge}
+          containerRef={containerRef}
+          exchange={exchange}
+          symbol={symbol}
+          interval={interval}
+          candles={candles}
+          config={footprintConfig}
+        />
 
-      <VolumeProfileOverlay
-        enabled={profileEnabled}
-        bridge={bridge}
-        containerRef={containerRef}
-        exchange={exchange}
-        symbol={symbol}
-        config={profileConfig}
-      />
+        <VolumeProfileOverlay
+          enabled={profileEnabled}
+          bridge={bridge}
+          containerRef={containerRef}
+          exchange={exchange}
+          symbol={symbol}
+          config={profileConfig}
+        />
 
-      <DeepTradesOverlay
-        enabled={deepTradesEnabled}
-        bridge={bridge}
-        containerRef={containerRef}
-        exchange={exchange}
-        symbol={symbol}
-        config={deepTradesConfig}
-        candles={candles}
-        interval={interval}
-      />
+        <DeepTradesOverlay
+          enabled={deepTradesEnabled}
+          bridge={bridge}
+          containerRef={containerRef}
+          exchange={exchange}
+          symbol={symbol}
+          config={deepTradesConfig}
+          candles={candles}
+          interval={interval}
+        />
 
-      <DrawingLayer
-        panelId={panelId}
-        symbol={symbol}
-        bridge={bridge}
-        containerRef={containerRef}
-        passThrough={deepPrintEnabled}
-      />
+        <DrawingLayer
+          panelId={panelId}
+          symbol={symbol}
+          bridge={bridge}
+          containerRef={containerRef}
+          passThrough={deepPrintEnabled}
+        />
 
-      <DeepPrintOverlay
-        enabled={deepPrintEnabled}
-        bridge={bridge}
-        containerRef={containerRef}
-        exchange={exchange}
-        symbol={symbol}
-        interval={interval}
-        candles={candles}
-      />
+        <DeepPrintOverlay
+          enabled={deepPrintEnabled}
+          bridge={bridge}
+          containerRef={containerRef}
+          exchange={exchange}
+          symbol={symbol}
+          interval={interval}
+          candles={candles}
+        />
 
-      <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
+        <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
 
-      <ReplayBar enabled={replayEnabled} exchange={exchange} symbol={symbol} />
+        <ReplayBar enabled={replayEnabled} exchange={exchange} symbol={symbol} />
 
-      <ChartStylePanel />
+        <ChartStylePanel />
 
-      {lastError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-          <div className="bg-terminal-red/10 border border-terminal-red/50 text-terminal-red px-6 py-4 rounded text-sm max-w-md text-center">
-            <div className="font-semibold mb-1">[{lastError.code}] Data Error</div>
-            <div className="text-xs opacity-90">{lastError.message}</div>
+        {lastError && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+            <div className="bg-terminal-red/10 border border-terminal-red/50 text-terminal-red px-6 py-4 rounded text-sm max-w-md text-center">
+              <div className="font-semibold mb-1">[{lastError.code}] Data Error</div>
+              <div className="text-xs opacity-90">{lastError.message}</div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {status === 'connecting' && candles.length === 0 && !lastError && (
-        <div className="absolute inset-0 flex items-center justify-center text-terminal-muted text-sm z-10">
-          Connecting…
-        </div>
-      )}
+        {status === 'connecting' && candles.length === 0 && !lastError && (
+          <div className="absolute inset-0 flex items-center justify-center text-terminal-muted text-sm z-10">
+            Connecting…
+          </div>
+        )}
+      </div>
+
+      {/* Oscillator panes under the price chart */}
+      <IndicatorPanes mainChart={mainChart} candles={candles} params={indicatorParams} />
     </div>
   )
 }
