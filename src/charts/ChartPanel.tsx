@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu, type OrderflowState } from './OrderflowMenu'
+import { IndicatorsMenu } from './IndicatorsMenu'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
@@ -168,6 +169,10 @@ export function ChartPanel({ config }: ChartPanelProps) {
         >
           {isPrimary ? '★' : '☆'}
         </button>
+
+        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          <IndicatorsMenu panelId={id} />
+        </div>
 
         <button
           type="button"
