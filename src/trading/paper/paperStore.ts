@@ -1,6 +1,6 @@
 /**
  * Paper trading store – simulated futures-style account.
- * Fills and marks use real market prices passed in by the UI (from marketStore ticker).
+ * Fills, marks, TP/SL, liquidation use real market prices from UI (ticker).
  * Never invents prices. Persists to localStorage.
  */
 
@@ -8,13 +8,14 @@ import { create } from 'zustand'
 import type {
   PaperAccount,
   PaperFill,
+  PaperMarginMode,
   PaperOrder,
   PaperOrderType,
   PaperPosition,
   PaperSide,
 } from './types'
 
-const STORAGE_KEY = 'tt-paper:v1'
+const STORAGE_KEY = 'tt-paper:v2'
 const DEFAULT_BALANCE = 10_000
 const MAX_LEVERAGE = 125
 const MIN_LEVERAGE = 1
@@ -30,15 +31,26 @@ interface Persisted {
   fills: PaperFill[]
 }
 
+function normalizePosition(p: Partial<PaperPosition> & Pick<PaperPosition, 'id' | 'symbol' | 'side' | 'qty' | 'entryPrice' | 'leverage' | 'margin' | 'openedAt' | 'markPrice'>): PaperPosition {
+  return {
+    ...p,
+    marginMode: p.marginMode === 'isolated' ? 'isolated' : 'cross',
+    takeProfit: typeof p.takeProfit === 'number' && p.takeProfit > 0 ? p.takeProfit : null,
+    stopLoss: typeof p.stopLoss === 'number' && p.stopLoss > 0 ? p.stopLoss : null,
+  }
+}
+
 function load(): Persisted {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('tt-paper:v1')
     if (!raw) throw new Error('empty')
     const parsed = JSON.parse(raw) as Persisted
     if (!parsed?.account || typeof parsed.account.balance !== 'number') throw new Error('bad')
     return {
       account: parsed.account,
-      positions: Array.isArray(parsed.positions) ? parsed.positions : [],
+      positions: Array.isArray(parsed.positions)
+        ? parsed.positions.map((p) => normalizePosition(p as PaperPosition))
+        : [],
       orders: Array.isArray(parsed.orders) ? parsed.orders : [],
       fills: Array.isArray(parsed.fills) ? parsed.fills : [],
     }
@@ -70,13 +82,13 @@ export interface PlaceOrderInput {
   symbol: string
   side: PaperSide
   type: PaperOrderType
-  /** Base qty */
   qty: number
   leverage: number
-  /** Required for limit */
   price?: number | null
-  /** Current real market last price – required for market fill */
   markPrice: number
+  marginMode?: PaperMarginMode
+  takeProfit?: number | null
+  stopLoss?: number | null
 }
 
 interface PaperState {
@@ -88,11 +100,20 @@ interface PaperState {
 
   placeOrder: (input: PlaceOrderInput) => { ok: true } | { ok: false; error: string }
   cancelOrder: (orderId: string) => void
-  closePosition: (positionId: string, markPrice: number) => { ok: true } | { ok: false; error: string }
-  /** Update mark prices on open positions from real ticker */
+  closePosition: (
+    positionId: string,
+    markPrice: number,
+    reason?: PaperFill['action']
+  ) => { ok: true } | { ok: false; error: string }
+  setTpsl: (
+    positionId: string,
+    takeProfit: number | null,
+    stopLoss: number | null
+  ) => { ok: true } | { ok: false; error: string }
   markToMarket: (symbol: string, markPrice: number) => void
-  /** Try fill open limit orders against real last price */
   tryFillLimits: (symbol: string, lastPrice: number) => void
+  /** Evaluate TP / SL / isolated liquidation against real mark */
+  checkExits: (symbol: string, markPrice: number) => void
   resetAccount: (balance?: number) => void
   clearError: () => void
 }
@@ -105,6 +126,23 @@ function clampLeverage(lev: number): number {
 function unrealizedPnl(pos: PaperPosition, mark: number): number {
   const diff = pos.side === 'long' ? mark - pos.entryPrice : pos.entryPrice - mark
   return diff * pos.qty
+}
+
+function validateTpsl(
+  side: PaperSide,
+  entry: number,
+  tp: number | null,
+  sl: number | null
+): string | null {
+  if (tp != null && tp > 0) {
+    if (side === 'long' && tp <= entry) return 'TP must be above entry for long'
+    if (side === 'short' && tp >= entry) return 'TP must be below entry for short'
+  }
+  if (sl != null && sl > 0) {
+    if (side === 'long' && sl >= entry) return 'SL must be below entry for long'
+    if (side === 'short' && sl <= entry) return 'SL must be above entry for short'
+  }
+  return null
 }
 
 const initial = load()
@@ -135,6 +173,14 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     const qty = Number(input.qty)
     const leverage = clampLeverage(input.leverage)
     const markPrice = Number(input.markPrice)
+    const marginMode: PaperMarginMode =
+      input.marginMode === 'isolated' ? 'isolated' : 'cross'
+    const takeProfit =
+      typeof input.takeProfit === 'number' && input.takeProfit > 0
+        ? input.takeProfit
+        : null
+    const stopLoss =
+      typeof input.stopLoss === 'number' && input.stopLoss > 0 ? input.stopLoss : null
 
     if (!symbol || !Number.isFinite(qty) || qty <= 0) {
       return { ok: false, error: 'Invalid size' }
@@ -143,7 +189,12 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       return { ok: false, error: 'No real market price – start live data first' }
     }
 
-    const notional = qty * (type === 'limit' && input.price ? Number(input.price) : markPrice)
+    const entryRef =
+      type === 'limit' && input.price ? Number(input.price) : markPrice
+    const tpslErr = validateTpsl(side, entryRef, takeProfit, stopLoss)
+    if (tpslErr) return { ok: false, error: tpslErr }
+
+    const notional = qty * entryRef
     const margin = notional / leverage
     const { account } = get()
     if (margin > account.balance + 1e-9) {
@@ -166,20 +217,21 @@ export const usePaperStore = create<PaperState>((set, get) => ({
         price: limitPx,
         qty,
         leverage,
+        marginMode,
         status: 'open',
         createdAt: Date.now(),
+        takeProfit,
+        stopLoss,
       }
       set((s) => {
         const next = { ...s, orders: [order, ...s.orders] }
         persist(next)
         return { orders: next.orders, lastError: null }
       })
-      // Immediate fill if already through
       get().tryFillLimits(symbol.toUpperCase(), markPrice)
       return { ok: true }
     }
 
-    // Market – fill at mark
     const order: PaperOrder = {
       id: uid('ord'),
       symbol: symbol.toUpperCase(),
@@ -188,10 +240,13 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       price: null,
       qty,
       leverage,
+      marginMode,
       status: 'filled',
       createdAt: Date.now(),
       filledAt: Date.now(),
       fillPrice: markPrice,
+      takeProfit,
+      stopLoss,
     }
 
     const pos: PaperPosition = {
@@ -202,8 +257,11 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       entryPrice: markPrice,
       leverage,
       margin,
+      marginMode,
       openedAt: Date.now(),
       markPrice,
+      takeProfit,
+      stopLoss,
     }
 
     const fill: PaperFill = {
@@ -245,7 +303,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     })
   },
 
-  closePosition: (positionId, markPrice) => {
+  closePosition: (positionId, markPrice, reason = 'close') => {
     const px = Number(markPrice)
     if (!Number.isFinite(px) || px <= 0) {
       return { ok: false, error: 'No real market price to close' }
@@ -254,19 +312,21 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     if (!pos) return { ok: false, error: 'Position not found' }
 
     const pnl = unrealizedPnl(pos, px)
-    const returned = pos.margin + pnl
+    // Isolated: cannot lose more than margin; cross can go negative into free balance
+    const returned =
+      pos.marginMode === 'isolated' ? Math.max(0, pos.margin + pnl) : pos.margin + pnl
 
     const fill: PaperFill = {
       id: uid('fill'),
-      orderId: `close-${pos.id}`,
+      orderId: `${reason}-${pos.id}`,
       symbol: pos.symbol,
       side: pos.side,
       qty: pos.qty,
       price: px,
       leverage: pos.leverage,
-      realizedPnl: pnl,
+      realizedPnl: pos.marginMode === 'isolated' ? Math.max(-pos.margin, pnl) : pnl,
       time: Date.now(),
-      action: 'close',
+      action: reason,
     }
 
     set((s) => {
@@ -280,6 +340,24 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       }
       persist(next)
       return { ...next, lastError: null }
+    })
+    return { ok: true }
+  },
+
+  setTpsl: (positionId, takeProfit, stopLoss) => {
+    const pos = get().positions.find((p) => p.id === positionId)
+    if (!pos) return { ok: false, error: 'Position not found' }
+    const tp = takeProfit != null && takeProfit > 0 ? takeProfit : null
+    const sl = stopLoss != null && stopLoss > 0 ? stopLoss : null
+    const err = validateTpsl(pos.side, pos.entryPrice, tp, sl)
+    if (err) return { ok: false, error: err }
+    set((s) => {
+      const positions = s.positions.map((p) =>
+        p.id === positionId ? { ...p, takeProfit: tp, stopLoss: sl } : p
+      )
+      const next = { ...s, positions }
+      persist(next)
+      return { positions, lastError: null }
     })
     return { ok: true }
   },
@@ -303,6 +381,40 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     })
   },
 
+  checkExits: (symbol, markPrice) => {
+    const px = Number(markPrice)
+    if (!Number.isFinite(px) || px <= 0) return
+    const sym = symbol.toUpperCase()
+    const list = get().positions.filter((p) => p.symbol === sym)
+    for (const pos of list) {
+      // TP
+      if (pos.takeProfit != null && pos.takeProfit > 0) {
+        const hit =
+          pos.side === 'long' ? px >= pos.takeProfit : px <= pos.takeProfit
+        if (hit) {
+          get().closePosition(pos.id, px, 'tp')
+          continue
+        }
+      }
+      // SL
+      if (pos.stopLoss != null && pos.stopLoss > 0) {
+        const hit =
+          pos.side === 'long' ? px <= pos.stopLoss : px >= pos.stopLoss
+        if (hit) {
+          get().closePosition(pos.id, px, 'sl')
+          continue
+        }
+      }
+      // Isolated liquidation: margin + uPnL <= 0
+      if (pos.marginMode === 'isolated') {
+        const upnl = unrealizedPnl(pos, px)
+        if (pos.margin + upnl <= 0) {
+          get().closePosition(pos.id, px, 'liquidate')
+        }
+      }
+    }
+  },
+
   tryFillLimits: (symbol, lastPrice) => {
     const px = Number(lastPrice)
     if (!Number.isFinite(px) || px <= 0) return
@@ -322,7 +434,6 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       const margin = notional / order.leverage
       const { account } = get()
       if (margin > account.balance + 1e-9) {
-        // Cancel – cannot afford
         set((s) => {
           const next = {
             ...s,
@@ -337,6 +448,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
         continue
       }
 
+      const marginMode = order.marginMode === 'isolated' ? 'isolated' : 'cross'
       const pos: PaperPosition = {
         id: uid('pos'),
         symbol: order.symbol,
@@ -345,8 +457,11 @@ export const usePaperStore = create<PaperState>((set, get) => ({
         entryPrice: limitPx,
         leverage: order.leverage,
         margin,
+        marginMode,
         openedAt: Date.now(),
         markPrice: px,
+        takeProfit: order.takeProfit ?? null,
+        stopLoss: order.stopLoss ?? null,
       }
       const fill: PaperFill = {
         id: uid('fill'),

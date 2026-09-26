@@ -6,6 +6,8 @@
 export type PaperSide = 'long' | 'short'
 export type PaperOrderType = 'market' | 'limit'
 export type PaperOrderStatus = 'open' | 'filled' | 'cancelled'
+/** Cross = shared free balance; Isolated = margin locked per position, liquidates alone */
+export type PaperMarginMode = 'cross' | 'isolated'
 
 export interface PaperPosition {
   id: string
@@ -18,9 +20,14 @@ export interface PaperPosition {
   leverage: number
   /** Margin locked in USDT */
   margin: number
+  marginMode: PaperMarginMode
   openedAt: number
   /** Last mark used for unrealized PnL */
   markPrice: number
+  /** Optional take-profit price (absolute) */
+  takeProfit: number | null
+  /** Optional stop-loss price (absolute) */
+  stopLoss: number | null
 }
 
 export interface PaperOrder {
@@ -33,10 +40,13 @@ export interface PaperOrder {
   /** Size in base asset */
   qty: number
   leverage: number
+  marginMode: PaperMarginMode
   status: PaperOrderStatus
   createdAt: number
   filledAt?: number
   fillPrice?: number
+  takeProfit: number | null
+  stopLoss: number | null
 }
 
 export interface PaperFill {
@@ -49,8 +59,8 @@ export interface PaperFill {
   leverage: number
   realizedPnl: number
   time: number
-  /** open | close */
-  action: 'open' | 'close'
+  /** open | close | tp | sl | liquidate */
+  action: 'open' | 'close' | 'tp' | 'sl' | 'liquidate'
 }
 
 export interface PaperAccount {
