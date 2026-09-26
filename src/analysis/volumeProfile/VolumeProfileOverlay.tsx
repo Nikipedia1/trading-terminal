@@ -1,7 +1,7 @@
 /**
  * Volume Profile – developing + optional fixed overlay.
  * Levels span profile time range (timeToCoordinate) – anti-pellicola.
- * Fixed profile LVNs drawn as full-width horizontal lines.
+ * Labels POC / VAH / VAL in monospace; full-width lines over profile period.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'
@@ -26,7 +26,6 @@ interface VolumeProfileOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>
   exchange: ExchangeId
   symbol: string
-  /** @deprecated prefer config.developing */
   windowMode?: ProfileWindow
   config?: ProfileConfig
 }
@@ -34,6 +33,9 @@ interface VolumeProfileOverlayProps {
 const BAR_MAX_DEV = 100
 const BAR_MAX_FIXED = 70
 const RIGHT_PAD = 6
+const MONO = 'bold 11px ui-monospace, SFMono-Regular, Menlo, monospace'
+const MONO_SM = 'bold 10px ui-monospace, SFMono-Regular, Menlo, monospace'
+const MONO_XS = '9px ui-monospace, SFMono-Regular, Menlo, monospace'
 
 export function VolumeProfileOverlay({
   enabled,
@@ -165,10 +167,6 @@ export function VolumeProfileOverlay({
     }
   }
 
-  /**
-   * Levels between profile fromSec–toSec on the time axis.
-   * When fullWidthLvn=true (fixed profile), LVN lines span almost the full chart width.
-   */
   const paintLevels = (
     ctx: CanvasRenderingContext2D,
     bridge: CoordinateBridge,
@@ -203,7 +201,7 @@ export function VolumeProfileOverlay({
       ctx.setLineDash([])
 
       const text = `${labelPrefix}${label} ${price}`
-      ctx.font = 'bold 10px monospace'
+      ctx.font = MONO
       const tw = ctx.measureText(text).width
       const lx = Math.max(x0 + 2, Math.min(x1 - tw - 4, x1 - tw - 6))
       ctx.fillStyle = 'rgba(11, 14, 17, 0.82)'
@@ -217,12 +215,11 @@ export function VolumeProfileOverlay({
     draw(model.val, colors.val, 'VAL')
     draw(model.poc, colors.poc, 'POC', 1.5)
 
-    // LVN: full-width dashed for fixed profile; short ticks for developing
     for (const p of model.lvns) {
       const y = bridge.priceToCoordinate(p)
       if (y === null) continue
       if (fullWidthLvn) {
-        ctx.strokeStyle = 'rgba(246, 70, 93, 0.55)'
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.55)'
         ctx.lineWidth = 1
         ctx.setLineDash([4, 3])
         ctx.beginPath()
@@ -230,12 +227,12 @@ export function VolumeProfileOverlay({
         ctx.lineTo(w - BAR_MAX_DEV - 12, y)
         ctx.stroke()
         ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(246, 70, 93, 0.95)'
-        ctx.font = 'bold 9px monospace'
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.95)'
+        ctx.font = MONO_SM
         ctx.textAlign = 'left'
         ctx.fillText(`LVN ${p}`, 10, y - 3)
       } else {
-        ctx.strokeStyle = 'rgba(246, 70, 93, 0.75)'
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.75)'
         ctx.lineWidth = 1
         ctx.setLineDash([2, 2])
         ctx.beginPath()
@@ -243,8 +240,8 @@ export function VolumeProfileOverlay({
         ctx.lineTo(x1, y)
         ctx.stroke()
         ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(246, 70, 93, 0.9)'
-        ctx.font = '8px monospace'
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.9)'
+        ctx.font = MONO_XS
         ctx.textAlign = 'right'
         ctx.fillText('LVN', x1 - 30, y + 3)
       }
@@ -262,7 +259,7 @@ export function VolumeProfileOverlay({
         ctx.stroke()
         ctx.setLineDash([])
         ctx.fillStyle = 'rgba(240, 185, 11, 0.9)'
-        ctx.font = 'bold 9px monospace'
+        ctx.font = MONO_SM
         ctx.textAlign = 'left'
         ctx.fillText(`HVN ${p}`, 10, y - 3)
       } else {
@@ -275,7 +272,7 @@ export function VolumeProfileOverlay({
         ctx.stroke()
         ctx.setLineDash([])
         ctx.fillStyle = 'rgba(240, 185, 11, 0.95)'
-        ctx.font = '8px monospace'
+        ctx.font = MONO_XS
         ctx.textAlign = 'right'
         ctx.fillText('HVN', x1 - 30, y + 3)
       }
@@ -312,7 +309,7 @@ export function VolumeProfileOverlay({
         poc: 'rgba(96, 165, 250, 0.55)',
         va: 'rgba(59, 130, 246, 0.28)',
         outer: 'rgba(59, 130, 246, 0.12)',
-        lvn: 'rgba(248, 113, 113, 0.25)',
+        lvn: 'rgba(168, 85, 247, 0.25)',
         hvn: 'rgba(96, 165, 250, 0.4)',
       })
       paintLevels(
@@ -326,7 +323,7 @@ export function VolumeProfileOverlay({
           poc: 'rgba(147, 197, 253, 1)',
         },
         'F ',
-        true // full-width LVN/HVN for fixed profile
+        true
       )
     }
 
@@ -335,7 +332,7 @@ export function VolumeProfileOverlay({
         poc: 'rgba(240, 185, 11, 0.6)',
         va: 'rgba(14, 203, 129, 0.32)',
         outer: 'rgba(132, 142, 156, 0.16)',
-        lvn: 'rgba(246, 70, 93, 0.28)',
+        lvn: 'rgba(168, 85, 247, 0.28)',
         hvn: 'rgba(240, 185, 11, 0.35)',
       })
       paintLevels(ctx, bridge, dev, w, {
