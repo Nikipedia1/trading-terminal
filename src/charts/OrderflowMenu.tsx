@@ -384,7 +384,8 @@ export function OrderflowMenu({
               </label>
               <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
                 <input
-                  type="checkbox"ruar                  className="accent-[#f0b90b]"
+                  type="checkbox"
+                  className="accent-[#f0b90b]"
                   checked={state.domCfg.showSurprise}
                   onChange={(e) =>
                     onChange({
