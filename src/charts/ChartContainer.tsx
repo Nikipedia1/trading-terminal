@@ -19,7 +19,11 @@ import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
-import { useCandleDeltaSeries } from '@/analysis/deltaPrint'
+import {
+  useCandleDeltaSeries,
+  type DeltaPrintConfig,
+  DEFAULT_DELTA_CONFIG,
+} from '@/analysis/deltaPrint'
 import { VolumeProfileOverlay, type ProfileWindow } from '@/analysis/volumeProfile'
 import {
   DeepTradesOverlay,
@@ -100,6 +104,7 @@ export interface ChartContainerProps {
   syncGroup?: string | null
   deepPrintEnabled?: boolean
   deltaEnabled?: boolean
+  deltaConfig?: DeltaPrintConfig
   profileEnabled?: boolean
   profileWindow?: ProfileWindow
   deepTradesEnabled?: boolean
@@ -119,6 +124,7 @@ export function ChartContainer({
   syncGroup = null,
   deepPrintEnabled = false,
   deltaEnabled = false,
+  deltaConfig = DEFAULT_DELTA_CONFIG,
   profileEnabled = false,
   profileWindow = 'visible',
   deepTradesEnabled = false,
@@ -206,7 +212,15 @@ export function ChartContainer({
     }
   }, [candles])
 
-  useCandleDeltaSeries(deltaEnabled, seriesMgr, exchange, symbol, interval, candles)
+  useCandleDeltaSeries(
+    deltaEnabled,
+    seriesMgr,
+    exchange,
+    symbol,
+    interval,
+    candles,
+    deltaConfig
+  )
 
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return

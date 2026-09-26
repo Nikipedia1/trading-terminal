@@ -1,6 +1,6 @@
 /**
- * Keeps a Lightweight Charts histogram series in sync with candle-level delta.
- * Delta = sum(buy qty − sell qty) from shared trade buffer (real ticks only).
+ * Delta histogram + optional CVD line + divergence markers.
+ * All values from shared trade buffer (real ticks only).
  */
 
 import { useEffect, useRef } from 'react'
@@ -8,6 +8,9 @@ import type { SeriesManager } from '@/charts/series-manager'
 import type { Candle, ExchangeId, Interval } from '@/types'
 import { retainTradeBuffer } from '@/analysis/deepPrint/tradeBuffer'
 import { computeCandleDeltas } from '@/analysis/deepPrint/aggregate'
+import { detectDivergences } from './divergence'
+import type { DeltaPrintConfig } from './types'
+import { DEFAULT_DELTA_CONFIG } from './types'
 
 export function useCandleDeltaSeries(
   enabled: boolean,
@@ -15,13 +18,16 @@ export function useCandleDeltaSeries(
   exchange: ExchangeId,
   symbol: string,
   interval: Interval,
-  candles: Candle[]
+  candles: Candle[],
+  config: DeltaPrintConfig = DEFAULT_DELTA_CONFIG
 ) {
   const timesKeyRef = useRef('')
 
   useEffect(() => {
     if (!enabled) {
       seriesMgr?.clearDelta()
+      seriesMgr?.clearCvd()
+      seriesMgr?.clearDivergenceMarkers()
       return
     }
     return retainTradeBuffer(exchange, symbol)
@@ -31,14 +37,43 @@ export function useCandleDeltaSeries(
     if (!enabled || !seriesMgr || candles.length === 0) return
 
     const refresh = () => {
-      // Focus on recent bars for performance (buffer is live-only)
       const slice = candles.slice(-120)
       const times = slice.map((c) => c.time)
       const bars = computeCandleDeltas(exchange, symbol, times, interval)
-      seriesMgr.setDeltaBars(bars)
+
+      // Visual threshold: hide small bars relative to max |delta| in window
+      const maxAbs = Math.max(...bars.map((b) => Math.abs(b.delta)), 0.0001)
+      const thresh =
+        config.minBarPct > 0 ? maxAbs * (config.minBarPct / 100) : 0
+      const filtered =
+        thresh > 0
+          ? bars.map((b) =>
+              Math.abs(b.delta) < thresh ? { ...b, delta: 0 } : b
+            )
+          : bars
+
+      seriesMgr.setDeltaBars(filtered)
+
+      if (config.cvd) {
+        let acc = 0
+        const cvd = bars.map((b) => {
+          acc += b.delta
+          return { time: b.time, value: acc }
+        })
+        seriesMgr.setCvdLine(cvd)
+      } else {
+        seriesMgr.clearCvd()
+      }
+
+      if (config.divergence) {
+        const marks = detectDivergences(slice, bars)
+        seriesMgr.setDivergenceMarkers(marks)
+      } else {
+        seriesMgr.clearDivergenceMarkers()
+      }
     }
 
-    const key = `${candles[0]?.time}|${candles.length}|${candles[candles.length - 1]?.time}`
+    const key = `${candles[0]?.time}|${candles.length}|${candles[candles.length - 1]?.time}|${config.cvd}|${config.divergence}|${config.minBarPct}`
     if (key !== timesKeyRef.current) {
       timesKeyRef.current = key
       refresh()
@@ -46,5 +81,5 @@ export function useCandleDeltaSeries(
 
     const id = window.setInterval(refresh, 1000)
     return () => window.clearInterval(id)
-  }, [enabled, seriesMgr, exchange, symbol, interval, candles])
+  }, [enabled, seriesMgr, exchange, symbol, interval, candles, config])
 }

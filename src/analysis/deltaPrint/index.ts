@@ -1,1 +1,5 @@
 export { useCandleDeltaSeries } from './useCandleDeltaSeries'
+export { detectDivergences } from './divergence'
+export type { DivergenceMarker } from './divergence'
+export type { DeltaPrintConfig } from './types'
+export { DEFAULT_DELTA_CONFIG } from './types'

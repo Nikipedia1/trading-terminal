@@ -8,6 +8,7 @@ import { PROFILE_WINDOW_LABELS } from '@/analysis/volumeProfile'
 import type { DeepTradesConfig, ThresholdMode } from '@/analysis/deepTrades'
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
+import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
 import type { ExchangeId } from '@/types'
 
 const PROFILE_WINDOWS: ProfileWindow[] = [
@@ -20,6 +21,7 @@ const PROFILE_WINDOWS: ProfileWindow[] = [
 export interface OrderflowState {
   print: boolean
   delta: boolean
+  deltaCfg: DeltaPrintConfig
   profile: boolean
   profileWindow: ProfileWindow
   trades: boolean
@@ -101,13 +103,74 @@ export function OrderflowMenu({
 
       {open && (
         <div
-          className="absolute left-0 top-full mt-1 z-50 w-[280px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
+          className="absolute left-0 top-full mt-1 z-50 w-[300px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
           onMouseDown={(e) => e.stopPropagation()}
         >
           {row('Deep Print', state.print, onPrintToggle)}
           {row('Delta (histogram)', state.delta, () =>
             onChange({ delta: !state.delta })
           )}
+
+          {state.delta && (
+            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-[#f0b90b]"
+                  checked={state.deltaCfg.cvd}
+                  onChange={(e) =>
+                    onChange({
+                      deltaCfg: { ...state.deltaCfg, cvd: e.target.checked },
+                    })
+                  }
+                />
+                CVD line
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-[#f0b90b]"
+                  checked={state.deltaCfg.divergence}
+                  onChange={(e) =>
+                    onChange({
+                      deltaCfg: {
+                        ...state.deltaCfg,
+                        divergence: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                Δ divergence flags
+              </label>
+              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
+                <span className="shrink-0">Min bar %</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={40}
+                  step={5}
+                  className="flex-1 h-1 accent-[#0ecb81]"
+                  value={state.deltaCfg.minBarPct}
+                  onChange={(e) =>
+                    onChange({
+                      deltaCfg: {
+                        ...state.deltaCfg,
+                        minBarPct: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <span className="w-8 text-[#eaecef] tabular-nums">
+                  {state.deltaCfg.minBarPct}%
+                </span>
+              </div>
+              <p className="text-[9px] text-[#5e6673] leading-snug">
+                Divergence = annotation only, not a trade signal. CVD from real
+                trade stream.
+              </p>
+            </div>
+          )}
+
           {row(
             'Profile',
             state.profile,

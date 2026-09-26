@@ -14,6 +14,7 @@ import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
 import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
 import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
+import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
@@ -36,6 +37,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const [of, setOf] = useState<OrderflowState>({
     print: false,
     delta: false,
+    deltaCfg: DEFAULT_DELTA_CONFIG,
     profile: false,
     profileWindow: 'visible',
     trades: false,
@@ -205,6 +207,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           syncGroup={syncGroup}
           deepPrintEnabled={of.print}
           deltaEnabled={of.delta}
+          deltaConfig={of.deltaCfg}
           profileEnabled={of.profile}
           profileWindow={of.profileWindow}
           deepTradesEnabled={of.trades}

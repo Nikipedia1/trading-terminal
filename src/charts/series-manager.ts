@@ -1,6 +1,5 @@
 /**
- * Series Manager – candlestick + volume + optional delta histogram.
- * Delta shares the chart timeScale (anti-pellicola / no second chart).
+ * Series Manager – candles, volume, delta histogram, optional CVD line.
  */
 
 import {
@@ -8,21 +7,26 @@ import {
   type ISeriesApi,
   type CandlestickData,
   type HistogramData,
+  type LineData,
   type Time,
+  type SeriesMarker,
 } from 'lightweight-charts'
 import type { Candle } from '@/types'
 import type { CandleStyle } from '@/stores/chartStyleStore'
 import { DEFAULT_CHART_STYLE, hexToRgba } from '@/stores/chartStyleStore'
 import type { CandleDeltaBar } from '@/analysis/deepPrint/types'
+import type { DivergenceMarker } from '@/analysis/deltaPrint/divergence'
 
 const DELTA_UP = 'rgba(14, 203, 129, 0.85)'
 const DELTA_DOWN = 'rgba(246, 70, 93, 0.85)'
+const CVD_COLOR = 'rgba(240, 185, 11, 0.9)'
 
 export class SeriesManager {
   private chart: IChartApi | null = null
   private candleSeries: ISeriesApi<'Candlestick'> | null = null
   private volumeSeries: ISeriesApi<'Histogram'> | null = null
   private deltaSeries: ISeriesApi<'Histogram'> | null = null
+  private cvdSeries: ISeriesApi<'Line'> | null = null
   private candleStyle: CandleStyle = { ...DEFAULT_CHART_STYLE.candle }
   private lastCandles: Candle[] = []
 
@@ -50,11 +54,24 @@ export class SeriesManager {
       base: 0,
     })
 
+    this.cvdSeries = chart.addLineSeries({
+      color: CVD_COLOR,
+      lineWidth: 2,
+      priceScaleId: 'cvd',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      crosshairMarkerVisible: true,
+    })
+
     chart.priceScale('volume').applyOptions({
       scaleMargins: { top: 0.72, bottom: 0.16 },
     })
     chart.priceScale('delta').applyOptions({
       scaleMargins: { top: 0.88, bottom: 0 },
+    })
+    chart.priceScale('cvd').applyOptions({
+      scaleMargins: { top: 0.55, bottom: 0.35 },
+      visible: false,
     })
     chart.priceScale('right').applyOptions({
       scaleMargins: { top: 0.05, bottom: 0.32 },
@@ -65,6 +82,7 @@ export class SeriesManager {
     this.candleSeries = null
     this.volumeSeries = null
     this.deltaSeries = null
+    this.cvdSeries = null
     this.chart = null
     this.lastCandles = []
   }
@@ -84,9 +102,7 @@ export class SeriesManager {
       wickUpColor: style.upWick,
       wickDownColor: style.downWick,
     })
-    if (this.lastCandles.length > 0) {
-      this.setCandles(this.lastCandles)
-    }
+    if (this.lastCandles.length > 0) this.setCandles(this.lastCandles)
   }
 
   setCandles(candles: Candle[]) {
@@ -145,7 +161,6 @@ export class SeriesManager {
     })
   }
 
-  /** Full replace of candle-level delta histogram (same timeScale). */
   setDeltaBars(bars: CandleDeltaBar[]) {
     if (!this.deltaSeries) return
     const data: HistogramData[] = bars.map((b) => ({
@@ -158,5 +173,44 @@ export class SeriesManager {
 
   clearDelta() {
     this.deltaSeries?.setData([])
+  }
+
+  setCvdLine(points: { time: number; value: number }[]) {
+    if (!this.cvdSeries) return
+    const data: LineData[] = points.map((p) => ({
+      time: p.time as Time,
+      value: p.value,
+    }))
+    this.cvdSeries.setData(data)
+  }
+
+  clearCvd() {
+    this.cvdSeries?.setData([])
+  }
+
+  setDivergenceMarkers(marks: DivergenceMarker[]) {
+    if (!this.candleSeries) return
+    const markers: SeriesMarker<Time>[] = marks.map((m) =>
+      m.kind === 'bearish'
+        ? {
+            time: m.time as Time,
+            position: 'aboveBar',
+            color: '#f0b90b',
+            shape: 'arrowDown',
+            text: 'Δ div',
+          }
+        : {
+            time: m.time as Time,
+            position: 'belowBar',
+            color: '#0ecb81',
+            shape: 'arrowUp',
+            text: 'Δ div',
+          }
+    )
+    this.candleSeries.setMarkers(markers)
+  }
+
+  clearDivergenceMarkers() {
+    this.candleSeries?.setMarkers([])
   }
 }
