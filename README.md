@@ -41,6 +41,17 @@ book.unsubscribe()
 - **L2 book**: Binance official snapshot + diff; KuCoin sequence-based; gap → resync
 - **Reconnect** with backoff; status events; no synthetic data on failure
 
+## Paper trading
+
+Side panel tab **Paper** – simulated futures-style account (local only, no API keys):
+
+- Buy/Long · Sell/Short, Market / Limit
+- Leverage 1x–125x (KuCoin-style slider + presets)
+- Size in USDT notional → base qty from **real** last price
+- Open positions with unrealized PnL (mark-to-market on live ticker)
+- Limit orders fill when real last crosses limit
+- Balance / equity / history persisted in `localStorage` (`tt-paper:v1`)
+
 ## Public API limits
 
 See `PUBLIC_API_LIMITS` in `src/data/exchanges/types.ts`. Multi-panel + L2 snapshot weight can 429 – feeds share sockets to reduce load.
@@ -169,6 +180,29 @@ GitHub Codespaces: open the repo → Create codespace → after `postCreateComma
 
 ### Untouched
 - coordinate bridge usage, sampling, colors, overlay API
+
+## Changelog (feat – paper trading panel)
+
+**Commit:** `e5634de`
+
+### Added
+- `src/trading/paper/types.ts` – `PaperPosition`, `PaperOrder`, `PaperFill`, account
+- `src/trading/paper/paperStore.ts` – simulated USDT account, leverage 1–125x, open/close,
+  mark-to-market from real ticker, limit fill on real last, `localStorage` persist
+- `src/trading/paper/PaperTradingPanel.tsx` – Buy/Sell, Market/Limit, leverage UI,
+  positions + history (KuCoin-inspired)
+- `src/trading/paper/index.ts` – public exports
+- Side panel tab **Paper**
+
+### Changed
+- `src/App.tsx` – tab wiring + header label includes Paper
+
+### Untouched
+- exchange clients, shared feeds, charts, analysis, coordinate bridge
+
+### Constraints
+- Fills / marks use live `marketStore` ticker only (never synthetic prices)
+- Paper module fully separated from data-layer
 
 ## License
 
