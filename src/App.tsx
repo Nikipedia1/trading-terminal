@@ -3,6 +3,7 @@ import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { PanelGrid } from '@/layout/PanelGrid'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
+import { PaperTradingPanel } from '@/trading/paper'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import type { Interval } from '@/types'
@@ -314,7 +315,7 @@ function PrimaryLargeTrades() {
   )
 }
 
-type SideTab = 'live' | 'large' | 'book'
+type SideTab = 'live' | 'large' | 'book' | 'paper'
 
 function SidePanel() {
   const [tab, setTab] = useState<SideTab>('live')
@@ -322,6 +323,7 @@ function SidePanel() {
     { id: 'live', label: 'Live' },
     { id: 'large', label: 'Large' },
     { id: 'book', label: 'Book' },
+    { id: 'paper', label: 'Paper' },
   ]
 
   return (
@@ -346,6 +348,7 @@ function SidePanel() {
         {tab === 'live' && <TradesTape />}
         {tab === 'large' && <PrimaryLargeTrades />}
         {tab === 'book' && <OrderBookView />}
+        {tab === 'paper' && <PaperTradingPanel />}
       </div>
       {tab === 'large' && (
         <div className="px-2 py-1 text-[9px] text-[#5e6673] border-t border-terminal-border shrink-0">
@@ -414,7 +417,7 @@ export default function App() {
     <div className="h-full flex flex-col">
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
-        <span className="text-xxs text-terminal-muted">Binance · KuCoin · Real-time · No mocks</span>
+        <span className="text-xxs text-terminal-muted">Binance · KuCoin · Paper · Real-time · No mocks</span>
       </header>
 
       <ErrorBanner />
