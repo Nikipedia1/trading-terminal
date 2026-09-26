@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + orderflow overlays + DOM ladder.
+ * ChartContainer – chart + orderflow overlays + DOM ladder + focus + range badge.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -16,6 +16,7 @@ import { SeriesManager } from './series-manager'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
+import { useChartFocusStore } from '@/stores/chartFocusStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
@@ -26,6 +27,7 @@ import {
 } from '@/analysis/deltaPrint'
 import {
   VolumeProfileOverlay,
+  RangeDiscoveryBadge,
   type ProfileConfig,
   DEFAULT_PROFILE_CONFIG,
 } from '@/analysis/volumeProfile'
@@ -115,6 +117,8 @@ export interface ChartContainerProps {
   deepTradesConfig?: DeepTradesConfig
   deepDomEnabled?: boolean
   deepDomConfig?: DeepDomConfig
+  /** Primary panel receives sidebar focus requests */
+  isPrimary?: boolean
 }
 
 export function ChartContainer({
@@ -135,6 +139,7 @@ export function ChartContainer({
   deepTradesConfig = DEFAULT_DEEP_TRADES_CONFIG,
   deepDomEnabled = false,
   deepDomConfig = DEFAULT_DEEP_DOM_CONFIG,
+  isPrimary = false,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -146,6 +151,7 @@ export function ChartContainer({
   const applyingRemoteRef = useRef(false)
 
   const chartStyle = useChartStyleStore((s) => s.style)
+  const focusRequest = useChartFocusStore((s) => s.request)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -215,6 +221,21 @@ export function ChartContainer({
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
     }
   }, [candles])
+
+  // Sidebar / large-trades click → center visible range
+  useEffect(() => {
+    if (!isPrimary || !focusRequest || !chartRef.current) return
+    const chart = chartRef.current
+    const pad = focusRequest.padSec ?? 900
+    try {
+      chart.timeScale().setVisibleRange({
+        from: (focusRequest.timeSec - pad) as Time,
+        to: (focusRequest.timeSec + pad) as Time,
+      })
+    } catch {
+      /* range may be outside data */
+    }
+  }, [focusRequest, isPrimary])
 
   useCandleDeltaSeries(
     deltaEnabled,
@@ -296,6 +317,15 @@ export function ChartContainer({
       style={{ backgroundColor: chartStyle.canvas.background }}
     >
       <div ref={containerRef} className="absolute inset-0" />
+
+      <RangeDiscoveryBadge
+        enabled={profileEnabled || deltaEnabled}
+        exchange={exchange}
+        symbol={symbol}
+        interval={interval}
+        candles={candles}
+        profileWindow={profileConfig.developing === 'visible' ? 'session' : profileConfig.developing}
+      />
 
       <DeepDomOverlay
         enabled={deepDomEnabled}

@@ -1,5 +1,8 @@
 export { VolumeProfileOverlay } from './VolumeProfileOverlay'
+export { RangeDiscoveryBadge } from './RangeDiscoveryBadge'
 export { buildVolumeProfile, resolveWindowRange } from './compute'
+export { classifyRangeDiscovery } from './rangeDiscovery'
+export type { MarketMode, ModeResult } from './rangeDiscovery'
 export type {
   ProfileWindow,
   VolumeProfileModel,
