@@ -70,7 +70,9 @@ function Controls() {
         }}
       >
         {['1m', '5m', '15m', '1h', '4h', '1d'].map((i) => (
-          <option key={i} value={i}>{i}</option>
+          <option key={i} value={i}>
+            {i}
+          </option>
         ))}
       </select>
       <button
@@ -119,11 +121,21 @@ function TradesTape() {
           {trades.map((t) => (
             <tr key={t.id} className="border-t border-terminal-border/50">
               <td className="px-2 py-0.5">{new Date(t.time).toLocaleTimeString()}</td>
-              <td className={`text-right px-2 py-0.5 ${t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green'}`}>
+              <td
+                className={
+                  'text-right px-2 py-0.5 ' +
+                  (t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green')
+                }
+              >
                 {t.price.toFixed(2)}
               </td>
               <td className="text-right px-2 py-0.5">{t.qty.toFixed(5)}</td>
-              <td className={`text-right px-2 py-0.5 ${t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green'`}>
+              <td
+                className={
+                  'text-right px-2 py-0.5 ' +
+                  (t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green')
+                }
+              >
                 {t.isBuyerMaker ? 'SELL' : 'BUY'}
               </td>
             </tr>
@@ -131,7 +143,9 @@ function TradesTape() {
         </tbody>
       </table>
       {trades.length === 0 && (
-        <div className="p-4 text-terminal-muted text-sm">No live trades yet. Click "Start Live".</div>
+        <div className="p-4 text-terminal-muted text-sm">
+          No live trades yet. Click "Start Live".
+        </div>
       )}
     </div>
   )
@@ -140,7 +154,11 @@ function TradesTape() {
 function OrderBookView() {
   const book = useMarketStore((s) => s.orderBook)
   if (!book) {
-    return <div className="p-4 text-terminal-muted text-sm">No order book. Load History or Start Live.</div>
+    return (
+      <div className="p-4 text-terminal-muted text-sm">
+        No order book. Load History or Start Live.
+      </div>
+    )
   }
   const maxQty = Math.max(
     ...book.bids.slice(0, 10).map((l) => l.qty),
@@ -152,29 +170,35 @@ function OrderBookView() {
       <div className="grid grid-cols-2 gap-1 px-2">
         <div>
           <div className="text-terminal-muted mb-1">Bids</div>
-          {book.bids.slice(0, 12).map((l) => (
-            <div key={l.price} className="relative flex justify-between py-0.5">
-              <div
-                className="absolute inset-y-0 right-0 bg-terminal-green/10"
-                style={{ width: `${(l.qty / maxQty) * 100}%` }}
-              />
-              <span className="text-terminal-green relative">{l.price.toFixed(2)}</span>
-              <span className="relative">{l.qty.toFixed(4)}</span>
-            </div>
-          ))}
+          {book.bids.slice(0, 12).map((l) => {
+            const barWidth = (l.qty / maxQty) * 100 + '%'
+            return (
+              <div key={'b-' + l.price} className="relative flex justify-between py-0.5">
+                <div
+                  className="absolute inset-y-0 right-0 bg-terminal-green/10"
+                  style={{ width: barWidth }}
+                />
+                <span className="text-terminal-green relative">{l.price.toFixed(2)}</span>
+                <span className="relative">{l.qty.toFixed(4)}</span>
+              </div>
+            )
+          })}
         </div>
         <div>
           <div className="text-terminal-muted mb-1">Asks</div>
-          {book.asks.slice(0, 12).map((l) => (
-            <div key={l.price} className="relative flex justify-between py-0.5">
-              <div
-                className="absolute inset-y-0 left-0 bg-terminal-red/10"
-                style={{ width: `${(l.qty / maxQty) * 100}%` }}
-              />
-              <span className="text-terminal-red relative">{l.price.toFixed(2)}</span>
-              <span className="relative">{l.qty.toFixed(4)}</span>
-            </div>
-          ))}
+          {book.asks.slice(0, 12).map((l) => {
+            const barWidth = (l.qty / maxQty) * 100 + '%'
+            return (
+              <div key={'a-' + l.price} className="relative flex justify-between py-0.5">
+                <div
+                  className="absolute inset-y-0 left-0 bg-terminal-red/10"
+                  style={{ width: barWidth }}
+                />
+                <span className="text-terminal-red relative">{l.price.toFixed(2)}</span>
+                <span className="relative">{l.qty.toFixed(4)}</span>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -192,7 +216,8 @@ function TickerBar() {
         {ticker.lastPrice.toFixed(2)}
       </span>
       <span className={up ? 'text-terminal-green' : 'text-terminal-red'}>
-        {up ? '+' : ''}{ticker.priceChangePercent.toFixed(2)}%
+        {up ? '+' : ''}
+        {ticker.priceChangePercent.toFixed(2)}%
       </span>
       <span className="text-terminal-muted">24h Vol: {ticker.volume.toFixed(0)}</span>
       <span className="text-terminal-muted">H: {ticker.highPrice.toFixed(2)}</span>
