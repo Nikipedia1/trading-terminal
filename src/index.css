@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0e11;
+  --panel: #12161c;
+  --border: #1e2329;
+  --text: #eaecef;
+  --muted: #848e9c;
+  --green: #0ecb81;
+  --red: #f6465d;
+  --yellow: #f0b90b;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* High density scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: #2b3139;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a424d;
+}
+
+/* Utility for mono numbers */
+.font-mono-nums {
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace;
+}
