@@ -1,6 +1,7 @@
 /**
  * Volume Profile – developing + optional fixed overlay.
  * Levels span profile time range (timeToCoordinate) – anti-pellicola.
+ * Fixed profile LVNs drawn as full-width horizontal lines.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'
@@ -164,14 +165,18 @@ export function VolumeProfileOverlay({
     }
   }
 
-  /** Levels only between profile fromSec–toSec on the time axis */
+  /**
+   * Levels between profile fromSec–toSec on the time axis.
+   * When fullWidthLvn=true (fixed profile), LVN lines span almost the full chart width.
+   */
   const paintLevels = (
     ctx: CanvasRenderingContext2D,
     bridge: CoordinateBridge,
     model: VolumeProfileModel,
     w: number,
     colors: { vah: string; val: string; poc: string },
-    labelPrefix = ''
+    labelPrefix = '',
+    fullWidthLvn = false
   ) => {
     let x0 = bridge.timeToCoordinate(Math.floor(model.fromSec) as any)
     let x1 = bridge.timeToCoordinate(Math.floor(model.toSec) as any)
@@ -182,7 +187,6 @@ export function VolumeProfileOverlay({
       x0 = x1
       x1 = t
     }
-    // Clamp into chart
     x0 = Math.max(4, Math.min(w - 4, x0))
     x1 = Math.max(4, Math.min(w - BAR_MAX_DEV - 8, x1))
 
@@ -213,38 +217,68 @@ export function VolumeProfileOverlay({
     draw(model.val, colors.val, 'VAL')
     draw(model.poc, colors.poc, 'POC', 1.5)
 
-    // LVN / HVN short ticks at right of time span
+    // LVN: full-width dashed for fixed profile; short ticks for developing
     for (const p of model.lvns) {
       const y = bridge.priceToCoordinate(p)
       if (y === null) continue
-      ctx.strokeStyle = 'rgba(246, 70, 93, 0.75)'
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 2])
-      ctx.beginPath()
-      ctx.moveTo(x1 - 28, y)
-      ctx.lineTo(x1, y)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = 'rgba(246, 70, 93, 0.9)'
-      ctx.font = '8px monospace'
-      ctx.textAlign = 'right'
-      ctx.fillText('LVN', x1 - 30, y + 3)
+      if (fullWidthLvn) {
+        ctx.strokeStyle = 'rgba(246, 70, 93, 0.55)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([4, 3])
+        ctx.beginPath()
+        ctx.moveTo(8, y)
+        ctx.lineTo(w - BAR_MAX_DEV - 12, y)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.fillStyle = 'rgba(246, 70, 93, 0.95)'
+        ctx.font = 'bold 9px monospace'
+        ctx.textAlign = 'left'
+        ctx.fillText(`LVN ${p}`, 10, y - 3)
+      } else {
+        ctx.strokeStyle = 'rgba(246, 70, 93, 0.75)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([2, 2])
+        ctx.beginPath()
+        ctx.moveTo(x1 - 28, y)
+        ctx.lineTo(x1, y)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.fillStyle = 'rgba(246, 70, 93, 0.9)'
+        ctx.font = '8px monospace'
+        ctx.textAlign = 'right'
+        ctx.fillText('LVN', x1 - 30, y + 3)
+      }
     }
     for (const p of model.hvns) {
       const y = bridge.priceToCoordinate(p)
       if (y === null) continue
-      ctx.strokeStyle = 'rgba(240, 185, 11, 0.75)'
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 2])
-      ctx.beginPath()
-      ctx.moveTo(x1 - 28, y)
-      ctx.lineTo(x1, y)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = 'rgba(240, 185, 11, 0.95)'
-      ctx.font = '8px monospace'
-      ctx.textAlign = 'right'
-      ctx.fillText('HVN', x1 - 30, y + 3)
+      if (fullWidthLvn) {
+        ctx.strokeStyle = 'rgba(240, 185, 11, 0.4)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([3, 3])
+        ctx.beginPath()
+        ctx.moveTo(8, y)
+        ctx.lineTo(w - BAR_MAX_DEV - 12, y)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.fillStyle = 'rgba(240, 185, 11, 0.9)'
+        ctx.font = 'bold 9px monospace'
+        ctx.textAlign = 'left'
+        ctx.fillText(`HVN ${p}`, 10, y - 3)
+      } else {
+        ctx.strokeStyle = 'rgba(240, 185, 11, 0.75)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([2, 2])
+        ctx.beginPath()
+        ctx.moveTo(x1 - 28, y)
+        ctx.lineTo(x1, y)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.fillStyle = 'rgba(240, 185, 11, 0.95)'
+        ctx.font = '8px monospace'
+        ctx.textAlign = 'right'
+        ctx.fillText('HVN', x1 - 30, y + 3)
+      }
     }
   }
 
@@ -273,10 +307,7 @@ export function VolumeProfileOverlay({
     const fixed = fixedRef.current
     const dev = developingRef.current
 
-    // Fixed bars slightly left of developing (offset)
     if (fixed && fixed.buckets.length > 0 && fixed.totalVolume > 0) {
-      // Draw fixed bars shifted left by a few px via smaller max width on same right edge
-      // Use cooler blue palette
       paintProfileBars(ctx, bridge, fixed, w - 8, h, BAR_MAX_FIXED, {
         poc: 'rgba(96, 165, 250, 0.55)',
         va: 'rgba(59, 130, 246, 0.28)',
@@ -294,7 +325,8 @@ export function VolumeProfileOverlay({
           val: 'rgba(96, 165, 250, 0.85)',
           poc: 'rgba(147, 197, 253, 1)',
         },
-        'F '
+        'F ',
+        true // full-width LVN/HVN for fixed profile
       )
     }
 
@@ -318,7 +350,6 @@ export function VolumeProfileOverlay({
       ctx.fillText(hint || 'Profile: no trades in window', w - 12, 20)
     }
 
-    // Legend
     ctx.font = '10px sans-serif'
     ctx.textAlign = 'right'
     ctx.fillStyle = 'rgba(234, 236, 239, 0.85)'
