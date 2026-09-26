@@ -1,7 +1,12 @@
-/** Filter aggressor trades by size threshold (fixed or percentile). */
+/** Filter + cluster aggressor trades by size threshold. */
 
 import type { AggressorTrade } from '@/data/shared'
 import type { DeepTradeBubble, DeepTradesConfig } from './types'
+import { inferTickSize, roundToTick } from '@/analysis/deepPrint/interval'
+
+function tradeSize(t: AggressorTrade, unit: 'base' | 'quote'): number {
+  return unit === 'quote' ? t.qty * t.price : t.qty
+}
 
 function percentileThreshold(sizes: number[], p: number): number {
   if (sizes.length === 0) return Infinity
@@ -13,19 +18,68 @@ function percentileThreshold(sizes: number[], p: number): number {
   return sorted[idx]
 }
 
-/**
- * Compute threshold from config + recent sample of trade sizes.
- * Never invents trades – only filters real ones.
- */
 export function resolveThreshold(
   recentSizes: number[],
   config: DeepTradesConfig
 ): number {
-  if (config.mode === 'fixed') {
-    return Math.max(0, config.fixedMin)
-  }
+  if (config.mode === 'fixed') return Math.max(0, config.fixedMin)
   const p = Math.min(99, Math.max(1, config.percentile))
   return percentileThreshold(recentSizes, p)
+}
+
+interface ClusterAcc {
+  id: string
+  timeMs: number
+  price: number
+  baseQty: number
+  size: number
+  aggressor: 'buy' | 'sell'
+  count: number
+}
+
+/**
+ * Merge consecutive trades within clusterMs at same rounded tick + side.
+ * Reduces noise from burst fills.
+ */
+function clusterTrades(
+  trades: AggressorTrade[],
+  clusterMs: number,
+  unit: 'base' | 'quote'
+): ClusterAcc[] {
+  if (trades.length === 0) return []
+  const mid = trades[Math.floor(trades.length / 2)]?.price ?? trades[0].price
+  const tick = inferTickSize(mid)
+  const sorted = [...trades].sort((a, b) => a.time - b.time)
+  const out: ClusterAcc[] = []
+
+  for (const t of sorted) {
+    const px = roundToTick(t.price, tick)
+    const size = tradeSize(t, unit)
+    const last = out[out.length - 1]
+    if (
+      last &&
+      last.aggressor === t.aggressor &&
+      last.price === px &&
+      t.time - last.timeMs <= clusterMs
+    ) {
+      last.baseQty += t.qty
+      last.size += size
+      last.count += 1
+      // keep earliest time as bubble anchor; update price to volume-weighted-ish last
+      last.price = px
+    } else {
+      out.push({
+        id: t.id,
+        timeMs: t.time,
+        price: px,
+        baseQty: t.qty,
+        size,
+        aggressor: t.aggressor,
+        count: 1,
+      })
+    }
+  }
+  return out
 }
 
 export function filterDeepTrades(
@@ -33,19 +87,25 @@ export function filterDeepTrades(
   config: DeepTradesConfig
 ): { bubbles: DeepTradeBubble[]; threshold: number } {
   const lookback = Math.max(50, config.lookback)
-  const sample = trades.slice(-lookback)
-  const sizes = sample.map((t) => t.qty)
+  const unit = config.sizeUnit
+  const clustered = clusterTrades(trades, Math.max(0, config.clusterMs), unit)
+
+  const sample = clustered.slice(-lookback)
+  const sizes = sample.map((c) => c.size)
   const threshold = resolveThreshold(sizes, config)
 
   const bubbles: DeepTradeBubble[] = []
-  for (const t of trades) {
-    if (t.qty < threshold) continue
+  for (const c of clustered) {
+    if (c.size < threshold) continue
     bubbles.push({
-      id: t.id,
-      timeSec: t.time / 1000,
-      price: t.price,
-      qty: t.qty,
-      aggressor: t.aggressor,
+      id: c.id,
+      timeSec: c.timeMs / 1000,
+      price: c.price,
+      qty: c.size,
+      baseQty: c.baseQty,
+      aggressor: c.aggressor,
+      outcome: 'pending',
+      clusterCount: c.count,
     })
   }
   return { bubbles, threshold }

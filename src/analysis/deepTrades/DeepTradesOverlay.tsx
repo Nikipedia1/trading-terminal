@@ -1,12 +1,15 @@
 /**
- * Deep Trades – large semi-transparent bubbles (guide-style radius).
+ * Deep Trades – bubbles with Effective / Trapped styling.
+ * Anti-pellicola: timeToCoordinate / priceToCoordinate.
  */
 
 import { useEffect, useRef, useCallback } from 'react'
 import type { CoordinateBridge } from '@/charts/coordinate-bridge'
-import type { ExchangeId } from '@/types'
+import type { Candle, ExchangeId, Interval } from '@/types'
 import { retainTradeBuffer, queryTradesInRange } from '@/analysis/deepPrint/tradeBuffer'
+import { intervalToSeconds } from '@/analysis/deepPrint/interval'
 import { filterDeepTrades } from './filter'
+import { classifyBubbles } from './classify'
 import type { DeepTradesConfig, DeepTradeBubble } from './types'
 
 function queryAllBuffered(
@@ -24,12 +27,9 @@ interface DeepTradesOverlayProps {
   exchange: ExchangeId
   symbol: string
   config: DeepTradesConfig
+  candles?: Candle[]
+  interval?: Interval
 }
-
-const BUY_FILL = 'rgba(14, 203, 129, 0.38)'
-const BUY_STROKE = 'rgba(14, 203, 129, 0.9)'
-const SELL_FILL = 'rgba(168, 85, 247, 0.38)'
-const SELL_STROKE = 'rgba(168, 85, 247, 0.9)'
 
 const R_MIN = 9
 const R_MAX = 36
@@ -47,6 +47,8 @@ export function DeepTradesOverlay({
   exchange,
   symbol,
   config,
+  candles = [],
+  interval = '1m',
 }: DeepTradesOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bubblesRef = useRef<DeepTradeBubble[]>([])
@@ -65,19 +67,23 @@ export function DeepTradesOverlay({
     }
     const trades = queryAllBuffered(exchange, symbol)
     const { bubbles, threshold } = filterDeepTrades(trades, config)
-    const normalized = bubbles.map((b) => ({
-      ...b,
-      timeSec: Math.floor(b.timeSec),
-    }))
-    // Less clutter: keep top 120 by size among recent
+    const sec = intervalToSeconds(interval)
+    let classified = classifyBubbles(bubbles, candles, sec)
+
+    if (config.onlyEffective) {
+      classified = classified.filter((b) => b.outcome === 'effective')
+    }
+
+    // Cap for draw perf – prefer largest
     const capped =
-      normalized.length > 120
-        ? [...normalized].sort((a, b) => b.qty - a.qty).slice(0, 120)
-        : normalized
+      classified.length > 120
+        ? [...classified].sort((a, b) => b.qty - a.qty).slice(0, 120)
+        : classified
+
     bubblesRef.current = capped
     thresholdRef.current = threshold
     maxQtyRef.current = Math.max(...capped.map((b) => b.qty), 1)
-  }, [enabled, exchange, symbol, config])
+  }, [enabled, exchange, symbol, config, candles, interval])
 
   const paint = useCallback(() => {
     const canvas = canvasRef.current
@@ -104,44 +110,88 @@ export function DeepTradesOverlay({
     const list = bubblesRef.current
     const maxQty = maxQtyRef.current
     let drawn = 0
+    let nEff = 0
+    let nTrap = 0
 
     for (const b of list) {
-      let x = bridge.timeToCoordinate(b.timeSec as any)
+      let x = bridge.timeToCoordinate(Math.floor(b.timeSec) as any)
       const y = bridge.priceToCoordinate(b.price)
       if (x === null) {
         const chart = bridge.getChart()
-        if (chart) x = chart.timeScale().timeToCoordinate(b.timeSec as any)
+        if (chart) x = chart.timeScale().timeToCoordinate(Math.floor(b.timeSec) as any)
       }
       if (x === null || y === null) continue
       if (x < -50 || x > w + 50 || y < -50 || y > h + 50) continue
 
       const r = radiusForQty(b.qty, maxQty)
       const buy = b.aggressor === 'buy'
+      const outcome = b.outcome
+
+      // Style by outcome
+      let fill: string
+      let stroke: string
+      let lineW = 1.75
+
+      if (outcome === 'effective') {
+        fill = buy ? 'rgba(14, 203, 129, 0.72)' : 'rgba(168, 85, 247, 0.72)'
+        stroke = buy ? '#0ecb81' : '#a855f7'
+        lineW = 2.25
+        nEff += 1
+      } else if (outcome === 'trapped') {
+        fill = buy ? 'rgba(14, 203, 129, 0.08)' : 'rgba(168, 85, 247, 0.08)'
+        stroke = buy ? 'rgba(14, 203, 129, 0.55)' : 'rgba(168, 85, 247, 0.55)'
+        lineW = 1.5
+        nTrap += 1
+      } else {
+        // pending – soft
+        fill = buy ? 'rgba(14, 203, 129, 0.28)' : 'rgba(168, 85, 247, 0.28)'
+        stroke = buy ? 'rgba(14, 203, 129, 0.7)' : 'rgba(168, 85, 247, 0.7)'
+      }
 
       ctx.beginPath()
-      ctx.arc(x, y, r + 4, 0, Math.PI * 2)
-      ctx.fillStyle = buy ? 'rgba(14, 203, 129, 0.12)' : 'rgba(168, 85, 247, 0.12)'
+      ctx.arc(x, y, r + 3, 0, Math.PI * 2)
+      ctx.fillStyle =
+        outcome === 'effective'
+          ? buy
+            ? 'rgba(14, 203, 129, 0.14)'
+            : 'rgba(168, 85, 247, 0.14)'
+          : 'transparent'
       ctx.fill()
 
       ctx.beginPath()
       ctx.arc(x, y, r, 0, Math.PI * 2)
-      ctx.fillStyle = buy ? BUY_FILL : SELL_FILL
+      ctx.fillStyle = fill
       ctx.fill()
-      ctx.lineWidth = 1.75
-      ctx.strokeStyle = buy ? BUY_STROKE : SELL_STROKE
+      ctx.lineWidth = lineW
+      ctx.strokeStyle = stroke
       ctx.stroke()
+
+      // Dashed ring for trapped
+      if (outcome === 'trapped') {
+        ctx.beginPath()
+        ctx.setLineDash([3, 2])
+        ctx.arc(x, y, r + 2, 0, Math.PI * 2)
+        ctx.strokeStyle = stroke
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
 
       drawn += 1
     }
 
-    // Minimal badge
     if (drawn > 0 || list.length > 0) {
       ctx.font = '10px sans-serif'
       ctx.textAlign = 'left'
-      ctx.fillStyle = 'rgba(234, 236, 239, 0.75)'
-      ctx.fillText(`Trades ${drawn}`, 8, 14)
+      ctx.fillStyle = 'rgba(234, 236, 239, 0.8)'
+      const unit = config.sizeUnit === 'quote' ? 'USDT' : 'base'
+      ctx.fillText(
+        `Trades ${drawn} · eff ${nEff} · trap ${nTrap} · ${unit}`,
+        8,
+        14
+      )
     }
-  }, [bridge, containerRef, enabled])
+  }, [bridge, containerRef, enabled, config.sizeUnit])
 
   useEffect(() => {
     if (!enabled) {
@@ -163,7 +213,7 @@ export function DeepTradesOverlay({
     const id = window.setInterval(() => {
       rebuild()
       paint()
-    }, 700)
+    }, 800)
 
     return () => {
       cancelAnimationFrame(raf)
