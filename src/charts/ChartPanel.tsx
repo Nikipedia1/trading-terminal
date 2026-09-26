@@ -30,18 +30,18 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const isPrimary = primaryPanelId === id
 
   return (
-    <div className="h-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
-      {/* Header – drag handle via .panel-drag-handle class for grid */}
-      <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg/80 shrink-0 cursor-move select-none">
+    <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
+      {/* Header – drag handle */}
+      <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
         <input
-          className="bg-terminal-bg border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
+          className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
           value={symbol}
           onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase() })}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         />
         <select
-          className="bg-terminal-bg border border-terminal-border rounded px-1 py-0.5 text-xxs"
+          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           value={interval}
           onChange={(e) => updatePanel(id, { interval: e.target.value as Interval })}
           onMouseDown={(e) => e.stopPropagation()}
@@ -51,7 +51,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           ))}
         </select>
         <select
-          className="bg-terminal-bg border border-terminal-border rounded px-1 py-0.5 text-xxs"
+          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           value={exchange}
           onChange={(e) => updatePanel(id, { exchange: e.target.value as ExchangeId })}
           onMouseDown={(e) => e.stopPropagation()}
@@ -62,7 +62,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </select>
 
         <select
-          className="bg-terminal-bg border border-terminal-border rounded px-1 py-0.5 text-xxs"
+          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           title="Sync group (crosshair + time zoom)"
           value={syncGroup ?? ''}
           onChange={(e) =>
@@ -107,10 +107,12 @@ export function ChartPanel({ config }: ChartPanelProps) {
         )}
       </div>
 
-      {/* Drawing tools – not a drag handle */}
-      <DrawingToolbar panelId={id} symbol={symbol} />
+      {/* Drawing tools – solid bar, always visible, not a drag handle */}
+      <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10">
+        <DrawingToolbar panelId={id} symbol={symbol} />
+      </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         <ChartContainer
           panelId={id}
           symbol={symbol}

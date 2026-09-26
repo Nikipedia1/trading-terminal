@@ -79,7 +79,9 @@ export function PanelGrid({ width }: PanelGridProps) {
           const config = panelMap.get(item.i)
           if (!config) return <div key={item.i} />
           return (
-            <div key={item.i} className="overflow-hidden">
+            // h-full is required: RGL sets pixel height on .react-grid-item;
+            // without it, ChartPanel h-full collapses and chrome gets clipped
+            <div key={item.i} className="h-full overflow-hidden">
               <ChartPanel config={config} />
             </div>
           )
