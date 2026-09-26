@@ -47,6 +47,8 @@ export interface PaperOrder {
   fillPrice?: number
   takeProfit: number | null
   stopLoss: number | null
+  /** Advanced Limit: only fill as maker (price passive vs last) */
+  postOnly?: boolean
 }
 
 export interface PaperFill {

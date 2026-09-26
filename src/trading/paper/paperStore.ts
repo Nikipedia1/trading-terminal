@@ -31,7 +31,13 @@ interface Persisted {
   fills: PaperFill[]
 }
 
-function normalizePosition(p: Partial<PaperPosition> & Pick<PaperPosition, 'id' | 'symbol' | 'side' | 'qty' | 'entryPrice' | 'leverage' | 'margin' | 'openedAt' | 'markPrice'>): PaperPosition {
+function normalizePosition(
+  p: Partial<PaperPosition> &
+    Pick<
+      PaperPosition,
+      'id' | 'symbol' | 'side' | 'qty' | 'entryPrice' | 'leverage' | 'margin' | 'openedAt' | 'markPrice'
+    >
+): PaperPosition {
   return {
     ...p,
     marginMode: p.marginMode === 'isolated' ? 'isolated' : 'cross',
@@ -89,6 +95,7 @@ export interface PlaceOrderInput {
   marginMode?: PaperMarginMode
   takeProfit?: number | null
   stopLoss?: number | null
+  postOnly?: boolean
 }
 
 interface PaperState {
@@ -105,6 +112,12 @@ interface PaperState {
     markPrice: number,
     reason?: PaperFill['action']
   ) => { ok: true } | { ok: false; error: string }
+  /** Close all positions of side for symbol at mark */
+  closeSide: (
+    symbol: string,
+    side: PaperSide,
+    markPrice: number
+  ) => { ok: true; closed: number } | { ok: false; error: string }
   setTpsl: (
     positionId: string,
     takeProfit: number | null,
@@ -112,7 +125,6 @@ interface PaperState {
   ) => { ok: true } | { ok: false; error: string }
   markToMarket: (symbol: string, markPrice: number) => void
   tryFillLimits: (symbol: string, lastPrice: number) => void
-  /** Evaluate TP / SL / isolated liquidation against real mark */
   checkExits: (symbol: string, markPrice: number) => void
   resetAccount: (balance?: number) => void
   clearError: () => void
@@ -143,6 +155,20 @@ function validateTpsl(
     if (side === 'short' && sl <= entry) return 'SL must be above entry for short'
   }
   return null
+}
+
+/** Approximate isolated liquidation price (maintenance ~0 for paper). */
+export function estLiqPrice(pos: {
+  side: PaperSide
+  entryPrice: number
+  leverage: number
+  marginMode: PaperMarginMode
+}): number | null {
+  if (pos.marginMode !== 'isolated' || pos.leverage < 1) return null
+  // liq when uPnL = -margin → |Δprice| * qty = entry*qty/lev → |Δprice| = entry/lev
+  const delta = pos.entryPrice / pos.leverage
+  if (pos.side === 'long') return Math.max(0, pos.entryPrice - delta)
+  return pos.entryPrice + delta
 }
 
 const initial = load()
@@ -181,6 +207,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
         : null
     const stopLoss =
       typeof input.stopLoss === 'number' && input.stopLoss > 0 ? input.stopLoss : null
+    const postOnly = !!input.postOnly
 
     if (!symbol || !Number.isFinite(qty) || qty <= 0) {
       return { ok: false, error: 'Invalid size' }
@@ -193,6 +220,17 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       type === 'limit' && input.price ? Number(input.price) : markPrice
     const tpslErr = validateTpsl(side, entryRef, takeProfit, stopLoss)
     if (tpslErr) return { ok: false, error: tpslErr }
+
+    // Post-only: reject if would take (long limit >= last or short limit <= last)
+    if (type === 'limit' && postOnly) {
+      const limitPx = Number(input.price)
+      if (side === 'long' && limitPx >= markPrice) {
+        return { ok: false, error: 'Post-only: limit would take (set below last)' }
+      }
+      if (side === 'short' && limitPx <= markPrice) {
+        return { ok: false, error: 'Post-only: limit would take (set above last)' }
+      }
+    }
 
     const notional = qty * entryRef
     const margin = notional / leverage
@@ -222,6 +260,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
         createdAt: Date.now(),
         takeProfit,
         stopLoss,
+        postOnly,
       }
       set((s) => {
         const next = { ...s, orders: [order, ...s.orders] }
@@ -312,7 +351,6 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     if (!pos) return { ok: false, error: 'Position not found' }
 
     const pnl = unrealizedPnl(pos, px)
-    // Isolated: cannot lose more than margin; cross can go negative into free balance
     const returned =
       pos.marginMode === 'isolated' ? Math.max(0, pos.margin + pnl) : pos.margin + pnl
 
@@ -342,6 +380,24 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       return { ...next, lastError: null }
     })
     return { ok: true }
+  },
+
+  closeSide: (symbol, side, markPrice) => {
+    const px = Number(markPrice)
+    if (!Number.isFinite(px) || px <= 0) {
+      return { ok: false, error: 'No real market price to close' }
+    }
+    const sym = symbol.toUpperCase()
+    const ids = get()
+      .positions.filter((p) => p.symbol === sym && p.side === side)
+      .map((p) => p.id)
+    if (ids.length === 0) {
+      return { ok: false, error: `No ${side} position on ${sym}` }
+    }
+    for (const id of ids) {
+      get().closePosition(id, px, 'close')
+    }
+    return { ok: true, closed: ids.length }
   },
 
   setTpsl: (positionId, takeProfit, stopLoss) => {
@@ -387,7 +443,6 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     const sym = symbol.toUpperCase()
     const list = get().positions.filter((p) => p.symbol === sym)
     for (const pos of list) {
-      // TP
       if (pos.takeProfit != null && pos.takeProfit > 0) {
         const hit =
           pos.side === 'long' ? px >= pos.takeProfit : px <= pos.takeProfit
@@ -396,7 +451,6 @@ export const usePaperStore = create<PaperState>((set, get) => ({
           continue
         }
       }
-      // SL
       if (pos.stopLoss != null && pos.stopLoss > 0) {
         const hit =
           pos.side === 'long' ? px <= pos.stopLoss : px >= pos.stopLoss
@@ -405,7 +459,6 @@ export const usePaperStore = create<PaperState>((set, get) => ({
           continue
         }
       }
-      // Isolated liquidation: margin + uPnL <= 0
       if (pos.marginMode === 'isolated') {
         const upnl = unrealizedPnl(pos, px)
         if (pos.margin + upnl <= 0) {
@@ -426,6 +479,11 @@ export const usePaperStore = create<PaperState>((set, get) => ({
 
     for (const order of openLimits) {
       const limitPx = order.price!
+      // Post-only: only fill when still passive
+      if (order.postOnly) {
+        if (order.side === 'long' && limitPx >= px) continue
+        if (order.side === 'short' && limitPx <= px) continue
+      }
       const shouldFill =
         order.side === 'long' ? px <= limitPx : px >= limitPx
       if (!shouldFill) continue
