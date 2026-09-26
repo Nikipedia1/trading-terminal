@@ -14,6 +14,7 @@ import {
 import type { Candle, ConnectionStatus, MarketError, ExchangeId, Interval } from '@/types'
 import { SeriesManager } from './series-manager'
 import { IndicatorSeriesManager } from './indicator-series'
+import { IndicatorValuesHud } from './IndicatorValuesHud'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
@@ -168,6 +169,8 @@ export function ChartContainer({
   const focusRequest = useChartFocusStore((s) => s.request)
   const indicatorByPanel = useIndicatorStore((s) => s.byPanel)
   const getIndicatorParams = useIndicatorStore((s) => s.getParams)
+  const indicatorParams = getIndicatorParams(panelId)
+  void indicatorByPanel
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -244,13 +247,11 @@ export function ChartContainer({
     }
   }, [candles])
 
-  // Indicators – real candles only; re-run on data or param change
   useEffect(() => {
     const ind = indicatorMgrRef.current
     if (!ind) return
-    const params = getIndicatorParams(panelId)
-    ind.apply(candles, params)
-  }, [candles, panelId, indicatorByPanel, getIndicatorParams])
+    ind.apply(candles, indicatorParams)
+  }, [candles, panelId, indicatorParams])
 
   useEffect(() => {
     if (!isPrimary || !focusRequest || !chartRef.current) return
@@ -346,6 +347,8 @@ export function ChartContainer({
       style={{ backgroundColor: chartStyle.canvas.background }}
     >
       <div ref={containerRef} className="absolute inset-0" />
+
+      <IndicatorValuesHud candles={candles} params={indicatorParams} />
 
       <RangeDiscoveryBadge
         enabled={profileEnabled || deltaEnabled}
