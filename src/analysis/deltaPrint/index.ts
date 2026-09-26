@@ -1,5 +1,7 @@
 export { useCandleDeltaSeries } from './useCandleDeltaSeries'
 export { detectDivergences } from './divergence'
 export type { DivergenceMarker } from './divergence'
+export { detectAbsorptionAggression } from './absorption'
+export type { AbsorptionMarker, AbsorptionKind } from './absorption'
 export type { DeltaPrintConfig } from './types'
 export { DEFAULT_DELTA_CONFIG } from './types'

@@ -1,5 +1,5 @@
 /**
- * Series Manager – candles, volume, delta histogram, optional CVD line.
+ * Series Manager – candles, volume, delta histogram, optional CVD line + markers.
  */
 
 import {
@@ -16,6 +16,7 @@ import type { CandleStyle } from '@/stores/chartStyleStore'
 import { DEFAULT_CHART_STYLE, hexToRgba } from '@/stores/chartStyleStore'
 import type { CandleDeltaBar } from '@/analysis/deepPrint/types'
 import type { DivergenceMarker } from '@/analysis/deltaPrint/divergence'
+import type { AbsorptionMarker } from '@/analysis/deltaPrint/absorption'
 
 const DELTA_UP = 'rgba(14, 203, 129, 0.85)'
 const DELTA_DOWN = 'rgba(246, 70, 93, 0.85)'
@@ -188,29 +189,97 @@ export class SeriesManager {
     this.cvdSeries?.setData([])
   }
 
-  setDivergenceMarkers(marks: DivergenceMarker[]) {
+  /**
+   * Merge absorption + divergence into a single setMarkers call
+   * (Lightweight Charts allows one marker list per series).
+   */
+  setCandleAnnotationMarkers(
+    absorption: AbsorptionMarker[],
+    divergences: DivergenceMarker[]
+  ) {
     if (!this.candleSeries) return
-    const markers: SeriesMarker<Time>[] = marks.map((m) =>
-      m.kind === 'bearish'
-        ? {
-            time: m.time as Time,
-            position: 'aboveBar',
-            color: '#f0b90b',
-            shape: 'arrowDown',
-            text: 'Δ div',
-          }
-        : {
+    const markers: SeriesMarker<Time>[] = []
+
+    for (const m of absorption) {
+      switch (m.kind) {
+        case 'aggression_buy':
+          markers.push({
             time: m.time as Time,
             position: 'belowBar',
             color: '#0ecb81',
             shape: 'arrowUp',
-            text: 'Δ div',
-          }
-    )
-    this.candleSeries.setMarkers(markers)
+            text: 'Agg',
+          })
+          break
+        case 'aggression_sell':
+          markers.push({
+            time: m.time as Time,
+            position: 'aboveBar',
+            color: '#a855f7',
+            shape: 'arrowDown',
+            text: 'Agg',
+          })
+          break
+        case 'absorption_buy':
+          markers.push({
+            time: m.time as Time,
+            position: 'belowBar',
+            color: '#f0b90b',
+            shape: 'circle',
+            text: 'Abs',
+          })
+          break
+        case 'absorption_sell':
+          markers.push({
+            time: m.time as Time,
+            position: 'aboveBar',
+            color: '#f0b90b',
+            shape: 'circle',
+            text: 'Abs',
+          })
+          break
+      }
+    }
+
+    for (const m of divergences) {
+      if (m.kind === 'bearish') {
+        markers.push({
+          time: m.time as Time,
+          position: 'aboveBar',
+          color: '#f6465d',
+          shape: 'arrowDown',
+          text: 'Δ div',
+        })
+      } else {
+        markers.push({
+          time: m.time as Time,
+          position: 'belowBar',
+          color: '#0ecb81',
+          shape: 'arrowUp',
+          text: 'Δ div',
+        })
+      }
+    }
+
+    // One marker per time (prefer absorption over div if collision)
+    const byTime = new Map<number, SeriesMarker<Time>>()
+    for (const mk of markers) {
+      const t = mk.time as number
+      if (!byTime.has(t)) byTime.set(t, mk)
+    }
+    this.candleSeries.setMarkers(Array.from(byTime.values()))
+  }
+
+  /** @deprecated use setCandleAnnotationMarkers */
+  setDivergenceMarkers(marks: DivergenceMarker[]) {
+    this.setCandleAnnotationMarkers([], marks)
+  }
+
+  clearCandleMarkers() {
+    this.candleSeries?.setMarkers([])
   }
 
   clearDivergenceMarkers() {
-    this.candleSeries?.setMarkers([])
+    this.clearCandleMarkers()
   }
 }

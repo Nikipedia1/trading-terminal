@@ -1,5 +1,5 @@
 /**
- * Delta histogram + optional CVD line + divergence markers.
+ * Delta histogram + optional CVD line + divergence + absorption markers.
  * All values from shared trade buffer (real ticks only).
  */
 
@@ -9,6 +9,7 @@ import type { Candle, ExchangeId, Interval } from '@/types'
 import { retainTradeBuffer } from '@/analysis/deepPrint/tradeBuffer'
 import { computeCandleDeltas } from '@/analysis/deepPrint/aggregate'
 import { detectDivergences } from './divergence'
+import { detectAbsorptionAggression } from './absorption'
 import type { DeltaPrintConfig } from './types'
 import { DEFAULT_DELTA_CONFIG } from './types'
 
@@ -27,7 +28,7 @@ export function useCandleDeltaSeries(
     if (!enabled) {
       seriesMgr?.clearDelta()
       seriesMgr?.clearCvd()
-      seriesMgr?.clearDivergenceMarkers()
+      seriesMgr?.clearCandleMarkers()
       return
     }
     return retainTradeBuffer(exchange, symbol)
@@ -41,7 +42,6 @@ export function useCandleDeltaSeries(
       const times = slice.map((c) => c.time)
       const bars = computeCandleDeltas(exchange, symbol, times, interval)
 
-      // Visual threshold: hide small bars relative to max |delta| in window
       const maxAbs = Math.max(...bars.map((b) => Math.abs(b.delta)), 0.0001)
       const thresh =
         config.minBarPct > 0 ? maxAbs * (config.minBarPct / 100) : 0
@@ -65,15 +65,17 @@ export function useCandleDeltaSeries(
         seriesMgr.clearCvd()
       }
 
-      if (config.divergence) {
-        const marks = detectDivergences(slice, bars)
-        seriesMgr.setDivergenceMarkers(marks)
-      } else {
-        seriesMgr.clearDivergenceMarkers()
-      }
+      // Combined markers: absorption + divergence (SeriesManager merges)
+      const absMarks = config.absorption
+        ? detectAbsorptionAggression(slice, bars)
+        : []
+      const divMarks = config.divergence
+        ? detectDivergences(slice, bars)
+        : []
+      seriesMgr.setCandleAnnotationMarkers(absMarks, divMarks)
     }
 
-    const key = `${candles[0]?.time}|${candles.length}|${candles[candles.length - 1]?.time}|${config.cvd}|${config.divergence}|${config.minBarPct}`
+    const key = `${candles[0]?.time}|${candles.length}|${candles[candles.length - 1]?.time}|${config.cvd}|${config.divergence}|${config.absorption}|${config.minBarPct}`
     if (key !== timesKeyRef.current) {
       timesKeyRef.current = key
       refresh()
