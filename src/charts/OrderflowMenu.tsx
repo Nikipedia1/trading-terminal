@@ -368,9 +368,86 @@ export function OrderflowMenu({
           )}
 
           {state.dom && (
-            <p className="mt-1.5 text-[9px] text-[#848e9c] leading-snug">
-              {L2_GRANULARITY_NOTES[exchange]}
-            </p>
+            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-[#f0b90b]"
+                  checked={state.domCfg.showDelta}
+                  onChange={(e) =>
+                    onChange({
+                      domCfg: { ...state.domCfg, showDelta: e.target.checked },
+                    })
+                  }
+                />
+                Δ heatmap (refill/pull)
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"ruar                  className="accent-[#f0b90b]"
+                  checked={state.domCfg.showSurprise}
+                  onChange={(e) =>
+                    onChange({
+                      domCfg: { ...state.domCfg, showSurprise: e.target.checked },
+                    })
+                  }
+                />
+                Surprise markers (R/P)
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-[#f0b90b]"
+                  checked={state.domCfg.showMagnet}
+                  onChange={(e) =>
+                    onChange({
+                      domCfg: { ...state.domCfg, showMagnet: e.target.checked },
+                    })
+                  }
+                />
+                Magnet (cluster stabili)
+              </label>
+              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
+                <span className="w-8 shrink-0">K</span>
+                <input
+                  type="number"
+                  min={1.5}
+                  max={20}
+                  step={0.5}
+                  title="Surprise factor: qty ratio ≥ K → REFILL, ≤ 1/K → PULL"
+                  className="w-14 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                  value={state.domCfg.surpriseFactor}
+                  onChange={(e) =>
+                    onChange({
+                      domCfg: {
+                        ...state.domCfg,
+                        surpriseFactor: Math.max(1.5, Number(e.target.value) || 3),
+                      },
+                    })
+                  }
+                />
+                <span className="w-8 shrink-0">M</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={60}
+                  title="Magnet: livelli presenti ≥ M campioni consecutivi"
+                  className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                  value={state.domCfg.magnetSamples}
+                  onChange={(e) =>
+                    onChange({
+                      domCfg: {
+                        ...state.domCfg,
+                        magnetSamples: Math.max(2, Number(e.target.value) || 5),
+                      },
+                    })
+                  }
+                />
+              </div>
+              <p className="text-[9px] text-[#5e6673] leading-snug">
+                {L2_GRANULARITY_NOTES[exchange]}
+              </p>
+            </div>
           )}
         </div>
       )}
