@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + orderflow overlays + DOM ladder + focus + range badge.
+ * ChartContainer – chart + orderflow overlays + DOM ladder + footprint + replay.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -42,6 +42,12 @@ import {
   type DeepDomConfig,
   DEFAULT_DEEP_DOM_CONFIG,
 } from '@/analysis/deepDom'
+import {
+  FootprintOverlay,
+  type FootprintConfig,
+  DEFAULT_FOOTPRINT_CONFIG,
+} from '@/analysis/footprint'
+import { ReplayBar } from '@/analysis/replay'
 
 function buildChartOptions(canvas: {
   background: string
@@ -117,7 +123,9 @@ export interface ChartContainerProps {
   deepTradesConfig?: DeepTradesConfig
   deepDomEnabled?: boolean
   deepDomConfig?: DeepDomConfig
-  /** Primary panel receives sidebar focus requests */
+  footprintEnabled?: boolean
+  footprintConfig?: FootprintConfig
+  replayEnabled?: boolean
   isPrimary?: boolean
 }
 
@@ -139,6 +147,9 @@ export function ChartContainer({
   deepTradesConfig = DEFAULT_DEEP_TRADES_CONFIG,
   deepDomEnabled = false,
   deepDomConfig = DEFAULT_DEEP_DOM_CONFIG,
+  footprintEnabled = false,
+  footprintConfig = DEFAULT_FOOTPRINT_CONFIG,
+  replayEnabled = false,
   isPrimary = false,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -222,7 +233,6 @@ export function ChartContainer({
     }
   }, [candles])
 
-  // Sidebar / large-trades click → center visible range
   useEffect(() => {
     if (!isPrimary || !focusRequest || !chartRef.current) return
     const chart = chartRef.current
@@ -336,6 +346,17 @@ export function ChartContainer({
         config={deepDomConfig}
       />
 
+      <FootprintOverlay
+        enabled={footprintEnabled}
+        bridge={bridge}
+        containerRef={containerRef}
+        exchange={exchange}
+        symbol={symbol}
+        interval={interval}
+        candles={candles}
+        config={footprintConfig}
+      />
+
       <VolumeProfileOverlay
         enabled={profileEnabled}
         bridge={bridge}
@@ -375,6 +396,8 @@ export function ChartContainer({
       />
 
       <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
+
+      <ReplayBar enabled={replayEnabled} exchange={exchange} symbol={symbol} />
 
       <ChartStylePanel />
 
