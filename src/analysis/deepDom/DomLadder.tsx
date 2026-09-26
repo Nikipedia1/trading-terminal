@@ -1,16 +1,18 @@
 /**
  * Live DOM ladder – vertical bid/ask beside the chart (guide-style DeepDom).
- * Data: shared L2 order book feed only.
+ * Data: shared L2 order book feed only. Public limits apply (Binance ≤1000, KuCoin ≤100).
  */
 
 import { useEffect, useState } from 'react'
 import type { ExchangeId } from '@/types'
 import { subscribeOrderBookFeed, type OrderBookSnapshot } from '@/data/shared'
+import { L2_GRANULARITY_NOTES } from './types'
 
 interface DomLadderProps {
   enabled: boolean
   exchange: ExchangeId
   symbol: string
+  /** Levels per side (default 12) */
   depth?: number
 }
 
@@ -57,7 +59,7 @@ export function DomLadder({ enabled, exchange, symbol, depth = 12 }: DomLadderPr
       : null
 
   return (
-    <div className="absolute top-2 right-2 z-[8] w-[132px] pointer-events-none select-none">
+    <div className="absolute top-2 right-2 z-[8] w-[140px] pointer-events-none select-none">
       <div className="bg-[#0b0e11]/92 border border-[#2b3139] rounded-md overflow-hidden shadow-lg font-mono text-[10px]">
         <div className="px-1.5 py-1 border-b border-[#2b3139] flex justify-between text-[#848e9c]">
           <span className="font-semibold text-[#eaecef]">DOM</span>
@@ -106,6 +108,10 @@ export function DomLadder({ enabled, exchange, symbol, depth = 12 }: DomLadderPr
               </div>
             ))
           )}
+        </div>
+
+        <div className="px-1.5 py-1 border-t border-[#2b3139] text-[8px] text-[#5e6673] leading-tight">
+          {(L2_GRANULARITY_NOTES[exchange] || '').slice(0, 72)}
         </div>
       </div>
     </div>

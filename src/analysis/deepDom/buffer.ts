@@ -28,6 +28,11 @@ export class DomSnapshotBuffer {
     this.items = []
   }
 
+  /** Last snapshot (for prev-map seeding outside sample) */
+  last(): DomSnapshot | null {
+    return this.items.length ? this.items[this.items.length - 1] : null
+  }
+
   /** All snapshots still inside the time window */
   list(nowSec = Math.floor(Date.now() / 1000), windowMinutes = 5): DomSnapshot[] {
     const from = nowSec - windowMinutes * 60
