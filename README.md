@@ -95,6 +95,81 @@ GitHub Codespaces: open the repo → Create codespace → after `postCreateComma
 ### Untouched
 - Runtime data layer, charts, analysis modules
 
+## Changelog (test – orderBookFeed vitest)
+
+**Commit:** `1411b04`
+
+### Added
+- `src/data/shared/__tests__/orderBookFeed.test.ts`
+  - mock ReconnectingWebSocket + fetch (no real APIs)
+  - Binance: REST snapshot + buffered diffs
+  - Binance: U > lastUpdateId+1 → resync
+  - Binance: discard u <= lastUpdateId (stale)
+  - KuCoin: sequenceStart misaligned → resync
+  - KuCoin: buffer applied after snapshot
+
+### Changed
+- none
+
+### Untouched
+- `orderBookFeed.ts` runtime, charts, analysis modules
+
+## Changelog (chore – ESLint flat config)
+
+**Commit:** `b560a57`
+
+### Added
+- `eslint.config.js` – flat config, `@eslint/js` + `typescript-eslint` recommended, react-hooks / react-refresh, browser+node globals, no mass rule disables
+- `package.json` devDependencies: eslint, @eslint/js, typescript-eslint, globals, eslint-plugin-react-hooks, eslint-plugin-react-refresh
+
+### Changed
+- none (lint script already present)
+
+### Untouched
+- Runtime src, tests, charts
+
+## Changelog (fix – AbortController on resync fetches)
+
+**Commit:** `5bc0910`
+
+### Added
+- AbortController for Binance and KuCoin depth snapshot fetches
+- abort previous in-flight resync when starting a new one (or on stop)
+- ignore AbortError in catch (no error event / no state overwrite)
+
+### Changed
+- `startBinanceBook` / `startKucoinBook` – fetch lifecycle only
+
+### Untouched
+- book reconstruction, buffer, gap detection, publish, refcount
+
+## Changelog (perf – DomSnapshotBuffer ring buffer O(1))
+
+**Commit:** `26c6549`
+
+### Added
+- fixed-size circular buffer (head/count) in `DomSnapshotBuffer`
+
+### Changed
+- `push` / `clear` / `last` / `list` / `reconfigure` – same public API, O(1) push
+
+### Untouched
+- `DeepDomOverlay.tsx`, `sample.ts`, types, public method signatures
+
+## Changelog (chore – DEEPDOM_DEBUG paint timing)
+
+**Commit:** `3b139a9`
+
+### Added
+- `DEEPDOM_DEBUG` via localStorage (off by default)
+- `console.debug` on each paint: Δms since last paint, buffer size, sampleMs, skew vs 500ms loop
+
+### Changed
+- `paint()` – debug branch only when flag is on
+
+### Untouched
+- coordinate bridge usage, sampling, colors, overlay API
+
 ## License
 
 MIT
