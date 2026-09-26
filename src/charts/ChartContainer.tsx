@@ -3,9 +3,10 @@
  * Owns its CoordinateBridge instance (anti-pellicola).
  * ResizeObserver → chart.applyOptions → all coordinate APIs stay valid.
  * Optional syncGroup for crosshair + visible time range.
+ * Hosts DrawingLayer overlay (logical coords only).
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   createChart,
   type IChartApi,
@@ -18,6 +19,7 @@ import type { Candle, ConnectionStatus, MarketError } from '@/types'
 import { SeriesManager } from './series-manager'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
+import { DrawingLayer } from '@/drawings/DrawingLayer'
 
 const CHART_OPTIONS = {
   layout: {
@@ -47,6 +49,7 @@ const CHART_OPTIONS = {
 
 export interface ChartContainerProps {
   panelId: string
+  symbol: string
   candles: Candle[]
   status: ConnectionStatus
   lastError: MarketError | null
@@ -56,6 +59,7 @@ export interface ChartContainerProps {
 
 export function ChartContainer({
   panelId,
+  symbol,
   candles,
   status,
   lastError,
@@ -65,6 +69,7 @@ export function ChartContainer({
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMgrRef = useRef<SeriesManager | null>(null)
   const bridgeRef = useRef<CoordinateBridge | null>(null)
+  const [bridge, setBridge] = useState<CoordinateBridge | null>(null)
   const lastHistoryKeyRef = useRef<string>('')
   const applyingRemoteRef = useRef(false)
 
@@ -81,18 +86,19 @@ export function ChartContainer({
     const seriesMgr = new SeriesManager()
     seriesMgr.attach(chart)
 
-    const bridge = new CoordinateBridge()
+    const bridgeInstance = new CoordinateBridge()
     const candleSeries = seriesMgr.getCandleSeries()
     if (candleSeries) {
-      bridge.attach(chart, candleSeries)
+      bridgeInstance.attach(chart, candleSeries)
     }
 
     chartRef.current = chart
     seriesMgrRef.current = seriesMgr
-    bridgeRef.current = bridge
+    bridgeRef.current = bridgeInstance
+    setBridge(bridgeInstance)
 
     // Resize → applyOptions → Lightweight Charts recalculates all coordinates
-    // (anti-pellicola: overlays that query the bridge will see correct pixels)
+    // DrawingLayer listens to the same resize and re-queries the bridge
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       if (width > 0 && height > 0) {
@@ -103,12 +109,13 @@ export function ChartContainer({
 
     return () => {
       ro.disconnect()
-      bridge.detach()
+      bridgeInstance.detach()
       seriesMgr.detach()
       chart.remove()
       chartRef.current = null
       seriesMgrRef.current = null
       bridgeRef.current = null
+      setBridge(null)
     }
   }, [])
 
@@ -136,7 +143,6 @@ export function ChartContainer({
       | ISeriesApi<'Candlestick'>
       | null
 
-    // Publish local visible range changes
     const onRange = () => {
       if (applyingRemoteRef.current) return
       const range = chart.timeScale().getVisibleRange()
@@ -150,7 +156,6 @@ export function ChartContainer({
     }
     chart.timeScale().subscribeVisibleTimeRangeChange(onRange)
 
-    // Publish crosshair
     const onCrosshair = (param: any) => {
       if (applyingRemoteRef.current) return
       if (!param || param.time === undefined) {
@@ -167,7 +172,6 @@ export function ChartContainer({
     }
     chart.subscribeCrosshairMove(onCrosshair)
 
-    // Receive remote sync
     const unsub = subscribeSyncGroup(syncGroup, (sourceId, payload: SyncPayload) => {
       if (sourceId === panelId) return
       const c = chartRef.current
@@ -180,14 +184,10 @@ export function ChartContainer({
             from: payload.from as Time,
             to: payload.to as Time,
           })
-        } else if (payload.type === 'crosshair') {
-          // Lightweight Charts has no public setCrosshairPosition that is stable across versions;
-          // time-range sync is the primary useful link. Crosshair broadcast is reserved for future overlay layer.
         }
       } catch {
         /* ignore invalid ranges */
       } finally {
-        // small delay so local subscribers do not echo
         requestAnimationFrame(() => {
           applyingRemoteRef.current = false
         })
@@ -204,6 +204,14 @@ export function ChartContainer({
   return (
     <div className="relative w-full h-full bg-terminal-panel">
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Drawing overlay – logical coords only, redraws via bridge */}
+      <DrawingLayer
+        panelId={panelId}
+        symbol={symbol}
+        bridge={bridge}
+        containerRef={containerRef}
+      />
 
       {lastError && (
         <div className="absolute inset-0 flex items-center justify-center bg-terminal-bg/80 z-10">

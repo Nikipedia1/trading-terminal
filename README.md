@@ -11,7 +11,7 @@ Inspired by KuCoin terminal UI (dark, high information density) and built with m
 3. **Modular** – data-layer / rendering / drawing-tools / indicators / layout-manager are separated.
 4. **Anti-film** – any overlay (drawings, indicators) must stay anchored to real price/time via Lightweight Charts coordinate APIs and redraw on pan/zoom/resize/data update.
 
-## Current Status (Step 3 complete)
+## Current Status (Step 4 complete)
 
 - Vite + React 18 + TypeScript + Tailwind
 - Binance Spot client (REST + WebSocket) – real data only
@@ -20,11 +20,12 @@ Inspired by KuCoin terminal UI (dark, high information density) and built with m
 - **CoordinateBridge** – per-chart instance (anti-pellicola)
 - SeriesManager for clean series lifecycle
 - **Multi-panel layout** (react-grid-layout magnetic grid)
-  - `+` / `−` add/remove panels at runtime
-  - Drag (header handle) + resize (borders/corners)
-  - Independent symbol / timeframe / exchange per panel
-  - Optional sync groups (A/B/C) for visible time range
-  - Primary panel (★) feeds trades tape + order book
+- **Drawing tools** (anchored to time/price):
+  - Trendline, horizontal, vertical, rectangle, parallel channel
+  - Fibonacci retracement & extension, text annotations
+  - Persist per panel+symbol (localStorage)
+  - JSON export / import
+  - Survive pan, zoom, panel drag/resize (no film effect)
 - Side panels: Live Trades + Order Book
 - Auto-loads BTCUSDT 1m on start
 
@@ -37,59 +38,65 @@ npm run dev
 
 Open http://localhost:5173
 
-The chart loads real Binance data automatically. Use **+** to add panels.
+Use the drawing toolbar under each chart header. Click tool → click chart points.
 
 ## Project Structure
 
 ```
 src/
 ├── charts/
-│   ├── ChartContainer.tsx      # Single chart pane + own CoordinateBridge
-│   ├── ChartPanel.tsx          # Panel chrome (symbol/tf/exchange/sync)
-│   ├── coordinate-bridge.ts    # Anti-pellicola conversions (per instance)
-│   └── series-manager.ts       # Candlestick + volume lifecycle
-├── data/
-│   └── exchanges/
-│       ├── binance.ts          # Real REST + WS client
-│       └── types.ts
-├── hooks/
-│   └── usePanelMarket.ts       # Per-panel data subscription
-├── layout/
-│   └── PanelGrid.tsx           # react-grid-layout magnetic grid
+│   ├── ChartContainer.tsx      # Chart + DrawingLayer host
+│   ├── ChartPanel.tsx          # Panel chrome + DrawingToolbar
+│   ├── coordinate-bridge.ts    # time/price ↔ pixel (per instance)
+│   └── series-manager.ts
+├── drawings/
+│   ├── types.ts                # Logical drawing primitives
+│   ├── drawingStore.ts         # Zustand + localStorage
+│   ├── renderers.ts            # Pure canvas paint via bridge
+│   ├── DrawingLayer.tsx        # Overlay + interaction
+│   └── DrawingToolbar.tsx
+├── data/exchanges/
+├── hooks/usePanelMarket.ts
+├── layout/PanelGrid.tsx
 ├── stores/
-│   ├── marketStore.ts          # Primary panel → trades/orderbook/ticker
-│   └── layoutStore.ts          # Panels + layout + sync bus
-├── types/
-│   └── index.ts
+│   ├── marketStore.ts
+│   └── layoutStore.ts
 └── App.tsx
 ```
 
-## Changelog (Step 3 – multi-panel)
+## Changelog (Step 4 – drawing tools)
 
 ### Added
-- `src/stores/layoutStore.ts` – panel list, grid layout, primary id, sync bus
-- `src/hooks/usePanelMarket.ts` – independent kline subscription per panel
-- `src/charts/ChartPanel.tsx` – header controls + ChartContainer
-- `src/layout/PanelGrid.tsx` – react-grid-layout wrapper (+ button)
+- `src/drawings/types.ts` – Drawing union, logical points, fib levels, storage key
+- `src/drawings/drawingStore.ts` – per panel+symbol store, localStorage, export/import JSON
+- `src/drawings/renderers.ts` – pure canvas renderers (bridge only, no pixels stored)
+- `src/drawings/DrawingLayer.tsx` – overlay canvas, multi-click tools, redraw on range/resize
+- `src/drawings/DrawingToolbar.tsx` – tool/color/clear/export/import
 
 ### Changed
-- `src/charts/coordinate-bridge.ts` – removed singleton; one instance per ChartContainer
-- `src/charts/ChartContainer.tsx` – props-driven (candles/status), per-instance bridge, sync group support, ResizeObserver unchanged (anti-pellicola)
-- `src/types/index.ts` – `ChartPanelConfig`, `GridLayoutItem`, `ExchangeId`
-- `src/App.tsx` – ChartArea + PanelGrid; primary panel syncs marketStore
-- `src/index.css` – grid placeholder / resize-handle styling
+- `src/charts/ChartContainer.tsx` – hosts DrawingLayer; exposes bridge via state; accepts `symbol` prop
+- `src/charts/ChartPanel.tsx` – DrawingToolbar under header; passes symbol to ChartContainer
 
 ### Untouched (no regressions)
-- `src/data/exchanges/*` – data layer unchanged
-- `src/stores/marketStore.ts` – still powers trades/orderbook/ticker
-- `src/charts/series-manager.ts` – unchanged
+- `src/data/exchanges/*`
+- `src/stores/marketStore.ts`
+- `src/stores/layoutStore.ts`
+- `src/charts/series-manager.ts`
+- `src/charts/coordinate-bridge.ts` (API unchanged; still the only conversion path)
+- `src/layout/PanelGrid.tsx`
+
+### Anti-pellicola guarantees
+- Drawings store **only** `{ time, price }` (unix seconds + price)
+- Paint path: `CoordinateBridge.toPixel` / `priceToCoordinate` / `timeToCoordinate`
+- Redraw triggers: `subscribeVisibleTimeRangeChange`, ResizeObserver, drawing list change
+- Panel move/resize → container ResizeObserver → chart.applyOptions + canvas resize + full re-paint from logical coords
 
 ## Roadmap
 
 1. ✅ Data-layer + verification UI
 2. ✅ Chart base (Lightweight Charts) + coordinate bridge
 3. ✅ Resizable / draggable multi-panel layout
-4. Drawing tools (anchored)
+4. ✅ Drawing tools (anchored)
 5. Indicator framework + RSI / VWAP / Volume Profile
 6. Deep analysis (divergences, correlation, order flow)
 7. Alerts + layout persistence

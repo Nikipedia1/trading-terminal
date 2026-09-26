@@ -1,11 +1,13 @@
 /**
  * ChartPanel – one draggable/resizable chart unit.
  * Independent symbol / interval / exchange + optional sync group.
+ * Hosts DrawingToolbar for anchored drawing tools.
  */
 
 import { ChartContainer } from './ChartContainer'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
+import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
@@ -59,7 +61,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
           ))}
         </select>
 
-        {/* Sync group */}
         <select
           className="bg-terminal-bg border border-terminal-border rounded px-1 py-0.5 text-xxs"
           title="Sync group (crosshair + time zoom)"
@@ -106,9 +107,13 @@ export function ChartPanel({ config }: ChartPanelProps) {
         )}
       </div>
 
+      {/* Drawing tools – not a drag handle */}
+      <DrawingToolbar panelId={id} symbol={symbol} />
+
       <div className="flex-1 min-h-0">
         <ChartContainer
           panelId={id}
+          symbol={symbol}
           candles={candles}
           status={status}
           lastError={lastError}
