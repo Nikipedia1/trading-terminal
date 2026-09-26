@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { PanelGrid } from '@/layout/PanelGrid'
+import { LargeTradesPanel } from '@/analysis/deepTrades'
+import { usePanelMarket } from '@/hooks/usePanelMarket'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -226,6 +228,68 @@ function TickerBar() {
   )
 }
 
+/** Large trades for primary panel symbol/interval */
+function PrimaryLargeTrades() {
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const panels = useLayoutStore((s) => s.panels)
+  const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
+  const symbol = primary?.symbol ?? 'BTCUSDT'
+  const interval = primary?.interval ?? '1m'
+  const exchange = primary?.exchange ?? 'binance'
+  const { candles } = usePanelMarket(symbol, interval, exchange)
+
+  return (
+    <LargeTradesPanel
+      exchange={exchange}
+      symbol={symbol}
+      interval={interval}
+      candles={candles}
+    />
+  )
+}
+
+type SideTab = 'live' | 'large' | 'book'
+
+function SidePanel() {
+  const [tab, setTab] = useState<SideTab>('live')
+  const tabs: { id: SideTab; label: string }[] = [
+    { id: 'live', label: 'Live' },
+    { id: 'large', label: 'Large' },
+    { id: 'book', label: 'Book' },
+  ]
+
+  return (
+    <section className="bg-terminal-panel flex flex-col min-h-0">
+      <div className="flex border-b border-terminal-border shrink-0">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`flex-1 px-2 py-1.5 text-xxs uppercase tracking-wider ${
+              tab === t.id
+                ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]'
+                : 'text-terminal-muted hover:text-terminal-text'
+            }`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {tab === 'live' && <TradesTape />}
+        {tab === 'large' && <PrimaryLargeTrades />}
+        {tab === 'book' && <OrderBookView />}
+      </div>
+      {tab === 'large' && (
+        <div className="px-2 py-1 text-[9px] text-[#5e6673] border-t border-terminal-border shrink-0">
+          Click row → center primary chart on that print
+        </div>
+      )}
+    </section>
+  )
+}
+
 /** Keep marketStore aligned with primary chart panel */
 function usePrimarySync() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
@@ -296,24 +360,7 @@ export default function App() {
           <ChartArea />
         </section>
 
-        <section className="bg-terminal-panel flex flex-col min-h-0">
-          <div className="flex-1 flex flex-col min-h-0 border-b border-terminal-border">
-            <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
-              Live Trades
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <TradesTape />
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
-              Order Book
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <OrderBookView />
-            </div>
-          </div>
-        </section>
+        <SidePanel />
       </div>
     </div>
   )
