@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + drawings + Print + Delta + Volume Profile.
+ * ChartContainer – chart + drawings + Print + Delta + Profile + Deep Trades.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -21,6 +21,11 @@ import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
 import { useCandleDeltaSeries } from '@/analysis/deltaPrint'
 import { VolumeProfileOverlay, type ProfileWindow } from '@/analysis/volumeProfile'
+import {
+  DeepTradesOverlay,
+  type DeepTradesConfig,
+  DEFAULT_DEEP_TRADES_CONFIG,
+} from '@/analysis/deepTrades'
 
 function buildChartOptions(canvas: {
   background: string
@@ -91,6 +96,8 @@ export interface ChartContainerProps {
   deltaEnabled?: boolean
   profileEnabled?: boolean
   profileWindow?: ProfileWindow
+  deepTradesEnabled?: boolean
+  deepTradesConfig?: DeepTradesConfig
 }
 
 export function ChartContainer({
@@ -106,6 +113,8 @@ export function ChartContainer({
   deltaEnabled = false,
   profileEnabled = false,
   profileWindow = 'visible',
+  deepTradesEnabled = false,
+  deepTradesConfig = DEFAULT_DEEP_TRADES_CONFIG,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -276,6 +285,15 @@ export function ChartContainer({
         exchange={exchange}
         symbol={symbol}
         windowMode={profileWindow}
+      />
+
+      <DeepTradesOverlay
+        enabled={deepTradesEnabled}
+        bridge={bridge}
+        containerRef={containerRef}
+        exchange={exchange}
+        symbol={symbol}
+        config={deepTradesConfig}
       />
 
       <DrawingLayer
