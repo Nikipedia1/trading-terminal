@@ -1,5 +1,7 @@
 /**
- * Compact Orderflow dropdown – Print / Delta / Profile / Trades / Dom / Footprint / Replay.
+ * Orderflow toolbar – single segmented group:
+ * Print | Delta | Profile▾ | Trades▾ | Dom▾
+ * Keeps drawing tools room; settings in small popovers.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -13,16 +15,13 @@ import {
   FIXED_PROFILE_LABELS,
   SESSION_NOTE,
 } from '@/analysis/volumeProfile'
-import type {
-  DeepTradesConfig,
-  ThresholdMode,
-  SizeUnit,
-} from '@/analysis/deepTrades'
+import type { DeepTradesConfig, ThresholdMode, SizeUnit } from '@/analysis/deepTrades'
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
 import { FOOTPRINT_NOTE } from '@/analysis/footprint'
 import type { ExchangeId } from '@/types'
+import { BUY } from '@/ui/palette'
 
 const DEVELOPING_WINDOWS: ProfileWindow[] = [
   'visible',
@@ -30,7 +29,6 @@ const DEVELOPING_WINDOWS: ProfileWindow[] = [
   'last_30m',
   'session_open_30m',
 ]
-
 const FIXED_OPTIONS: FixedProfileKind[] = ['none', 'session_open_30m', 'previous_day']
 
 export interface OrderflowState {
@@ -54,240 +52,377 @@ interface OrderflowMenuProps {
   onPrintToggle: () => void
 }
 
+type Pop = 'profile' | 'trades' | 'dom' | 'more' | null
+
+function Chip({
+  label,
+  on,
+  onClick,
+  hasMenu,
+  menuOpen,
+}: {
+  label: string
+  on: boolean
+  onClick: () => void
+  hasMenu?: boolean
+  menuOpen?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className={`px-2 py-0.5 text-[11px] font-semibold border-r border-[#2b3139] last:border-r-0 transition-colors ${
+        on
+          ? 'bg-[#1e2329] text-[#f0b90b]'
+          : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#12161c]'
+      }`}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {label}
+      {hasMenu ? (menuOpen ? ' ▴' : ' ▾') : ''}
+    </button>
+  )
+}
+
 export function OrderflowMenu({
   state,
   exchange,
   onChange,
   onPrintToggle,
 }: OrderflowMenuProps) {
-  const [open, setOpen] = useState(false)
+  const [pop, setPop] = useState<Pop>(null)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!pop) return
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) setPop(null)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [open])
+  }, [pop])
 
-  const anyOn =
-    state.print ||
-    state.delta ||
-    state.profile ||
-    state.trades ||
-    state.dom ||
-    state.footprint ||
-    state.replay
-
-  const row = (
-    label: string,
-    on: boolean,
-    toggle: () => void,
-    extra?: React.ReactNode
-  ) => (
-    <div className="flex items-center gap-2 py-1.5 border-b border-[#2b3139]/60 last:border-0">
-      <button
-        type="button"
-        className={`w-9 h-5 rounded-full relative shrink-0 transition-colors ${
-          on ? 'bg-[#0ecb81]' : 'bg-[#2b3139]'
-        }`}
-        onClick={toggle}
-      >
-        <span
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${
-            on ? 'left-4' : 'left-0.5'
-          }`}
-        />
-      </button>
-      <span className="text-[12px] text-[#eaecef] font-medium flex-1">{label}</span>
-      {extra}
-    </div>
-  )
+  const togglePop = (p: Pop) => setPop((cur) => (cur === p ? null : p))
 
   return (
-    <div className="relative ml-2" ref={ref}>
-      <button
-        type="button"
-        className={`shrink-0 px-2.5 py-0.5 text-xs rounded border font-semibold ${
-          anyOn || open
-            ? 'bg-[#1e2329] text-[#f0b90b] border-[#f0b90b]/50'
-            : 'text-[#eaecef] border-[#2b3139] hover:bg-[#1e2329]'
-        }`}
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen((v) => !v)
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        Orderflow {open ? '▴' : '▾'}
-      </button>
+    <div className="relative flex items-center shrink-0" ref={ref}>
+      <div className="flex items-stretch rounded border border-[#2b3139] overflow-hidden bg-[#0b0e11]">
+        <Chip label="Print" on={state.print} onClick={onPrintToggle} />
+        <Chip
+          label="Delta"
+          on={state.delta}
+          onClick={() => onChange({ delta: !state.delta })}
+        />
+        <Chip
+          label="Profile"
+          on={state.profile}
+          hasMenu
+          menuOpen={pop === 'profile'}
+          onClick={() => {
+            if (!state.profile) onChange({ profile: true })
+            else if (pop !== 'profile') togglePop('profile')
+            else onChange({ profile: false })
+            if (state.profile) togglePop('profile')
+            else setPop('profile')
+          }}
+        />
+        <Chip
+          label="Trades"
+          on={state.trades}
+          hasMenu
+          menuOpen={pop === 'trades'}
+          onClick={() => {
+            if (!state.trades) {
+              onChange({ trades: true })
+              setPop('trades')
+            } else if (pop === 'trades') {
+              onChange({ trades: false })
+              setPop(null)
+            } else {
+              setPop('trades')
+            }
+          }}
+        />
+        <Chip
+          label="Dom"
+          on={state.dom}
+          hasMenu
+          menuOpen={pop === 'dom'}
+          onClick={() => {
+            if (!state.dom) {
+              onChange({ dom: true })
+              setPop('dom')
+            } else if (pop === 'dom') {
+              onChange({ dom: false })
+              setPop(null)
+            } else {
+              setPop('dom')
+            }
+          }}
+        />
+        <Chip
+          label="More"
+          on={state.footprint || state.replay || state.delta}
+          hasMenu
+          menuOpen={pop === 'more'}
+          onClick={() => togglePop('more')}
+        />
+      </div>
 
-      {open && (
+      {/* Profile popover */}
+      {pop === 'profile' && (
         <div
-          className="absolute left-0 top-full mt-1 z-50 w-[320px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
+          className="absolute left-0 top-full mt-1 z-50 w-[280px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2.5"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {row('Deep Print', state.print, onPrintToggle)}
-          {row('Delta (histogram)', state.delta, () => onChange({ delta: !state.delta }))}
+          <div className="text-[10px] text-[#848e9c] uppercase tracking-wider mb-1.5">Profile</div>
+          <div className="flex items-center gap-2 text-[11px] text-[#848e9c] mb-1.5">
+            <span className="w-16 shrink-0">Developing</span>
+            <select
+              className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+              value={state.profileCfg.developing}
+              onChange={(e) =>
+                onChange({
+                  profileCfg: {
+                    ...state.profileCfg,
+                    developing: e.target.value as ProfileWindow,
+                  },
+                })
+              }
+            >
+              {DEVELOPING_WINDOWS.map((w) => (
+                <option key={w} value={w}>
+                  {PROFILE_WINDOW_LABELS[w]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-[#848e9c] mb-1.5">
+            <span className="w-16 shrink-0">Fixed</span>
+            <select
+              className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+              value={state.profileCfg.fixed}
+              onChange={(e) =>
+                onChange({
+                  profileCfg: {
+                    ...state.profileCfg,
+                    fixed: e.target.value as FixedProfileKind,
+                  },
+                })
+              }
+            >
+              {FIXED_OPTIONS.map((f) => (
+                <option key={f} value={f}>
+                  {FIXED_PROFILE_LABELS[f]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-[9px] text-[#5e6673] leading-snug">{SESSION_NOTE}</p>
+        </div>
+      )}
 
-          {state.delta && (
-            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#f0b90b]"
-                  checked={state.deltaCfg.cvd}
-                  onChange={(e) =>
-                    onChange({ deltaCfg: { ...state.deltaCfg, cvd: e.target.checked } })
-                  }
-                />
-                CVD line
-              </label>
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#f0b90b]"
-                  checked={state.deltaCfg.divergence}
-                  onChange={(e) =>
-                    onChange({
-                      deltaCfg: { ...state.deltaCfg, divergence: e.target.checked },
-                    })
-                  }
-                />
-                Δ divergence flags
-              </label>
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#f0b90b]"
-                  checked={state.deltaCfg.absorption !== false}
-                  onChange={(e) =>
-                    onChange({
-                      deltaCfg: { ...state.deltaCfg, absorption: e.target.checked },
-                    })
-                  }
-                />
-                Abs / Agg tags
-              </label>
-              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-                <span className="shrink-0">Min bar %</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={40}
-                  step={5}
-                  className="flex-1 h-1 accent-[#0ecb81]"
-                  value={state.deltaCfg.minBarPct}
-                  onChange={(e) =>
-                    onChange({
-                      deltaCfg: { ...state.deltaCfg, minBarPct: Number(e.target.value) },
-                    })
-                  }
-                />
-                <span className="w-8 text-[#eaecef] tabular-nums">{state.deltaCfg.minBarPct}%</span>
-              </div>
-            </div>
-          )}
+      {/* Trades popover */}
+      {pop === 'trades' && (
+        <div
+          className="absolute left-12 top-full mt-1 z-50 w-[260px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2.5"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="text-[10px] text-[#848e9c] uppercase tracking-wider mb-1.5">Deep Trades</div>
+          <div className="flex items-center gap-1.5 text-[11px] text-[#848e9c] mb-1.5">
+            <select
+              className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+              value={state.tradesCfg.mode}
+              onChange={(e) =>
+                onChange({
+                  tradesCfg: { ...state.tradesCfg, mode: e.target.value as ThresholdMode },
+                })
+              }
+            >
+              <option value="percentile">pctl</option>
+              <option value="fixed">min</option>
+            </select>
+            {state.tradesCfg.mode === 'percentile' ? (
+              <input
+                type="number"
+                min={50}
+                max={99}
+                className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                value={state.tradesCfg.percentile}
+                onChange={(e) =>
+                  onChange({
+                    tradesCfg: {
+                      ...state.tradesCfg,
+                      percentile: Number(e.target.value) || 90,
+                    },
+                  })
+                }
+              />
+            ) : (
+              <input
+                type="number"
+                min={0}
+                step="any"
+                className="w-16 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                value={state.tradesCfg.fixedMin}
+                onChange={(e) =>
+                  onChange({
+                    tradesCfg: {
+                      ...state.tradesCfg,
+                      fixedMin: Number(e.target.value) || 0,
+                    },
+                  })
+                }
+              />
+            )}
+            <select
+              className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+              value={state.tradesCfg.sizeUnit}
+              onChange={(e) =>
+                onChange({
+                  tradesCfg: { ...state.tradesCfg, sizeUnit: e.target.value as SizeUnit },
+                })
+              }
+            >
+              <option value="base">base</option>
+              <option value="quote">USDT</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+            <input
+              type="checkbox"
+              className="accent-[#0ecb81]"
+              checked={state.tradesCfg.onlyEffective}
+              onChange={(e) =>
+                onChange({
+                  tradesCfg: { ...state.tradesCfg, onlyEffective: e.target.checked },
+                })
+              }
+            />
+            Solo Effective
+          </label>
+          <p className="text-[9px] text-[#5e6673] mt-1 leading-snug">
+            Buy {BUY} · Sell #a855f7 · fill = effective · outline = trapped
+          </p>
+        </div>
+      )}
 
-          {row('Profile', state.profile, () => onChange({ profile: !state.profile }))}
+      {/* Dom popover */}
+      {pop === 'dom' && (
+        <div
+          className="absolute left-24 top-full mt-1 z-50 w-[280px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2.5"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="text-[10px] text-[#848e9c] uppercase tracking-wider mb-1.5">DeepDom</div>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer mb-1">
+            <input
+              type="checkbox"
+              className="accent-[#f0b90b]"
+              checked={state.domCfg.showDelta}
+              onChange={(e) =>
+                onChange({ domCfg: { ...state.domCfg, showDelta: e.target.checked } })
+              }
+            />
+            Δ heatmap (refill/pull)
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer mb-1">
+            <input
+              type="checkbox"
+              className="accent-[#f0b90b]"
+              checked={state.domCfg.showSurprise}
+              onChange={(e) =>
+                onChange({ domCfg: { ...state.domCfg, showSurprise: e.target.checked } })
+              }
+            />
+            Surprise R/P + flash F
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer mb-1">
+            <input
+              type="checkbox"
+              className="accent-[#f0b90b]"
+              checked={state.domCfg.showMagnet}
+              onChange={(e) =>
+                onChange({ domCfg: { ...state.domCfg, showMagnet: e.target.checked } })
+              }
+            />
+            Magnet clusters
+          </label>
+          <p className="text-[9px] text-[#5e6673] leading-snug mt-1">
+            {L2_GRANULARITY_NOTES[exchange]}
+          </p>
+        </div>
+      )}
 
-          {state.profile && (
-            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
-              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-                <span className="w-16 shrink-0">Developing</span>
-                <select
-                  className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.profileCfg.developing}
-                  onChange={(e) =>
-                    onChange({
-                      profileCfg: {
-                        ...state.profileCfg,
-                        developing: e.target.value as ProfileWindow,
-                      },
-                    })
-                  }
-                >
-                  {DEVELOPING_WINDOWS.map((w) => (
-                    <option key={w} value={w}>
-                      {PROFILE_WINDOW_LABELS[w]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-                <span className="w-16 shrink-0">Fixed</span>
-                <select
-                  className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.profileCfg.fixed}
-                  onChange={(e) =>
-                    onChange({
-                      profileCfg: {
-                        ...state.profileCfg,
-                        fixed: e.target.value as FixedProfileKind,
-                      },
-                    })
-                  }
-                >
-                  {FIXED_OPTIONS.map((f) => (
-                    <option key={f} value={f}>
-                      {FIXED_PROFILE_LABELS[f]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-[9px] text-[#5e6673] leading-snug">{SESSION_NOTE}</p>
-            </div>
-          )}
+      {/* More: Delta options + Footprint + Replay */}
+      {pop === 'more' && (
+        <div
+          className="absolute right-0 top-full mt-1 z-50 w-[280px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2.5"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="text-[10px] text-[#848e9c] uppercase tracking-wider mb-1.5">Delta options</div>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer mb-1">
+            <input
+              type="checkbox"
+              className="accent-[#f0b90b]"
+              checked={state.deltaCfg.cvd}
+              disabled={!state.delta}
+              onChange={(e) =>
+                onChange({ deltaCfg: { ...state.deltaCfg, cvd: e.target.checked } })
+              }
+            />
+            CVD line
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer mb-1">
+            <input
+              type="checkbox"
+              className="accent-[#f0b90b]"
+              checked={state.deltaCfg.divergence}
+              disabled={!state.delta}
+              onChange={(e) =>
+                onChange({ deltaCfg: { ...state.deltaCfg, divergence: e.target.checked } })
+              }
+            />
+            Δ divergence
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              className="accent-[#f0b90b]"
+              checked={state.deltaCfg.absorption !== false}
+              disabled={!state.delta}
+              onChange={(e) =>
+                onChange({ deltaCfg: { ...state.deltaCfg, absorption: e.target.checked } })
+              }
+            />
+            Abs / Agg tags
+          </label>
 
-          {row('Deep Trades', state.trades, () => onChange({ trades: !state.trades }))}
-
-          {state.trades && (
-            <div className="pl-11 pb-2 text-[9px] text-[#5e6673] border-b border-[#2b3139]/60">
-              Effective / Trapped after 1 candle · Solo Effective in submenu options via mode.
-            </div>
-          )}
-
-          {row('DeepDom + ladder', state.dom, () => onChange({ dom: !state.dom }))}
-
-          {state.dom && (
-            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#f0b90b]"
-                  checked={state.domCfg.showDelta}
-                  onChange={(e) =>
-                    onChange({ domCfg: { ...state.domCfg, showDelta: e.target.checked } })
-                  }
-                />
-                Δ heatmap + Surprise R/P + Magnet
-              </label>
-              <p className="text-[9px] text-[#5e6673] leading-snug">
-                {L2_GRANULARITY_NOTES[exchange]} Book surprise is conservative (flash F),
-                not institutional spoofing.
-              </p>
-            </div>
-          )}
-
-          {row('Footprint grid', state.footprint, () =>
-            onChange({ footprint: !state.footprint })
-          )}
-          {state.footprint && (
-            <p className="pl-11 pb-2 text-[9px] text-[#5e6673] leading-snug border-b border-[#2b3139]/60">
-              {FOOTPRINT_NOTE}
-            </p>
-          )}
-
-          {row('Replay (IDB archive)', state.replay, () =>
-            onChange({ replay: !state.replay })
-          )}
-          {state.replay && (
-            <p className="pl-11 pb-1 text-[9px] text-[#5e6673] leading-snug">
-              Seek stored ticks beyond ring buffer. Centers primary chart — no synthetic fills.
-            </p>
-          )}
+          <div className="border-t border-[#2b3139] pt-2 mt-1">
+            <label className="flex items-center gap-2 text-[11px] text-[#eaecef] cursor-pointer mb-1">
+              <input
+                type="checkbox"
+                className="accent-[#0ecb81]"
+                checked={state.footprint}
+                onChange={(e) => onChange({ footprint: e.target.checked })}
+              />
+              Footprint grid
+            </label>
+            {state.footprint && (
+              <p className="text-[9px] text-[#5e6673] mb-1.5 pl-5">{FOOTPRINT_NOTE}</p>
+            )}
+            <label className="flex items-center gap-2 text-[11px] text-[#eaecef] cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-[#0ecb81]"
+                checked={state.replay}
+                onChange={(e) => onChange({ replay: e.target.checked })}
+              />
+              Replay (IDB)
+            </label>
+          </div>
         </div>
       )}
     </div>
