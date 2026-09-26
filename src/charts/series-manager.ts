@@ -1,7 +1,6 @@
 /**
  * Series Manager – owns candlestick + volume series lifecycle.
- * All data updates go through this class so the coordinate bridge stays in sync.
- * Compatible with lightweight-charts v4.x (addCandlestickSeries / addHistogramSeries).
+ * Style applied via applyStyle() from chartStyleStore.
  */
 
 import {
@@ -12,22 +11,28 @@ import {
   type Time,
 } from 'lightweight-charts'
 import type { Candle } from '@/types'
+import type { CandleStyle } from '@/stores/chartStyleStore'
+import { DEFAULT_CHART_STYLE, hexToRgba } from '@/stores/chartStyleStore'
 
 export class SeriesManager {
   private chart: IChartApi | null = null
   private candleSeries: ISeriesApi<'Candlestick'> | null = null
   private volumeSeries: ISeriesApi<'Histogram'> | null = null
+  private candleStyle: CandleStyle = { ...DEFAULT_CHART_STYLE.candle }
+  /** Cached candles so volume colors can be rebuilt on style change */
+  private lastCandles: Candle[] = []
 
-  attach(chart: IChartApi) {
+  attach(chart: IChartApi, style?: CandleStyle) {
     this.chart = chart
+    if (style) this.candleStyle = { ...style }
 
     this.candleSeries = chart.addCandlestickSeries({
-      upColor: '#0ecb81',
-      downColor: '#f6465d',
-      borderUpColor: '#0ecb81',
-      borderDownColor: '#f6465d',
-      wickUpColor: '#0ecb81',
-      wickDownColor: '#f6465d',
+      upColor: this.candleStyle.upBody,
+      downColor: this.candleStyle.downBody,
+      borderUpColor: this.candleStyle.upBorder,
+      borderDownColor: this.candleStyle.downBorder,
+      wickUpColor: this.candleStyle.upWick,
+      wickDownColor: this.candleStyle.downWick,
     })
 
     this.volumeSeries = chart.addHistogramSeries({
@@ -35,7 +40,6 @@ export class SeriesManager {
       priceScaleId: 'volume',
     })
 
-    // Volume on a separate scale at the bottom
     chart.priceScale('volume').applyOptions({
       scaleMargins: { top: 0.8, bottom: 0 },
     })
@@ -48,15 +52,34 @@ export class SeriesManager {
     this.candleSeries = null
     this.volumeSeries = null
     this.chart = null
+    this.lastCandles = []
   }
 
   getCandleSeries() {
     return this.candleSeries
   }
 
-  /** Full replace – used after historical load */
+  /** Live update of body / border / wick colors */
+  applyStyle(style: CandleStyle) {
+    this.candleStyle = { ...style }
+    if (!this.candleSeries) return
+    this.candleSeries.applyOptions({
+      upColor: style.upBody,
+      downColor: style.downBody,
+      borderUpColor: style.upBorder,
+      borderDownColor: style.downBorder,
+      wickUpColor: style.upWick,
+      wickDownColor: style.downWick,
+    })
+    // Rebuild volume colors from cache
+    if (this.lastCandles.length > 0) {
+      this.setCandles(this.lastCandles)
+    }
+  }
+
   setCandles(candles: Candle[]) {
     if (!this.candleSeries || !this.volumeSeries) return
+    this.lastCandles = candles
 
     const candleData: CandlestickData[] = candles.map((c) => ({
       time: c.time as Time,
@@ -66,19 +89,32 @@ export class SeriesManager {
       close: c.close,
     }))
 
+    const upVol = hexToRgba(this.candleStyle.upBody, 0.4)
+    const downVol = hexToRgba(this.candleStyle.downBody, 0.4)
+
     const volumeData: HistogramData[] = candles.map((c) => ({
       time: c.time as Time,
       value: c.volume,
-      color: c.close >= c.open ? 'rgba(14, 203, 129, 0.4)' : 'rgba(246, 70, 93, 0.4)',
+      color: c.close >= c.open ? upVol : downVol,
     }))
 
     this.candleSeries.setData(candleData)
     this.volumeSeries.setData(volumeData)
   }
 
-  /** Incremental update – used on live WebSocket candle */
   updateCandle(candle: Candle) {
     if (!this.candleSeries || !this.volumeSeries) return
+
+    // Keep cache in sync for style rebuilds
+    if (this.lastCandles.length > 0) {
+      const last = this.lastCandles[this.lastCandles.length - 1]
+      if (last && last.time === candle.time) {
+        this.lastCandles[this.lastCandles.length - 1] = candle
+      } else if (!last || candle.time > last.time) {
+        this.lastCandles.push(candle)
+        if (this.lastCandles.length > 500) this.lastCandles.shift()
+      }
+    }
 
     this.candleSeries.update({
       time: candle.time as Time,
@@ -88,10 +124,13 @@ export class SeriesManager {
       close: candle.close,
     })
 
+    const upVol = hexToRgba(this.candleStyle.upBody, 0.4)
+    const downVol = hexToRgba(this.candleStyle.downBody, 0.4)
+
     this.volumeSeries.update({
       time: candle.time as Time,
       value: candle.volume,
-      color: candle.close >= candle.open ? 'rgba(14, 203, 129, 0.4)' : 'rgba(246, 70, 93, 0.4)',
+      color: candle.close >= candle.open ? upVol : downVol,
     })
   }
 }

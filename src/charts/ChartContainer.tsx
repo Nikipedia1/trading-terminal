@@ -1,7 +1,6 @@
 /**
  * ChartContainer – single chart pane with real exchange data.
- * Owns its CoordinateBridge instance (anti-pellicola).
- * Free pan/zoom via Lightweight Charts handleScroll / handleScale.
+ * Applies chartStyleStore for candle + canvas colors.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -17,46 +16,64 @@ import type { Candle, ConnectionStatus, MarketError } from '@/types'
 import { SeriesManager } from './series-manager'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
+import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
+import { ChartStylePanel } from './ChartStylePanel'
 
-const CHART_OPTIONS = {
-  layout: {
-    background: { type: ColorType.Solid, color: '#12161c' },
-    textColor: '#848e9c',
-  },
-  grid: {
-    vertLines: { color: '#1e2329' },
-    horzLines: { color: '#1e2329' },
-  },
-  crosshair: {
-    mode: CrosshairMode.Normal,
-    vertLine: { color: '#848e9c', width: 1 as const, style: 2, labelBackgroundColor: '#1e2329' },
-    horzLine: { color: '#848e9c', width: 1 as const, style: 2, labelBackgroundColor: '#1e2329' },
-  },
-  rightPriceScale: {
-    borderColor: '#1e2329',
-    scaleMargins: { top: 0.05, bottom: 0.25 },
-  },
-  timeScale: {
-    borderColor: '#1e2329',
-    timeVisible: true,
-    secondsVisible: false,
-    rightOffset: 8,
-    shiftVisibleRangeOnNewBar: true,
-  },
-  // Free chart movement when overlay is in Pan mode
-  handleScroll: {
-    mouseWheel: true,
-    pressedMouseMove: true,
-    horzTouchDrag: true,
-    vertTouchDrag: true,
-  },
-  handleScale: {
-    axisPressedMouseMove: { time: true, price: true },
-    axisDoubleClickReset: { time: true, price: true },
-    mouseWheel: true,
-    pinch: true,
-  },
+function buildChartOptions(canvas: {
+  background: string
+  text: string
+  grid: string
+  border: string
+}) {
+  return {
+    layout: {
+      background: { type: ColorType.Solid, color: canvas.background },
+      textColor: canvas.text,
+    },
+    grid: {
+      vertLines: { color: canvas.grid },
+      horzLines: { color: canvas.grid },
+    },
+    crosshair: {
+      mode: CrosshairMode.Normal,
+      vertLine: {
+        color: canvas.text,
+        width: 1 as const,
+        style: 2,
+        labelBackgroundColor: canvas.border,
+      },
+      horzLine: {
+        color: canvas.text,
+        width: 1 as const,
+        style: 2,
+        labelBackgroundColor: canvas.border,
+      },
+    },
+    rightPriceScale: {
+      borderColor: canvas.border,
+      scaleMargins: { top: 0.05, bottom: 0.25 },
+    },
+    timeScale: {
+      borderColor: canvas.border,
+      timeVisible: true,
+      secondsVisible: false,
+      rightOffset: 8,
+      shiftVisibleRangeOnNewBar: true,
+    },
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    },
+    handleScale: {
+      axisPressedMouseMove: { time: true, price: true },
+      axisDoubleClickReset: { time: true, price: true },
+      mouseWheel: true,
+      pinch: true,
+    },
+  }
 }
 
 export interface ChartContainerProps {
@@ -84,17 +101,21 @@ export function ChartContainer({
   const lastHistoryKeyRef = useRef<string>('')
   const applyingRemoteRef = useRef(false)
 
+  const chartStyle = useChartStyleStore((s) => s.style)
+
+  // ── Create chart once ───────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
 
+    const initial = useChartStyleStore.getState().style
     const chart = createChart(containerRef.current, {
-      ...CHART_OPTIONS,
+      ...buildChartOptions(initial.canvas),
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
     })
 
     const seriesMgr = new SeriesManager()
-    seriesMgr.attach(chart)
+    seriesMgr.attach(chart, initial.candle)
 
     const bridgeInstance = new CoordinateBridge()
     const candleSeries = seriesMgr.getCandleSeries()
@@ -127,6 +148,24 @@ export function ChartContainer({
     }
   }, [])
 
+  // ── Apply style changes live ────────────────────────────────────────────
+  useEffect(() => {
+    const chart = chartRef.current
+    const seriesMgr = seriesMgrRef.current
+    if (!chart || !seriesMgr) return
+
+    const opts = buildChartOptions(chartStyle.canvas)
+    chart.applyOptions({
+      layout: opts.layout,
+      grid: opts.grid,
+      crosshair: opts.crosshair,
+      rightPriceScale: { borderColor: chartStyle.canvas.border },
+      timeScale: { borderColor: chartStyle.canvas.border },
+    })
+    seriesMgr.applyStyle(chartStyle.candle)
+  }, [chartStyle])
+
+  // ── Data sync ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
 
@@ -141,6 +180,7 @@ export function ChartContainer({
     }
   }, [candles])
 
+  // ── Sync group ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return
 
@@ -208,7 +248,10 @@ export function ChartContainer({
   }, [syncGroup, panelId])
 
   return (
-    <div className="relative w-full h-full bg-terminal-panel">
+    <div
+      className="relative w-full h-full"
+      style={{ backgroundColor: chartStyle.canvas.background }}
+    >
       <div ref={containerRef} className="absolute inset-0" />
 
       <DrawingLayer
@@ -218,8 +261,10 @@ export function ChartContainer({
         containerRef={containerRef}
       />
 
+      <ChartStylePanel />
+
       {lastError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-terminal-bg/80 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
           <div className="bg-terminal-red/10 border border-terminal-red/50 text-terminal-red px-6 py-4 rounded text-sm max-w-md text-center">
             <div className="font-semibold mb-1">[{lastError.code}] Data Error</div>
             <div className="text-xs opacity-90">{lastError.message}</div>

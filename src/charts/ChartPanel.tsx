@@ -1,12 +1,11 @@
 /**
  * ChartPanel – one draggable/resizable chart unit.
- * Independent symbol / interval / exchange + optional sync group.
- * Hosts DrawingToolbar for anchored drawing tools.
  */
 
 import { ChartContainer } from './ChartContainer'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
+import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
@@ -24,6 +23,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const setPrimaryPanel = useLayoutStore((s) => s.setPrimaryPanel)
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panelCount = useLayoutStore((s) => s.panels.length)
+  const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
+  const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
 
   const { candles, status, lastError } = usePanelMarket(symbol, interval, exchange)
 
@@ -31,7 +32,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
-      {/* Header – drag handle */}
       <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
         <input
           className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
@@ -63,11 +63,9 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
         <select
           className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
-          title="Sync group (crosshair + time zoom)"
+          title="Sync group"
           value={syncGroup ?? ''}
-          onChange={(e) =>
-            updatePanel(id, { syncGroup: e.target.value || null })
-          }
+          onChange={(e) => updatePanel(id, { syncGroup: e.target.value || null })}
           onMouseDown={(e) => e.stopPropagation()}
         >
           <option value="">No sync</option>
@@ -78,7 +76,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
         <button
           className={`text-xxs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-terminal-blue/30 text-terminal-blue' : 'text-terminal-muted hover:text-terminal-text'}`}
-          title="Set as primary (feeds trades / order book)"
+          title="Primary panel"
           onClick={(e) => {
             e.stopPropagation()
             setPrimaryPanel(id)
@@ -88,9 +86,24 @@ export function ChartPanel({ config }: ChartPanelProps) {
           {isPrimary ? '★' : '☆'}
         </button>
 
-        <span className="text-xxs text-terminal-muted ml-auto truncate">
-          {status}
-        </span>
+        <button
+          type="button"
+          title="Personalizza candele e canvas"
+          className={`text-xxs px-1.5 py-0.5 rounded border ${
+            stylePanelOpen
+              ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
+              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleStylePanel()
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          🎨 Stile
+        </button>
+
+        <span className="text-xxs text-terminal-muted ml-auto truncate">{status}</span>
 
         {panelCount > 1 && (
           <button
@@ -107,7 +120,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
         )}
       </div>
 
-      {/* Drawing tools – solid bar, always visible, not a drag handle */}
       <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10">
         <DrawingToolbar panelId={id} symbol={symbol} />
       </div>
