@@ -95,6 +95,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
   let buffer: any[] = []
   let syncing = false
   let synced = false
+  let resyncAbort: AbortController | null = null
 
   const publish = () => {
     const snap = mapsToSnapshot(book)
@@ -108,7 +109,11 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
   }
 
   const resync = async () => {
-    if (syncing) return
+    // Cancel any in-flight snapshot so a late response cannot overwrite newer state
+    resyncAbort?.abort()
+    resyncAbort = new AbortController()
+    const signal = resyncAbort.signal
+
     syncing = true
     synced = false
     book.ready = false
@@ -117,9 +122,13 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
 
     try {
       await new Promise((r) => setTimeout(r, 50))
+      if (signal.aborted) {
+        syncing = false
+        return
+      }
 
       const url = `${BINANCE_REST}/api/v3/depth?symbol=${sym}&limit=1000`
-      const res = await fetch(url)
+      const res = await fetch(url, { signal })
       if (!res.ok) {
         const body = await res.text()
         const err =
@@ -132,6 +141,10 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
         return
       }
       const raw = await res.json()
+      if (signal.aborted) {
+        syncing = false
+        return
+      }
       const lastUpdateId = raw.lastUpdateId as number
       book = {
         exchange: 'binance',
@@ -173,6 +186,10 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
       setStatus('connected', 'depth synced')
       publish()
     } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        syncing = false
+        return
+      }
       syncing = false
       const err = createError('binance', 'REST_DEPTH', e.message || 'Snapshot failed')
       slot.bus.emit('error', { error: err })
@@ -219,7 +236,10 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
   })
   void rws.connect()
 
-  return () => rws.close()
+  return () => {
+    resyncAbort?.abort()
+    rws.close()
+  }
 }
 
 async function kucoinBullet(): Promise<{ endpoint: string; token: string; pingInterval: number }> {
@@ -262,6 +282,7 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
   let syncing = false
   let pingTimer: ReturnType<typeof setInterval> | null = null
   let rws: ReconnectingWebSocket | null = null
+  let resyncAbort: AbortController | null = null
 
   const publish = () => {
     const snap = mapsToSnapshot(book)
@@ -293,7 +314,10 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
   }
 
   const resync = async () => {
-    if (syncing) return
+    resyncAbort?.abort()
+    resyncAbort = new AbortController()
+    const signal = resyncAbort.signal
+
     syncing = true
     synced = false
     book.ready = false
@@ -302,7 +326,7 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
     try {
       // Public API: max 100 levels – DeepDom band is limited vs Binance 1000
       const url = `${KUCOIN_REST}/api/v1/market/orderbook/level2_100?symbol=${encodeURIComponent(sym)}`
-      const res = await fetch(url)
+      const res = await fetch(url, { signal })
       if (!res.ok) {
         const err = createError('kucoin', 'REST_DEPTH', `HTTP ${res.status}`)
         slot.bus.emit('error', { error: err })
@@ -311,6 +335,10 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
         return
       }
       const json = await res.json()
+      if (signal.aborted) {
+        syncing = false
+        return
+      }
       if (json.code !== '200000' || !json.data) {
         const err = createError('kucoin', 'REST_DEPTH', json.msg || 'snapshot failed')
         slot.bus.emit('error', { error: err })
@@ -346,6 +374,10 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
       setStatus('connected', 'depth synced (≤100 lvl)')
       publish()
     } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        syncing = false
+        return
+      }
       syncing = false
       const err = createError('kucoin', 'REST_DEPTH', e.message || 'Snapshot failed')
       slot.bus.emit('error', { error: err })
@@ -411,6 +443,7 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
   void rws.connect()
 
   return () => {
+    resyncAbort?.abort()
     if (pingTimer) clearInterval(pingTimer)
     rws?.close()
   }
