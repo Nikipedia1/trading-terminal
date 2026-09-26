@@ -4,15 +4,7 @@ export type {
   IndicatorParams,
   IndicatorParamsMap,
   LinePoint,
+  PriceSource,
 } from './types'
-export { INDICATOR_CATALOG, DEFAULT_INDICATOR_PARAMS } from './types'
-export {
-  computeSma,
-  computeEma,
-  computeBollinger,
-  computeVwap,
-  computeRsi,
-  computeMacd,
-  computeStoch,
-  computeAtr,
-} from './compute'
+export { INDICATOR_CATALOG, DEFAULT_INDICATOR_PARAMS, PRICE_SOURCES } from './types'
+export * from './compute'
