@@ -215,6 +215,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           deepTradesConfig={of.tradesCfg}
           deepDomEnabled={of.dom}
           deepDomConfig={of.domCfg}
+          isPrimary={isPrimary}
         />
       </div>
     </div>
