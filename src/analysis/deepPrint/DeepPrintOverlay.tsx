@@ -49,9 +49,8 @@ export function DeepPrintOverlay({
   const [pinned, setPinned] = useState(false)
   const [pinnedTime, setPinnedTime] = useState<number | null>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
-  /** Filter: only levels with |delta| ≥ this fraction of max |delta| (0 = off) */
   const [deltaFilterOn, setDeltaFilterOn] = useState(false)
-  const [deltaFilterPct, setDeltaFilterPct] = useState(15) // % of max abs delta
+  const [deltaFilterPct, setDeltaFilterPct] = useState(15)
 
   const modelRef = useRef<DeepPrintModel | null>(null)
   modelRef.current = model
@@ -86,10 +85,8 @@ export function DeepPrintOverlay({
     [rebuildModel]
   )
 
-  /** Last fully closed candle (not the forming bar) */
   const pinLastClosed = useCallback(() => {
     if (candles.length < 2) return
-    // candles are chronological; last is live, previous is last closed
     const closed = candles[candles.length - 2]
     if (closed) pinCandle(closed.time)
   }, [candles, pinCandle])
@@ -128,14 +125,12 @@ export function DeepPrintOverlay({
     }
   }, [bridge, enabled, updatePosition, containerRef])
 
-  // Keep pinned candle data fresh
   useEffect(() => {
     if (!enabled || !pinned || pinnedTime == null) return
     const id = window.setInterval(() => rebuildModel(pinnedTime), 1000)
     return () => window.clearInterval(id)
   }, [enabled, pinned, pinnedTime, rebuildModel])
 
-  // Hover refresh when not pinned
   useEffect(() => {
     if (!enabled || pinned || !model) return
     const id = window.setInterval(() => {
@@ -181,7 +176,6 @@ export function DeepPrintOverlay({
     }
   }, [enabled, bridge, candles, interval, pinned, rebuildModel, pinCandle])
 
-  // Keyboard: P = pin last closed (when print enabled)
   useEffect(() => {
     if (!enabled) return
     const onKey = (e: KeyboardEvent) => {
@@ -228,7 +222,6 @@ export function DeepPrintOverlay({
   )
 
   if (!enabled || !model || !pos) {
-    // When enabled but no model yet, still allow shortcut via keyboard
     if (enabled && !model) return null
     return null
   }
@@ -237,7 +230,6 @@ export function DeepPrintOverlay({
   const cw = parent?.clientWidth ?? 0
   const ch = parent?.clientHeight ?? 0
 
-  // Adaptive width from level count / content
   const panelW = Math.min(320, Math.max(260, 240 + Math.min(visibleLevels.length, 12) * 2))
   const rowH = 22
   const panelH = Math.min(380, 88 + Math.max(1, visibleLevels.length) * rowH)
@@ -264,7 +256,6 @@ export function DeepPrintOverlay({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="bg-[#0b0e11]/97 border border-[#2b3139] rounded-md shadow-2xl overflow-hidden font-mono">
-        {/* Header: Δ + buy% */}
         <div className="px-2.5 py-2 border-b border-[#2b3139] bg-[#12161c]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12px] font-bold text-[#eaecef] tracking-wide">
@@ -329,7 +320,6 @@ export function DeepPrintOverlay({
             )}
           </div>
 
-          {/* Delta filter */}
           <div className="flex items-center gap-2 mt-1.5">
             <label className="flex items-center gap-1.5 text-[10px] text-[#848e9c] cursor-pointer">
               <input
@@ -354,9 +344,27 @@ export function DeepPrintOverlay({
               {deltaFilterPct}%
             </span>
           </div>
+          {stacked.size >= STACK_MIN && (
+            <div
+              className="mt-1.5 px-2 py-1 rounded text-[11px] font-bold tracking-wide border"
+              style={{
+                background:
+                  model.totalDelta >= 0
+                    ? 'rgba(14, 203, 129, 0.15)'
+                    : 'rgba(246, 70, 93, 0.15)',
+                borderColor:
+                  model.totalDelta >= 0
+                    ? 'rgba(14, 203, 129, 0.5)'
+                    : 'rgba(246, 70, 93, 0.5)',
+                color: model.totalDelta >= 0 ? '#0ecb81' : '#f6465d',
+              }}
+            >
+              ⚠ STACKED IMBALANCE · {stacked.size} levels ≥{STACK_MIN} consecutive
+              (threshold {(IMB_THRESHOLD * 100).toFixed(0)}%)
+            </div>
+          )}
         </div>
 
-        {/* Column headers */}
         <div className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80">
           <span className="text-left text-[#f6465d]">SELL</span>
           <span className="text-center text-[#848e9c]">PRICE</span>
@@ -370,11 +378,6 @@ export function DeepPrintOverlay({
               {model.levels.length === 0
                 ? 'No trades in buffer for this candle.'
                 : 'No levels pass the |Δ| filter.'}
-              <div className="mt-1 opacity-70 text-[11px]">
-                {model.levels.length === 0
-                  ? 'Wait for live ticks or press P for last closed.'
-                  : 'Lower the threshold or disable the filter.'}
-              </div>
             </div>
           ) : (
             visibleLevels.map((l) => {
@@ -384,8 +387,6 @@ export function DeepPrintOverlay({
               const imb = levelImbalance(l, IMB_THRESHOLD)
               const isStack = stacked.has(l.price)
               const ratio = buyRatio(l)
-
-              // Stronger fill when imbalanced
               const sellAlpha = imb === 'sell' ? 0.55 : 0.28
               const buyAlpha = imb === 'buy' ? 0.55 : 0.28
 
@@ -394,13 +395,6 @@ export function DeepPrintOverlay({
               else if (isStack && imb === 'sell') rowBg = 'rgba(246, 70, 93, 0.12)'
               else if (imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.06)'
               else if (imb === 'sell') rowBg = 'rgba(246, 70, 93, 0.06)'
-
-              const stackBorder =
-                isStack && imb === 'buy'
-                  ? '2px solid rgba(14, 203, 129, 0.75)'
-                  : isStack && imb === 'sell'
-                    ? '2px solid rgba(246, 70, 93, 0.75)'
-                    : undefined
 
               return (
                 <div
@@ -414,7 +408,6 @@ export function DeepPrintOverlay({
                         ? 'inset 3px 0 0 #0ecb81'
                         : 'inset 3px 0 0 #f6465d'
                       : undefined,
-                    borderLeft: stackBorder,
                   }}
                   title={
                     imb
@@ -424,7 +417,6 @@ export function DeepPrintOverlay({
                       : undefined
                   }
                 >
-                  {/* SELL */}
                   <div className="relative flex items-center justify-end pr-1">
                     <div
                       className="absolute inset-y-1 right-0 rounded-sm"
@@ -437,8 +429,6 @@ export function DeepPrintOverlay({
                       {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
                     </span>
                   </div>
-
-                  {/* PRICE */}
                   <div
                     className={`flex items-center justify-center text-[12px] font-bold tabular-nums ${
                       imb === 'buy'
@@ -450,8 +440,6 @@ export function DeepPrintOverlay({
                   >
                     {l.price}
                   </div>
-
-                  {/* BUY */}
                   <div className="relative flex items-center justify-start pl-1">
                     <div
                       className="absolute inset-y-1 left-0 rounded-sm"
@@ -464,8 +452,6 @@ export function DeepPrintOverlay({
                       {l.buyQty > 0 ? formatQty(l.buyQty) : ''}
                     </span>
                   </div>
-
-                  {/* DELTA bar */}
                   <div className="relative flex items-center justify-end pl-0.5">
                     <div className="relative w-full h-3.5 flex items-center justify-end">
                       <div
