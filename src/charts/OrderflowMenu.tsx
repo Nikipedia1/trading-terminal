@@ -13,7 +13,11 @@ import {
   FIXED_PROFILE_LABELS,
   SESSION_NOTE,
 } from '@/analysis/volumeProfile'
-import type { DeepTradesConfig, ThresholdMode } from '@/analysis/deepTrades'
+import type {
+  DeepTradesConfig,
+  ThresholdMode,
+  SizeUnit,
+} from '@/analysis/deepTrades'
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
@@ -113,7 +117,7 @@ export function OrderflowMenu({
 
       {open && (
         <div
-          className="absolute left-0 top-full mt-1 z-50 w-[310px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
+          className="absolute left-0 top-full mt-1 z-50 w-[320px] bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
           onMouseDown={(e) => e.stopPropagation()}
         >
           {row('Deep Print', state.print, onPrintToggle)}
@@ -246,12 +250,11 @@ export function OrderflowMenu({
             </div>
           )}
 
-          {row(
-            'Deep Trades',
-            state.trades,
-            () => onChange({ trades: !state.trades }),
-            state.trades ? (
-              <div className="flex items-center gap-1">
+          {row('Deep Trades', state.trades, () => onChange({ trades: !state.trades }))}
+
+          {state.trades && (
+            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#848e9c]">
                 <select
                   className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
                   value={state.tradesCfg.mode}
@@ -272,7 +275,7 @@ export function OrderflowMenu({
                     type="number"
                     min={50}
                     max={99}
-                    className="w-10 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                    className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
                     value={state.tradesCfg.percentile}
                     onChange={(e) =>
                       onChange({
@@ -288,7 +291,7 @@ export function OrderflowMenu({
                     type="number"
                     min={0}
                     step="any"
-                    className="w-14 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                    className="w-16 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
                     value={state.tradesCfg.fixedMin}
                     onChange={(e) =>
                       onChange({
@@ -300,9 +303,46 @@ export function OrderflowMenu({
                     }
                   />
                 )}
+                <select
+                  className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                  title="Size unit"
+                  value={state.tradesCfg.sizeUnit}
+                  onChange={(e) =>
+                    onChange({
+                      tradesCfg: {
+                        ...state.tradesCfg,
+                        sizeUnit: e.target.value as SizeUnit,
+                      },
+                    })
+                  }
+                >
+                  <option value="base">base</option>
+                  <option value="quote">USDT</option>
+                </select>
               </div>
-            ) : null
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-[#0ecb81]"
+                  checked={state.tradesCfg.onlyEffective}
+                  onChange={(e) =>
+                    onChange({
+                      tradesCfg: {
+                        ...state.tradesCfg,
+                        onlyEffective: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                Solo Effective
+              </label>
+              <p className="text-[9px] text-[#5e6673] leading-snug">
+                Effective = fill pieno · Trapped = outline. Cluster {state.tradesCfg.clusterMs}
+                ms stesso tick. Classificazione dopo 1 candela (annotazione).
+              </p>
+            </div>
           )}
+
           {row(
             'DeepDom + ladder',
             state.dom,

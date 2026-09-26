@@ -322,6 +322,8 @@ export function ChartContainer({
         exchange={exchange}
         symbol={symbol}
         config={deepTradesConfig}
+        candles={candles}
+        interval={interval}
       />
 
       <DrawingLayer
