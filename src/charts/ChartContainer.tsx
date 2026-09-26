@@ -1,9 +1,7 @@
 /**
  * ChartContainer – single chart pane with real exchange data.
  * Owns its CoordinateBridge instance (anti-pellicola).
- * ResizeObserver → chart.applyOptions → all coordinate APIs stay valid.
- * Optional syncGroup for crosshair + visible time range.
- * Hosts DrawingLayer overlay (logical coords only).
+ * Free pan/zoom via Lightweight Charts handleScroll / handleScale.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -43,8 +41,22 @@ const CHART_OPTIONS = {
     borderColor: '#1e2329',
     timeVisible: true,
     secondsVisible: false,
+    rightOffset: 8,
+    shiftVisibleRangeOnNewBar: true,
   },
-  handleScroll: { vertTouchDrag: true },
+  // Free chart movement when overlay is in Pan mode
+  handleScroll: {
+    mouseWheel: true,
+    pressedMouseMove: true,
+    horzTouchDrag: true,
+    vertTouchDrag: true,
+  },
+  handleScale: {
+    axisPressedMouseMove: { time: true, price: true },
+    axisDoubleClickReset: { time: true, price: true },
+    mouseWheel: true,
+    pinch: true,
+  },
 }
 
 export interface ChartContainerProps {
@@ -53,7 +65,6 @@ export interface ChartContainerProps {
   candles: Candle[]
   status: ConnectionStatus
   lastError: MarketError | null
-  /** When set, this panel joins the named sync group */
   syncGroup?: string | null
 }
 
@@ -73,7 +84,6 @@ export function ChartContainer({
   const lastHistoryKeyRef = useRef<string>('')
   const applyingRemoteRef = useRef(false)
 
-  // ── Create chart once ───────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -97,8 +107,6 @@ export function ChartContainer({
     bridgeRef.current = bridgeInstance
     setBridge(bridgeInstance)
 
-    // Resize → applyOptions → Lightweight Charts recalculates all coordinates
-    // DrawingLayer listens to the same resize and re-queries the bridge
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       if (width > 0 && height > 0) {
@@ -119,7 +127,6 @@ export function ChartContainer({
     }
   }, [])
 
-  // ── Data sync ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
 
@@ -134,7 +141,6 @@ export function ChartContainer({
     }
   }, [candles])
 
-  // ── Optional sync group: publish + subscribe time range & crosshair ─────
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return
 
@@ -186,7 +192,7 @@ export function ChartContainer({
           })
         }
       } catch {
-        /* ignore invalid ranges */
+        /* ignore */
       } finally {
         requestAnimationFrame(() => {
           applyingRemoteRef.current = false
@@ -205,7 +211,6 @@ export function ChartContainer({
     <div className="relative w-full h-full bg-terminal-panel">
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Drawing overlay – logical coords only, redraws via bridge */}
       <DrawingLayer
         panelId={panelId}
         symbol={symbol}

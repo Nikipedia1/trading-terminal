@@ -1,6 +1,5 @@
 /**
  * Drawing store – per panel+symbol drawings with localStorage persistence.
- * Pure data; rendering is DrawingLayer's job.
  */
 
 import { create } from 'zustand'
@@ -8,12 +7,9 @@ import type { Drawing, DrawingTool, DrawingsExport } from './types'
 import { drawingsStorageKey } from './types'
 
 interface DrawingState {
-  /** Active tool for the focused panel */
   activeTool: DrawingTool
   activeColor: string
-  /** drawings[panelId][symbol] = Drawing[] */
   byPanelSymbol: Record<string, Record<string, Drawing[]>>
-  /** Currently selected drawing id (for delete) */
   selectedId: string | null
 
   setActiveTool: (tool: DrawingTool) => void
@@ -36,7 +32,7 @@ function persist(panelId: string, symbol: string, drawings: Drawing[]) {
   try {
     localStorage.setItem(drawingsStorageKey(panelId, symbol), JSON.stringify(drawings))
   } catch {
-    /* quota / private mode */
+    /* quota */
   }
 }
 
@@ -52,12 +48,18 @@ function load(panelId: string, symbol: string): Drawing[] {
 }
 
 export const useDrawingStore = create<DrawingState>((set, get) => ({
-  activeTool: 'cursor',
+  // Default: pan so user can move the chart without switching tools
+  activeTool: 'pan',
   activeColor: '#1e90ff',
   byPanelSymbol: {},
   selectedId: null,
 
-  setActiveTool: (tool) => set({ activeTool: tool, selectedId: null }),
+  setActiveTool: (tool) =>
+    set({
+      activeTool: tool,
+      // leaving select mode clears selection highlight noise when panning
+      selectedId: tool === 'cursor' ? get().selectedId : null,
+    }),
   setActiveColor: (color) => set({ activeColor: color }),
   setSelectedId: (id) => set({ selectedId: id }),
 
@@ -139,7 +141,6 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
       if (!data || data.version !== 1 || !Array.isArray(data.drawings)) {
         return { ok: false, error: 'Invalid format: expected version 1 with drawings[]' }
       }
-      // Merge by id (imported wins on conflict)
       const current = get().getDrawings(panelId, symbol)
       const byId = new Map(current.map((d) => [d.id, d]))
       for (const d of data.drawings) {

@@ -5,7 +5,8 @@
  */
 
 export type DrawingTool =
-  | 'cursor'
+  | 'pan'      // move/zoom chart freely (overlay does not capture pointer)
+  | 'cursor'   // select / edit drawings
   | 'trendline'
   | 'horizontal'
   | 'vertical'
@@ -38,7 +39,7 @@ const DEFAULT_STYLE: DrawingStyle = {
 
 export interface DrawingBase {
   id: string
-  tool: Exclude<DrawingTool, 'cursor'>
+  tool: Exclude<DrawingTool, 'pan' | 'cursor'>
   style: DrawingStyle
   locked?: boolean
   createdAt: number
@@ -77,8 +78,8 @@ export interface ChannelDrawing extends DrawingBase {
 
 export interface FibRetracementDrawing extends DrawingBase {
   tool: 'fib_retracement'
-  p1: LogicalPoint // start (usually swing high/low)
-  p2: LogicalPoint // end
+  p1: LogicalPoint
+  p2: LogicalPoint
 }
 
 export interface FibExtensionDrawing extends DrawingBase {
@@ -115,7 +116,6 @@ export function defaultStyle(overrides?: Partial<DrawingStyle>): DrawingStyle {
   return { ...DEFAULT_STYLE, ...overrides }
 }
 
-/** Storage key: drawings for a given panel + symbol */
 export function drawingsStorageKey(panelId: string, symbol: string): string {
   return `tt-drawings:v1:${panelId}:${symbol.toUpperCase()}`
 }

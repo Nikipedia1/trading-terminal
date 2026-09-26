@@ -1,5 +1,5 @@
 /**
- * Drawing toolbar – select mode + tools + edit actions.
+ * Drawing toolbar – Pan | Sel | draw tools | edit actions.
  */
 
 import { useRef } from 'react'
@@ -88,7 +88,10 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
     }
   }
 
-  const isSelect = activeTool === 'cursor'
+  const modeBtn = (active: boolean) =>
+    active
+      ? 'bg-terminal-blue text-white border-terminal-blue'
+      : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
 
   return (
     <div
@@ -96,16 +99,22 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Explicit Select button */}
+      {/* Pan – free chart movement */}
       <button
         type="button"
-        title="Selezione – clicca un disegno per selezionarlo"
+        title="Pan – trascina il grafico, zoom con rotella (scorciatoia: H)"
+        onClick={() => setActiveTool('pan')}
+        className={`px-2 py-0.5 text-xs rounded border font-medium ${modeBtn(activeTool === 'pan')}`}
+      >
+        ✋ Pan
+      </button>
+
+      {/* Select drawings */}
+      <button
+        type="button"
+        title="Selezione disegni – clicca per selezionare/modificare (scorciatoia: V)"
         onClick={() => setActiveTool('cursor')}
-        className={`px-2 py-0.5 text-xs rounded border font-medium ${
-          isSelect
-            ? 'bg-terminal-blue text-white border-terminal-blue'
-            : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
-        }`}
+        className={`px-2 py-0.5 text-xs rounded border font-medium ${modeBtn(activeTool === 'cursor')}`}
       >
         Sel
       </button>
@@ -160,7 +169,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
           )}
           <button
             type="button"
-            title="Elimina selezionato (tasto Canc)"
+            title="Elimina (Canc)"
             onClick={() => removeDrawing(panelId, symbol, selectedId)}
             className="px-1.5 py-0.5 text-xxs text-terminal-red border border-terminal-red/50 rounded hover:bg-terminal-red/10"
           >

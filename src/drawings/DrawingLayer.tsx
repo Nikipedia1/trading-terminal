@@ -1,9 +1,10 @@
 /**
- * DrawingLayer – transparent canvas overlay on top of Lightweight Charts.
+ * DrawingLayer – overlay canvas.
  *
- * pointer-events is ALWAYS auto so selection/hit-test always works.
- * (Previous hover-gated pointer-events caused a chicken-and-egg: canvas
- * never received mousemove, so hover never became true.)
+ * Modes:
+ * - pan:    pointer-events NONE → Lightweight Charts receives drag/scroll/zoom
+ * - cursor: pointer-events AUTO → select / drag drawings
+ * - tools:  pointer-events AUTO → create drawings
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -106,17 +107,25 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
+      // Space held → temporary pan feel via switching (optional shortcut)
       if (e.key === 'Escape') {
         draftRef.current = null
         previewRef.current = null
         dragRef.current = null
         setSelectedId(null)
-        useDrawingStore.getState().setActiveTool('cursor')
+        useDrawingStore.getState().setActiveTool('pan')
         paint()
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
         e.preventDefault()
         removeDrawing(panelId, symbol, selectedId)
+      }
+      // V = select, H = pan (common CAD-like shortcuts)
+      if (e.key === 'v' || e.key === 'V') {
+        useDrawingStore.getState().setActiveTool('cursor')
+      }
+      if (e.key === 'h' || e.key === 'H') {
+        useDrawingStore.getState().setActiveTool('pan')
       }
     }
     window.addEventListener('keydown', onKey)
@@ -304,7 +313,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       if (drawing) {
         addDrawing(panelId, symbol, drawing)
         setSelectedId(drawing.id)
-        // after create, switch to select mode so user can edit immediately
         useDrawingStore.getState().setActiveTool('cursor')
       }
       draftRef.current = null
@@ -333,6 +341,9 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
   }
 
   const onPointerDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Pan mode: events should not reach here (pointer-events:none), but guard anyway
+    if (activeTool === 'pan') return
+
     if (!bridge || !containerRef.current) return
     const pix = eventToPixel(e)
     if (!pix) return
@@ -340,7 +351,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     const h = containerRef.current.clientHeight
     const current = useDrawingStore.getState().getDrawings(panelId, symbol)
 
-    // Select mode (cursor)
     if (activeTool === 'cursor') {
       const hit = hitTestAll(bridge, current, pix.x, pix.y, w, h)
       if (hit) {
@@ -350,7 +360,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
         const origin = current.find((d) => d.id === hit.id)
         const logical = eventToLogical(e)
         if (origin && logical) {
-          // deep-enough snapshot for drag
           dragRef.current = {
             id: hit.id,
             handle: hit.handle,
@@ -366,7 +375,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       return
     }
 
-    // Create mode
     e.preventDefault()
     e.stopPropagation()
     setSelectedId(null)
@@ -392,6 +400,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
   }
 
   const onPointerMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (activeTool === 'pan') return
     if (!bridge || !containerRef.current) return
 
     if (dragRef.current && activeTool === 'cursor') {
@@ -420,14 +429,21 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     dragRef.current = null
   }
 
+  // Pan = let events pass through to Lightweight Charts
+  const capturePointer = activeTool !== 'pan'
+
   return (
     <canvas
       ref={canvasRef}
       className="absolute inset-0 z-[5]"
       style={{
-        // ALWAYS capture events – required for selection hit-test
-        pointerEvents: 'auto',
-        cursor: activeTool !== 'cursor' ? 'crosshair' : 'default',
+        pointerEvents: capturePointer ? 'auto' : 'none',
+        cursor:
+          activeTool === 'pan'
+            ? 'default'
+            : activeTool === 'cursor'
+              ? 'default'
+              : 'crosshair',
       }}
       onMouseDown={onPointerDown}
       onMouseMove={onPointerMove}
