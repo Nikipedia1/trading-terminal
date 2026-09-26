@@ -45,3 +45,22 @@ html, body, #root {
   font-variant-numeric: tabular-nums;
   font-family: 'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace;
 }
+
+/* react-grid-layout overrides for terminal look */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(30, 144, 255, 0.15) !important;
+  border: 1px dashed #1e90ff !important;
+  border-radius: 2px;
+  opacity: 1 !important;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-color: #848e9c !important;
+}
+
+.react-resizable-handle {
+  opacity: 0.5;
+}
+.react-resizable-handle:hover {
+  opacity: 1;
+}

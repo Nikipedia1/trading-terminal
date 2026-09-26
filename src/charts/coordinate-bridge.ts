@@ -4,6 +4,8 @@
  * EVERY conversion between price/time ↔ pixel MUST go through the
  * official Lightweight Charts API (timeScale / priceScale).
  * Never store absolute pixel positions for drawings or indicators.
+ *
+ * One instance per ChartContainer – no shared singleton.
  */
 
 import type { IChartApi, ISeriesApi, SeriesType, Time } from 'lightweight-charts'
@@ -30,6 +32,10 @@ export class CoordinateBridge {
   detach() {
     this.chart = null
     this.series = null
+  }
+
+  getChart() {
+    return this.chart
   }
 
   /** time (unix seconds) → x pixel */
@@ -77,12 +83,8 @@ export class CoordinateBridge {
     if (!this.chart) return () => {}
     const ts = this.chart.timeScale()
     ts.subscribeVisibleTimeRangeChange(callback)
-    // Also listen to size changes via ResizeObserver outside; this covers pan/zoom
     return () => {
       ts.unsubscribeVisibleTimeRangeChange(callback)
     }
   }
 }
-
-/** Singleton bridge used by drawing-tools and indicators */
-export const coordinateBridge = new CoordinateBridge()

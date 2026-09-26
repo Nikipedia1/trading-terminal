@@ -5,6 +5,8 @@ export type Interval =
   | '1h' | '2h' | '4h' | '6h' | '8h' | '12h'
   | '1d' | '3d' | '1w' | '1M'
 
+export type ExchangeId = 'binance' // KuCoin planned
+
 export interface Candle {
   time: number          // unix seconds (Lightweight Charts expects this)
   open: number
@@ -53,4 +55,24 @@ export interface MarketError {
   message: string
   exchange: string
   timestamp: number
+}
+
+/** Multi-panel layout */
+export interface ChartPanelConfig {
+  id: string
+  symbol: string
+  interval: Interval
+  exchange: ExchangeId
+  /** Optional sync group id – panels sharing the same group sync crosshair + time zoom */
+  syncGroup: string | null
+}
+
+export interface GridLayoutItem {
+  i: string
+  x: number
+  y: number
+  w: number
+  h: number
+  minW?: number
+  minH?: number
 }

@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
-import { ChartContainer } from '@/charts/ChartContainer'
+import { useLayoutStore } from '@/stores/layoutStore'
+import { PanelGrid } from '@/layout/PanelGrid'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -43,18 +44,30 @@ function Controls() {
   const stopLive = useMarketStore((s) => s.stopLive)
   const status = useMarketStore((s) => s.status)
 
+  // Keep primary panel in sync when user changes global controls
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const updatePanel = useLayoutStore((s) => s.updatePanel)
+
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b border-terminal-border bg-terminal-panel">
       <input
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm w-28 font-mono-nums"
         value={symbol}
-        onChange={(e) => setSymbol(e.target.value)}
+        onChange={(e) => {
+          const v = e.target.value
+          setSymbol(v)
+          updatePanel(primaryPanelId, { symbol: v.toUpperCase() })
+        }}
         placeholder="BTCUSDT"
       />
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
         value={interval}
-        onChange={(e) => setInterval(e.target.value as any)}
+        onChange={(e) => {
+          const v = e.target.value as any
+          setInterval(v)
+          updatePanel(primaryPanelId, { interval: v })
+        }}
       >
         {['1m', '5m', '15m', '1h', '4h', '1d'].map((i) => (
           <option key={i} value={i}>{i}</option>
@@ -82,6 +95,9 @@ function Controls() {
         </button>
       )}
       <StatusBadge />
+      <span className="text-xxs text-terminal-muted ml-2">
+        Side panels ← primary chart (★)
+      </span>
     </div>
   )
 }
@@ -185,39 +201,76 @@ function TickerBar() {
   )
 }
 
+/** Keep marketStore (trades/orderbook/ticker) aligned with primary chart panel */
+function usePrimarySync() {
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const panels = useLayoutStore((s) => s.panels)
+  const setSymbol = useMarketStore((s) => s.setSymbol)
+  const setInterval = useMarketStore((s) => s.setInterval)
+  const loadHistorical = useMarketStore((s) => s.loadHistorical)
+  const startLive = useMarketStore((s) => s.startLive)
+  const stopLive = useMarketStore((s) => s.stopLive)
+
+  const primary = panels.find((p) => p.id === primaryPanelId)
+
+  useEffect(() => {
+    if (!primary) return
+    stopLive()
+    setSymbol(primary.symbol)
+    setInterval(primary.interval)
+    loadHistorical().then(() => startLive())
+  }, [primary?.symbol, primary?.interval, primaryPanelId])
+}
+
+function ChartArea() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    if (!ref.current) return
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect
+      setSize({ width, height })
+    })
+    ro.observe(ref.current)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative">
+      <PanelGrid width={size.width} height={size.height} />
+    </div>
+  )
+}
+
 export default function App() {
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
 
-  // Auto-load on mount
   useEffect(() => {
     loadHistorical().then(() => startLive())
   }, [])
+
+  usePrimarySync()
 
   return (
     <div className="h-full flex flex-col">
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
-        <span className="text-xxs text-terminal-muted">Binance · Real-time · No mocks</span>
+        <span className="text-xxs text-terminal-muted">Binance · Real-time · Multi-panel · No mocks</span>
       </header>
 
       <ErrorBanner />
       <Controls />
       <TickerBar />
 
-      {/* Main layout: Chart (2/3) + side panels (1/3) */}
       <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden min-h-0">
-        {/* Chart takes 2 columns */}
-        <section className="col-span-2 bg-terminal-panel flex flex-col min-h-0">
-          <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
-            Chart · BTCUSDT
-          </div>
-          <div className="flex-1 min-h-0">
-            <ChartContainer />
-          </div>
+        {/* Chart area – multi-panel grid (2 cols) */}
+        <section className="col-span-2 bg-terminal-bg flex flex-col min-h-0 min-w-0">
+          <ChartArea />
         </section>
 
-        {/* Right column: Trades + OrderBook stacked */}
+        {/* Right column: Trades + OrderBook (primary panel) */}
         <section className="bg-terminal-panel flex flex-col min-h-0">
           <div className="flex-1 flex flex-col min-h-0 border-b border-terminal-border">
             <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">

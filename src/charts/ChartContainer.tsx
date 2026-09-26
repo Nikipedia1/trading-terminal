@@ -1,13 +1,23 @@
 /**
- * ChartContainer – single chart pane with real Binance data.
- * Handles create/destroy, ResizeObserver, data sync and coordinate-bridge attachment.
+ * ChartContainer – single chart pane with real exchange data.
+ * Owns its CoordinateBridge instance (anti-pellicola).
+ * ResizeObserver → chart.applyOptions → all coordinate APIs stay valid.
+ * Optional syncGroup for crosshair + visible time range.
  */
 
 import { useEffect, useRef } from 'react'
-import { createChart, type IChartApi, ColorType } from 'lightweight-charts'
-import { useMarketStore } from '@/stores/marketStore'
+import {
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type Time,
+  ColorType,
+  CrosshairMode,
+} from 'lightweight-charts'
+import type { Candle, ConnectionStatus, MarketError } from '@/types'
 import { SeriesManager } from './series-manager'
-import { coordinateBridge } from './coordinate-bridge'
+import { CoordinateBridge } from './coordinate-bridge'
+import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
 
 const CHART_OPTIONS = {
   layout: {
@@ -19,7 +29,7 @@ const CHART_OPTIONS = {
     horzLines: { color: '#1e2329' },
   },
   crosshair: {
-    mode: 1, // Normal
+    mode: CrosshairMode.Normal,
     vertLine: { color: '#848e9c', width: 1 as const, style: 2, labelBackgroundColor: '#1e2329' },
     horzLine: { color: '#848e9c', width: 1 as const, style: 2, labelBackgroundColor: '#1e2329' },
   },
@@ -35,17 +45,28 @@ const CHART_OPTIONS = {
   handleScroll: { vertTouchDrag: true },
 }
 
-export function ChartContainer() {
+export interface ChartContainerProps {
+  panelId: string
+  candles: Candle[]
+  status: ConnectionStatus
+  lastError: MarketError | null
+  /** When set, this panel joins the named sync group */
+  syncGroup?: string | null
+}
+
+export function ChartContainer({
+  panelId,
+  candles,
+  status,
+  lastError,
+  syncGroup = null,
+}: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMgrRef = useRef<SeriesManager | null>(null)
+  const bridgeRef = useRef<CoordinateBridge | null>(null)
   const lastHistoryKeyRef = useRef<string>('')
-
-  const candles = useMarketStore((s) => s.candles)
-  const symbol = useMarketStore((s) => s.symbol)
-  const interval = useMarketStore((s) => s.interval)
-  const status = useMarketStore((s) => s.status)
-  const lastError = useMarketStore((s) => s.lastError)
+  const applyingRemoteRef = useRef(false)
 
   // ── Create chart once ───────────────────────────────────────────────────
   useEffect(() => {
@@ -60,14 +81,18 @@ export function ChartContainer() {
     const seriesMgr = new SeriesManager()
     seriesMgr.attach(chart)
 
+    const bridge = new CoordinateBridge()
     const candleSeries = seriesMgr.getCandleSeries()
     if (candleSeries) {
-      coordinateBridge.attach(chart, candleSeries)
+      bridge.attach(chart, candleSeries)
     }
 
     chartRef.current = chart
     seriesMgrRef.current = seriesMgr
+    bridgeRef.current = bridge
 
+    // Resize → applyOptions → Lightweight Charts recalculates all coordinates
+    // (anti-pellicola: overlays that query the bridge will see correct pixels)
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       if (width > 0 && height > 0) {
@@ -78,30 +103,103 @@ export function ChartContainer() {
 
     return () => {
       ro.disconnect()
-      coordinateBridge.detach()
+      bridge.detach()
       seriesMgr.detach()
       chart.remove()
       chartRef.current = null
       seriesMgrRef.current = null
+      bridgeRef.current = null
     }
   }, [])
 
-  // ── Full replace when history is (re)loaded (symbol/interval change or first load)
+  // ── Data sync ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
 
-    const historyKey = `${symbol}|${interval}|${candles[0].time}|${candles.length}`
-    // Only full setData when the history set actually changed
+    const historyKey = `${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       seriesMgrRef.current.setCandles(candles)
       chartRef.current?.timeScale().fitContent()
     } else {
-      // Same history → just update the last candle (live tick)
       const last = candles[candles.length - 1]
       seriesMgrRef.current.updateCandle(last)
     }
-  }, [candles, symbol, interval])
+  }, [candles])
+
+  // ── Optional sync group: publish + subscribe time range & crosshair ─────
+  useEffect(() => {
+    if (!syncGroup || !chartRef.current) return
+
+    const chart = chartRef.current
+    const candleSeries = seriesMgrRef.current?.getCandleSeries() as
+      | ISeriesApi<'Candlestick'>
+      | null
+
+    // Publish local visible range changes
+    const onRange = () => {
+      if (applyingRemoteRef.current) return
+      const range = chart.timeScale().getVisibleRange()
+      if (range && typeof range.from === 'number' && typeof range.to === 'number') {
+        publishSync(syncGroup, panelId, {
+          type: 'timeRange',
+          from: range.from as number,
+          to: range.to as number,
+        })
+      }
+    }
+    chart.timeScale().subscribeVisibleTimeRangeChange(onRange)
+
+    // Publish crosshair
+    const onCrosshair = (param: any) => {
+      if (applyingRemoteRef.current) return
+      if (!param || param.time === undefined) {
+        publishSync(syncGroup, panelId, { type: 'crosshair', time: null, price: null })
+        return
+      }
+      const time = typeof param.time === 'number' ? param.time : null
+      let price: number | null = null
+      if (candleSeries && param.seriesData) {
+        const d = param.seriesData.get(candleSeries)
+        if (d && 'close' in d) price = d.close as number
+      }
+      publishSync(syncGroup, panelId, { type: 'crosshair', time, price })
+    }
+    chart.subscribeCrosshairMove(onCrosshair)
+
+    // Receive remote sync
+    const unsub = subscribeSyncGroup(syncGroup, (sourceId, payload: SyncPayload) => {
+      if (sourceId === panelId) return
+      const c = chartRef.current
+      if (!c) return
+
+      applyingRemoteRef.current = true
+      try {
+        if (payload.type === 'timeRange') {
+          c.timeScale().setVisibleRange({
+            from: payload.from as Time,
+            to: payload.to as Time,
+          })
+        } else if (payload.type === 'crosshair') {
+          // Lightweight Charts has no public setCrosshairPosition that is stable across versions;
+          // time-range sync is the primary useful link. Crosshair broadcast is reserved for future overlay layer.
+        }
+      } catch {
+        /* ignore invalid ranges */
+      } finally {
+        // small delay so local subscribers do not echo
+        requestAnimationFrame(() => {
+          applyingRemoteRef.current = false
+        })
+      }
+    })
+
+    return () => {
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(onRange)
+      chart.unsubscribeCrosshairMove(onCrosshair)
+      unsub()
+    }
+  }, [syncGroup, panelId])
 
   return (
     <div className="relative w-full h-full bg-terminal-panel">
@@ -118,7 +216,7 @@ export function ChartContainer() {
 
       {status === 'connecting' && candles.length === 0 && !lastError && (
         <div className="absolute inset-0 flex items-center justify-center text-terminal-muted text-sm z-10">
-          Connecting to Binance…
+          Connecting…
         </div>
       )}
     </div>
