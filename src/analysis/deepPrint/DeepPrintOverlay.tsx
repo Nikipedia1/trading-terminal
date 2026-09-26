@@ -1,5 +1,7 @@
 /**
  * Deep Print – Bid/Ask footprint with imbalance + stacked imbalance.
+ * Palette: buy #0ecb81 · sell #a855f7
+ * Layout: SELL | PX | BUY | Δ
  * Anti-pellicola: position from timeToCoordinate / priceToCoordinate.
  */
 
@@ -24,6 +26,8 @@ interface DeepPrintOverlayProps {
 
 const IMB_THRESHOLD = 0.7
 const STACK_MIN = 3
+const BUY = '#0ecb81'
+const SELL = '#a855f7'
 
 function formatQty(q: number): string {
   if (Math.abs(q) >= 1000) return q.toFixed(2)
@@ -258,12 +262,10 @@ export function DeepPrintOverlay({
       <div className="bg-[#0b0e11]/97 border border-[#2b3139] rounded-md shadow-2xl overflow-hidden font-mono">
         <div className="px-2.5 py-2 border-b border-[#2b3139] bg-[#12161c]">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] font-bold text-[#eaecef] tracking-wide">
-              Deep Print
-            </span>
+            <span className="text-[12px] font-bold text-[#eaecef] tracking-wide">Deep Print</span>
             <span
               className={`text-[13px] font-bold tabular-nums ${
-                model.totalDelta >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                model.totalDelta >= 0 ? 'text-[#0ecb81]' : 'text-[#a855f7]'
               }`}
             >
               Δ {formatQty(model.totalDelta)}
@@ -273,7 +275,7 @@ export function DeepPrintOverlay({
                 buyPct >= 0.55
                   ? 'text-[#0ecb81]'
                   : buyPct <= 0.45
-                    ? 'text-[#f6465d]'
+                    ? 'text-[#a855f7]'
                     : 'text-[#848e9c]'
               }`}
               title="Buy volume share"
@@ -295,8 +297,7 @@ export function DeepPrintOverlay({
           </div>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-[10px] text-[#848e9c]">
-              {pinned ? `📌 pinned` : 'hover'} · {model.tradeCount} trades · tick{' '}
-              {model.tickSize}
+              {pinned ? `📌 pinned` : 'hover'} · {model.tradeCount} trades · tick {model.tickSize}
             </span>
             <button
               type="button"
@@ -340,9 +341,7 @@ export function DeepPrintOverlay({
               onChange={(e) => setDeltaFilterPct(Number(e.target.value))}
               className="flex-1 h-1 accent-[#0ecb81]"
             />
-            <span className="text-[10px] text-[#eaecef] w-8 tabular-nums">
-              {deltaFilterPct}%
-            </span>
+            <span className="text-[10px] text-[#eaecef] w-8 tabular-nums">{deltaFilterPct}%</span>
           </div>
           {stacked.size >= STACK_MIN && (
             <div
@@ -351,12 +350,12 @@ export function DeepPrintOverlay({
                 background:
                   model.totalDelta >= 0
                     ? 'rgba(14, 203, 129, 0.15)'
-                    : 'rgba(246, 70, 93, 0.15)',
+                    : 'rgba(168, 85, 247, 0.15)',
                 borderColor:
                   model.totalDelta >= 0
                     ? 'rgba(14, 203, 129, 0.5)'
-                    : 'rgba(246, 70, 93, 0.5)',
-                color: model.totalDelta >= 0 ? '#0ecb81' : '#f6465d',
+                    : 'rgba(168, 85, 247, 0.5)',
+                color: model.totalDelta >= 0 ? BUY : SELL,
               }}
             >
               ⚠ STACKED IMBALANCE · {stacked.size} levels ≥{STACK_MIN} consecutive
@@ -365,9 +364,10 @@ export function DeepPrintOverlay({
           )}
         </div>
 
+        {/* 4 columns: SELL | PX | BUY | Δ */}
         <div className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80">
-          <span className="text-left text-[#f6465d]">SELL</span>
-          <span className="text-center text-[#848e9c]">PRICE</span>
+          <span className="text-left text-[#a855f7]">SELL</span>
+          <span className="text-center text-[#848e9c]">PX</span>
           <span className="text-right text-[#0ecb81]">BUY</span>
           <span className="text-right text-[#848e9c]">Δ</span>
         </div>
@@ -387,14 +387,14 @@ export function DeepPrintOverlay({
               const imb = levelImbalance(l, IMB_THRESHOLD)
               const isStack = stacked.has(l.price)
               const ratio = buyRatio(l)
-              const sellAlpha = imb === 'sell' ? 0.55 : 0.28
-              const buyAlpha = imb === 'buy' ? 0.55 : 0.28
+              const sellAlpha = imb === 'sell' ? 0.72 : 0.42
+              const buyAlpha = imb === 'buy' ? 0.72 : 0.42
 
               let rowBg = 'transparent'
-              if (isStack && imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.12)'
-              else if (isStack && imb === 'sell') rowBg = 'rgba(246, 70, 93, 0.12)'
-              else if (imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.06)'
-              else if (imb === 'sell') rowBg = 'rgba(246, 70, 93, 0.06)'
+              if (isStack && imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.18)'
+              else if (isStack && imb === 'sell') rowBg = 'rgba(168, 85, 247, 0.18)'
+              else if (imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.10)'
+              else if (imb === 'sell') rowBg = 'rgba(168, 85, 247, 0.10)'
 
               return (
                 <div
@@ -406,7 +406,7 @@ export function DeepPrintOverlay({
                     boxShadow: isStack
                       ? imb === 'buy'
                         ? 'inset 3px 0 0 #0ecb81'
-                        : 'inset 3px 0 0 #f6465d'
+                        : 'inset 3px 0 0 #a855f7'
                       : undefined,
                   }}
                   title={
@@ -422,10 +422,10 @@ export function DeepPrintOverlay({
                       className="absolute inset-y-1 right-0 rounded-sm"
                       style={{
                         width: `${Math.max(l.sellQty > 0 ? 10 : 0, sellPct)}%`,
-                        backgroundColor: `rgba(246, 70, 93, ${sellAlpha})`,
+                        backgroundColor: `rgba(168, 85, 247, ${sellAlpha})`,
                       }}
                     />
-                    <span className="relative text-[12px] font-semibold text-[#f6465d] tabular-nums">
+                    <span className="relative text-[12px] font-semibold text-[#a855f7] tabular-nums">
                       {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
                     </span>
                   </div>
@@ -434,7 +434,7 @@ export function DeepPrintOverlay({
                       imb === 'buy'
                         ? 'text-[#0ecb81]'
                         : imb === 'sell'
-                          ? 'text-[#f6465d]'
+                          ? 'text-[#a855f7]'
                           : 'text-[#eaecef]'
                     }`}
                   >
@@ -458,8 +458,8 @@ export function DeepPrintOverlay({
                         className="h-3 rounded-sm"
                         style={{
                           width: `${Math.max(l.delta !== 0 ? 14 : 0, dPct)}%`,
-                          backgroundColor: l.delta >= 0 ? '#0ecb81' : '#a855f7',
-                          opacity: imb ? 0.95 : 0.75,
+                          backgroundColor: l.delta >= 0 ? BUY : SELL,
+                          opacity: imb ? 0.95 : 0.8,
                         }}
                       />
                     </div>
@@ -471,7 +471,7 @@ export function DeepPrintOverlay({
         </div>
 
         <div className="flex justify-between items-center px-2.5 py-1.5 border-t border-[#2b3139] text-[11px]">
-          <span className="text-[#f6465d] font-semibold tabular-nums">
+          <span className="text-[#a855f7] font-semibold tabular-nums">
             Σ {formatQty(model.totalSell)}
           </span>
           <span className="text-[#848e9c] text-[10px]">
