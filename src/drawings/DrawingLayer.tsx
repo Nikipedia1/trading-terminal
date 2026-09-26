@@ -2,9 +2,9 @@
  * DrawingLayer – overlay canvas.
  *
  * Modes:
- * - pan:    pointer-events NONE → Lightweight Charts receives drag/scroll/zoom
- * - cursor: pointer-events AUTO → select / drag drawings
- * - tools:  pointer-events AUTO → create drawings
+ * - pan / passThrough: pointer-events NONE → chart receives events
+ * - cursor: select drawings
+ * - tools: create drawings
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -20,6 +20,8 @@ interface DrawingLayerProps {
   symbol: string
   bridge: CoordinateBridge | null
   containerRef: React.RefObject<HTMLDivElement | null>
+  /** Force pointer-events none (e.g. Deep Print needs chart hover/click) */
+  passThrough?: boolean
 }
 
 interface DragState {
@@ -29,7 +31,13 @@ interface DragState {
   startLogical: LogicalPoint
 }
 
-export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingLayerProps) {
+export function DrawingLayer({
+  panelId,
+  symbol,
+  bridge,
+  containerRef,
+  passThrough = false,
+}: DrawingLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawings = useDrawingStore((s) => {
     const sym = symbol.toUpperCase()
@@ -107,7 +115,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
-      // Space held → temporary pan feel via switching (optional shortcut)
       if (e.key === 'Escape') {
         draftRef.current = null
         previewRef.current = null
@@ -120,7 +127,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
         e.preventDefault()
         removeDrawing(panelId, symbol, selectedId)
       }
-      // V = select, H = pan (common CAD-like shortcuts)
       if (e.key === 'v' || e.key === 'V') {
         useDrawingStore.getState().setActiveTool('cursor')
       }
@@ -341,8 +347,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
   }
 
   const onPointerDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Pan mode: events should not reach here (pointer-events:none), but guard anyway
-    if (activeTool === 'pan') return
+    if (passThrough || activeTool === 'pan') return
 
     if (!bridge || !containerRef.current) return
     const pix = eventToPixel(e)
@@ -400,7 +405,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
   }
 
   const onPointerMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (activeTool === 'pan') return
+    if (passThrough || activeTool === 'pan') return
     if (!bridge || !containerRef.current) return
 
     if (dragRef.current && activeTool === 'cursor') {
@@ -429,8 +434,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     dragRef.current = null
   }
 
-  // Pan = let events pass through to Lightweight Charts
-  const capturePointer = activeTool !== 'pan'
+  const capturePointer = !passThrough && activeTool !== 'pan'
 
   return (
     <canvas
@@ -439,7 +443,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       style={{
         pointerEvents: capturePointer ? 'auto' : 'none',
         cursor:
-          activeTool === 'pan'
+          activeTool === 'pan' || passThrough
             ? 'default'
             : activeTool === 'cursor'
               ? 'default'

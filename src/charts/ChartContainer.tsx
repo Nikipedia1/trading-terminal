@@ -1,6 +1,5 @@
 /**
- * ChartContainer – single chart pane with real exchange data.
- * Hosts DrawingLayer + DeepPrintOverlay (anti-pellicola via CoordinateBridge).
+ * ChartContainer – chart + DrawingLayer + DeepPrintOverlay.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -257,11 +256,13 @@ export function ChartContainer({
     >
       <div ref={containerRef} className="absolute inset-0" />
 
+      {/* When Deep Print is on, pass passThrough so chart receives hover/click */}
       <DrawingLayer
         panelId={panelId}
         symbol={symbol}
         bridge={bridge}
         containerRef={containerRef}
+        passThrough={deepPrintEnabled}
       />
 
       <DeepPrintOverlay

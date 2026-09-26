@@ -8,6 +8,7 @@ import { ConnectionBadge } from './ConnectionBadge'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
+import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
@@ -27,6 +28,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const panelCount = useLayoutStore((s) => s.panels.length)
   const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
+  const setActiveTool = useDrawingStore((s) => s.setActiveTool)
   const [deepPrint, setDeepPrint] = useState(false)
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
@@ -37,9 +39,20 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
   const isPrimary = primaryPanelId === id
 
+  const toggleDeepPrint = () => {
+    setDeepPrint((v) => {
+      const next = !v
+      if (next) {
+        // Chart must receive mouse events → Pan mode (drawing canvas pointer-events:none)
+        setActiveTool('pan')
+      }
+      return next
+    })
+  }
+
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
-      <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
+      <div className="panel-drag-handle flex flex-wrap items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
         <input
           className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
           value={symbol}
@@ -103,23 +116,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
         <button
           type="button"
-          title="Deep Print – hover/click a candle for bid/ask print"
-          className={`text-xxs px-1.5 py-0.5 rounded border ${
-            deepPrint
-              ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
-              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
-          }`}
-          onClick={(e) => {
-            e.stopPropagation()
-            setDeepPrint((v) => !v)
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          Print
-        </button>
-
-        <button
-          type="button"
           title="Personalizza candele e canvas"
           className={`text-xxs px-1.5 py-0.5 rounded border ${
             stylePanelOpen
@@ -174,9 +170,35 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </div>
       )}
 
-      <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10">
-        <DrawingToolbar panelId={id} symbol={symbol} />
+      {/* Toolbar row: drawings + Deep Print (always visible) */}
+      <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10 flex items-center">
+        <button
+          type="button"
+          title="Deep Print – attiva, poi hover/click su una candela (usa Pan)"
+          className={`ml-2 shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
+            deepPrint
+              ? 'bg-terminal-blue text-white border-terminal-blue'
+              : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleDeepPrint()
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Print
+        </button>
+        <span className="w-px h-4 bg-terminal-border mx-1 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <DrawingToolbar panelId={id} symbol={symbol} />
+        </div>
       </div>
+
+      {deepPrint && (
+        <div className="shrink-0 px-2 py-0.5 text-xxs bg-terminal-blue/10 text-terminal-blue border-b border-terminal-blue/30">
+          Print ON — passa il mouse o clicca una candela · tool impostato su Pan · solo trade live nel buffer
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 relative">
         <ChartContainer
