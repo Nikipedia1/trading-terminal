@@ -156,6 +156,22 @@ export function OrderflowMenu({
                 />
                 Δ divergence flags
               </label>
+              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-[#f0b90b]"
+                  checked={state.deltaCfg.absorption !== false}
+                  onChange={(e) =>
+                    onChange({
+                      deltaCfg: {
+                        ...state.deltaCfg,
+                        absorption: e.target.checked,
+                      },
+                    })
+                  }
+                />
+                Abs / Agg tags
+              </label>
               <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
                 <span className="shrink-0">Min bar %</span>
                 <input
@@ -178,6 +194,10 @@ export function OrderflowMenu({
                   {state.deltaCfg.minBarPct}%
                 </span>
               </div>
+              <p className="text-[9px] text-[#5e6673] leading-snug">
+                Agg = delta forte + close nella direzione · Abs = delta forte + close
+                contrario (assorbimento). Solo candele chiuse, dati reali.
+              </p>
             </div>
           )}
 
