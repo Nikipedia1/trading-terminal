@@ -7,6 +7,11 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Candle, Interval, ConnectionStatus, MarketError, ExchangeId } from '@/types'
 import { getExchangeClient } from '@/data/exchanges/registry'
 
+/** Max bars from REST (Binance/KuCoin public limit ≈ 1000). */
+const HISTORY_LIMIT = 1000
+/** Max bars kept in memory while streaming. */
+const LIVE_BUFFER_MAX = 1500
+
 interface PanelMarketState {
   candles: Candle[]
   status: ConnectionStatus
@@ -48,7 +53,7 @@ export function usePanelMarket(
     }))
 
     try {
-      const candles = await client.getKlines(symbol, interval, 300)
+      const candles = await client.getKlines(symbol, interval, HISTORY_LIMIT)
       if (!mountedRef.current) return
 
       setState({
@@ -70,7 +75,7 @@ export function usePanelMarket(
               next[next.length - 1] = candle
             } else if (!last || candle.time > last.time) {
               next.push(candle)
-              if (next.length > 500) next.shift()
+              if (next.length > LIVE_BUFFER_MAX) next.shift()
             }
             return {
               ...prev,
