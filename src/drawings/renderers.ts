@@ -17,6 +17,7 @@ import type {
   TextDrawing,
 } from './types'
 import { FIB_RETRACEMENT_LEVELS, FIB_EXTENSION_LEVELS } from './types'
+import { getHandlePixels } from './hitTest'
 
 function toPx(
   bridge: CoordinateBridge,
@@ -24,54 +25,83 @@ function toPx(
 ): { x: number; y: number } | null {
   const px = bridge.toPixel({ time: p.time as any, price: p.price })
   if (!px || px.x === null || px.y === null) return null
-  // Off-screen points still useful for line clipping
   return px
 }
 
-function applyStroke(ctx: CanvasRenderingContext2D, d: Drawing) {
+function applyStroke(ctx: CanvasRenderingContext2D, d: Drawing, selected: boolean) {
   ctx.strokeStyle = d.style.color
-  ctx.lineWidth = d.style.lineWidth
+  ctx.lineWidth = selected ? d.style.lineWidth + 1 : d.style.lineWidth
   ctx.setLineDash(d.style.lineDash ?? [])
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
+  if (selected) {
+    ctx.shadowColor = d.style.color
+    ctx.shadowBlur = 6
+  } else {
+    ctx.shadowBlur = 0
+  }
 }
 
-function drawTrendline(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d: TrendlineDrawing) {
+function drawTrendline(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: TrendlineDrawing,
+  selected: boolean
+) {
   const a = toPx(bridge, d.p1)
   const b = toPx(bridge, d.p2)
   if (!a || !b) return
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
   ctx.beginPath()
   ctx.moveTo(a.x, a.y)
   ctx.lineTo(b.x, b.y)
   ctx.stroke()
+  ctx.shadowBlur = 0
 }
 
-function drawHorizontal(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d: HorizontalDrawing, width: number) {
+function drawHorizontal(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: HorizontalDrawing,
+  width: number,
+  selected: boolean
+) {
   const y = bridge.priceToCoordinate(d.price)
   if (y === null) return
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
   ctx.beginPath()
   ctx.moveTo(0, y)
   ctx.lineTo(width, y)
   ctx.stroke()
-  // Label
+  ctx.shadowBlur = 0
   ctx.fillStyle = d.style.color
   ctx.font = '10px sans-serif'
   ctx.fillText(d.price.toFixed(2), 4, y - 4)
 }
 
-function drawVertical(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d: VerticalDrawing, height: number) {
+function drawVertical(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: VerticalDrawing,
+  height: number,
+  selected: boolean
+) {
   const x = bridge.timeToCoordinate(d.time as any)
   if (x === null) return
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
   ctx.beginPath()
   ctx.moveTo(x, 0)
   ctx.lineTo(x, height)
   ctx.stroke()
+  ctx.shadowBlur = 0
 }
 
-function drawRectangle(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d: RectangleDrawing) {
+function drawRectangle(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: RectangleDrawing,
+  selected: boolean
+) {
   const a = toPx(bridge, d.p1)
   const b = toPx(bridge, d.p2)
   if (!a || !b) return
@@ -79,27 +109,30 @@ function drawRectangle(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, 
   const y = Math.min(a.y, b.y)
   const w = Math.abs(b.x - a.x)
   const h = Math.abs(b.y - a.y)
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
   const opacity = d.style.fillOpacity ?? 0.12
   ctx.fillStyle = hexToRgba(d.style.color, opacity)
   ctx.fillRect(x, y, w, h)
   ctx.strokeRect(x, y, w, h)
+  ctx.shadowBlur = 0
 }
 
-function drawChannel(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d: ChannelDrawing) {
+function drawChannel(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: ChannelDrawing,
+  selected: boolean
+) {
   const a = toPx(bridge, d.p1)
   const b = toPx(bridge, d.p2)
   const c = toPx(bridge, d.p3)
   if (!a || !b || !c) return
 
-  // Offset vector from line p1-p2 to p3 (perpendicular component approximated via point)
-  // Parallel line through p3 with same direction as p1→p2
   const dx = b.x - a.x
   const dy = b.y - a.y
-  // Project: point on parallel = p3 + (p2-p1) direction
   const dPx = { x: c.x + dx, y: c.y + dy }
 
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
   ctx.beginPath()
   ctx.moveTo(a.x, a.y)
   ctx.lineTo(b.x, b.y)
@@ -110,7 +143,6 @@ function drawChannel(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d:
   ctx.lineTo(dPx.x, dPx.y)
   ctx.stroke()
 
-  // Fill between
   const opacity = d.style.fillOpacity ?? 0.08
   ctx.fillStyle = hexToRgba(d.style.color, opacity)
   ctx.beginPath()
@@ -120,20 +152,21 @@ function drawChannel(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d:
   ctx.lineTo(c.x, c.y)
   ctx.closePath()
   ctx.fill()
+  ctx.shadowBlur = 0
 }
 
 function drawFibRetracement(
   ctx: CanvasRenderingContext2D,
   bridge: CoordinateBridge,
   d: FibRetracementDrawing,
-  width: number
+  selected: boolean
 ) {
   const a = toPx(bridge, d.p1)
   const b = toPx(bridge, d.p2)
   if (!a || !b) return
 
   const priceRange = d.p2.price - d.p1.price
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
 
   for (const level of FIB_RETRACEMENT_LEVELS) {
     const price = d.p1.price + priceRange * level
@@ -152,19 +185,20 @@ function drawFibRetracement(
     ctx.fillText(`${(level * 100).toFixed(1)}%  ${price.toFixed(2)}`, x2 + 4, y + 3)
   }
 
-  // Trend line
   ctx.setLineDash([4, 3])
   ctx.beginPath()
   ctx.moveTo(a.x, a.y)
   ctx.lineTo(b.x, b.y)
   ctx.stroke()
   ctx.setLineDash([])
+  ctx.shadowBlur = 0
 }
 
 function drawFibExtension(
   ctx: CanvasRenderingContext2D,
   bridge: CoordinateBridge,
-  d: FibExtensionDrawing
+  d: FibExtensionDrawing,
+  selected: boolean
 ) {
   const a = toPx(bridge, d.p1)
   const b = toPx(bridge, d.p2)
@@ -172,9 +206,8 @@ function drawFibExtension(
   if (!a || !b || !c) return
 
   const move = d.p2.price - d.p1.price
-  applyStroke(ctx, d)
+  applyStroke(ctx, d, selected)
 
-  // Base A-B and B-C
   ctx.setLineDash([4, 3])
   ctx.beginPath()
   ctx.moveTo(a.x, a.y)
@@ -197,14 +230,25 @@ function drawFibExtension(
     ctx.font = '10px sans-serif'
     ctx.fillText(`${level.toFixed(3)}  ${price.toFixed(2)}`, x2 + 2, y + 3)
   }
+  ctx.shadowBlur = 0
 }
 
-function drawText(ctx: CanvasRenderingContext2D, bridge: CoordinateBridge, d: TextDrawing) {
+function drawText(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: TextDrawing,
+  selected: boolean
+) {
   const p = toPx(bridge, d.point)
   if (!p) return
+  if (selected) {
+    ctx.shadowColor = d.style.color
+    ctx.shadowBlur = 6
+  }
   ctx.fillStyle = d.style.color
   ctx.font = `${d.style.fontSize ?? 12}px sans-serif`
   ctx.fillText(d.text, p.x + 4, p.y - 4)
+  ctx.shadowBlur = 0
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -217,6 +261,23 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
+function drawHandles(
+  ctx: CanvasRenderingContext2D,
+  bridge: CoordinateBridge,
+  d: Drawing
+) {
+  const handles = getHandlePixels(bridge, d)
+  for (const h of handles) {
+    ctx.fillStyle = '#ffffff'
+    ctx.strokeStyle = d.style.color
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.arc(h.x, h.y, 5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+}
+
 /** Paint all drawings onto ctx using bridge for coordinate conversion */
 export function renderDrawings(
   ctx: CanvasRenderingContext2D,
@@ -224,36 +285,41 @@ export function renderDrawings(
   drawings: Drawing[],
   width: number,
   height: number,
-  preview: Drawing | null
+  preview: Drawing | null,
+  selectedId: string | null = null
 ) {
   ctx.clearRect(0, 0, width, height)
   const list = preview ? [...drawings, preview] : drawings
   for (const d of list) {
+    const selected = d.id === selectedId
     switch (d.tool) {
       case 'trendline':
-        drawTrendline(ctx, bridge, d)
+        drawTrendline(ctx, bridge, d, selected)
         break
       case 'horizontal':
-        drawHorizontal(ctx, bridge, d, width)
+        drawHorizontal(ctx, bridge, d, width, selected)
         break
       case 'vertical':
-        drawVertical(ctx, bridge, d, height)
+        drawVertical(ctx, bridge, d, height, selected)
         break
       case 'rectangle':
-        drawRectangle(ctx, bridge, d)
+        drawRectangle(ctx, bridge, d, selected)
         break
       case 'channel':
-        drawChannel(ctx, bridge, d)
+        drawChannel(ctx, bridge, d, selected)
         break
       case 'fib_retracement':
-        drawFibRetracement(ctx, bridge, d, width)
+        drawFibRetracement(ctx, bridge, d, selected)
         break
       case 'fib_extension':
-        drawFibExtension(ctx, bridge, d)
+        drawFibExtension(ctx, bridge, d, selected)
         break
       case 'text':
-        drawText(ctx, bridge, d)
+        drawText(ctx, bridge, d, selected)
         break
+    }
+    if (selected && d.id !== 'preview') {
+      drawHandles(ctx, bridge, d)
     }
   }
 }

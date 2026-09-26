@@ -1,14 +1,13 @@
 /**
- * Drawing toolbar – tool selection, color, clear, export/import.
- * Scoped to the panel that owns it.
+ * Drawing toolbar – tool selection, color, select-edit actions, export/import.
  */
 
-import { useRef } from 'react'
+import { useRef, useEffect } from 'react'
 import { useDrawingStore } from './drawingStore'
 import type { DrawingTool } from './types'
 
 const TOOLS: { id: DrawingTool; label: string; title: string }[] = [
-  { id: 'cursor', label: '↖', title: 'Cursor / select' },
+  { id: 'cursor', label: '↖', title: 'Cursor / select drawings' },
   { id: 'trendline', label: '／', title: 'Trendline (2 clicks)' },
   { id: 'horizontal', label: '─', title: 'Horizontal line' },
   { id: 'vertical', label: '│', title: 'Vertical line' },
@@ -34,11 +33,35 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
   const clearDrawings = useDrawingStore((s) => s.clearDrawings)
   const exportJson = useDrawingStore((s) => s.exportJson)
   const importJson = useDrawingStore((s) => s.importJson)
+  const selectedId = useDrawingStore((s) => s.selectedId)
+  const removeDrawing = useDrawingStore((s) => s.removeDrawing)
+  const updateDrawing = useDrawingStore((s) => s.updateDrawing)
+  const setSelectedId = useDrawingStore((s) => s.setSelectedId)
   const drawingCount = useDrawingStore((s) => {
     const sym = symbol.toUpperCase()
     return s.byPanelSymbol[panelId]?.[sym]?.length ?? 0
   })
+  const selectedDrawing = useDrawingStore((s) => {
+    if (!s.selectedId) return null
+    const sym = symbol.toUpperCase()
+    return s.byPanelSymbol[panelId]?.[sym]?.find((d) => d.id === s.selectedId) ?? null
+  })
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // When a color is picked and something is selected → recolor that drawing
+  const applyColor = (color: string) => {
+    setActiveColor(color)
+    if (selectedId && selectedDrawing) {
+      updateDrawing(panelId, symbol, selectedId, {
+        style: { ...selectedDrawing.style, color },
+      })
+    }
+  }
+
+  // Double-click text: edit (via toolbar hint when text selected)
+  useEffect(() => {
+    // no-op placeholder for future focus
+  }, [selectedId])
 
   const onExport = () => {
     const json = exportJson(panelId, symbol)
@@ -57,13 +80,19 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
     try {
       const text = await file.text()
       const result = importJson(panelId, symbol, text)
-      if (!result.ok) {
-        alert(`Import failed: ${result.error}`)
-      }
+      if (!result.ok) alert(`Import failed: ${result.error}`)
     } catch (err: any) {
       alert(`Import failed: ${err.message}`)
     }
     e.target.value = ''
+  }
+
+  const onEditText = () => {
+    if (!selectedDrawing || selectedDrawing.tool !== 'text') return
+    const next = window.prompt('Edit text:', selectedDrawing.text)
+    if (next !== null && next.trim()) {
+      updateDrawing(panelId, symbol, selectedDrawing.id, { text: next.trim() } as any)
+    }
   }
 
   return (
@@ -96,8 +125,8 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
         <button
           key={c}
           type="button"
-          title={c}
-          onClick={() => setActiveColor(c)}
+          title={selectedId ? `Recolor selected → ${c}` : c}
+          onClick={() => applyColor(c)}
           className={`w-4 h-4 rounded-sm border-2 shrink-0 ${
             activeColor === c ? 'border-white' : 'border-terminal-border'
           }`}
@@ -106,6 +135,40 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       ))}
 
       <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
+
+      {/* Selection actions */}
+      {selectedId && (
+        <>
+          <span className="text-xxs text-terminal-blue shrink-0">selected</span>
+          {selectedDrawing?.tool === 'text' && (
+            <button
+              type="button"
+              title="Edit text"
+              onClick={onEditText}
+              className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
+            >
+              Edit text
+            </button>
+          )}
+          <button
+            type="button"
+            title="Delete selected (Delete key)"
+            onClick={() => removeDrawing(panelId, symbol, selectedId)}
+            className="px-1.5 py-0.5 text-xxs text-terminal-red border border-terminal-red/50 rounded hover:bg-terminal-red/10"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            title="Deselect"
+            onClick={() => setSelectedId(null)}
+            className="px-1.5 py-0.5 text-xxs text-terminal-muted border border-terminal-border rounded hover:bg-terminal-hover"
+          >
+            Deselect
+          </button>
+          <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
+        </>
+      )}
 
       <button
         type="button"
