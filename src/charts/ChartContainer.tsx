@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + DrawingLayer + DeepPrintOverlay.
+ * ChartContainer – chart + drawings + Deep Print + Delta histogram.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -19,6 +19,7 @@ import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
+import { useCandleDeltaSeries } from '@/analysis/deltaPrint'
 
 function buildChartOptions(canvas: {
   background: string
@@ -52,7 +53,7 @@ function buildChartOptions(canvas: {
     },
     rightPriceScale: {
       borderColor: canvas.border,
-      scaleMargins: { top: 0.05, bottom: 0.25 },
+      scaleMargins: { top: 0.05, bottom: 0.32 },
     },
     timeScale: {
       borderColor: canvas.border,
@@ -86,6 +87,7 @@ export interface ChartContainerProps {
   lastError: MarketError | null
   syncGroup?: string | null
   deepPrintEnabled?: boolean
+  deltaEnabled?: boolean
 }
 
 export function ChartContainer({
@@ -98,10 +100,12 @@ export function ChartContainer({
   lastError,
   syncGroup = null,
   deepPrintEnabled = false,
+  deltaEnabled = false,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMgrRef = useRef<SeriesManager | null>(null)
+  const [seriesMgr, setSeriesMgr] = useState<SeriesManager | null>(null)
   const bridgeRef = useRef<CoordinateBridge | null>(null)
   const [bridge, setBridge] = useState<CoordinateBridge | null>(null)
   const lastHistoryKeyRef = useRef<string>('')
@@ -119,17 +123,18 @@ export function ChartContainer({
       height: containerRef.current.clientHeight,
     })
 
-    const seriesMgr = new SeriesManager()
-    seriesMgr.attach(chart, initial.candle)
+    const mgr = new SeriesManager()
+    mgr.attach(chart, initial.candle)
 
     const bridgeInstance = new CoordinateBridge()
-    const candleSeries = seriesMgr.getCandleSeries()
+    const candleSeries = mgr.getCandleSeries()
     if (candleSeries) {
       bridgeInstance.attach(chart, candleSeries)
     }
 
     chartRef.current = chart
-    seriesMgrRef.current = seriesMgr
+    seriesMgrRef.current = mgr
+    setSeriesMgr(mgr)
     bridgeRef.current = bridgeInstance
     setBridge(bridgeInstance)
 
@@ -144,10 +149,11 @@ export function ChartContainer({
     return () => {
       ro.disconnect()
       bridgeInstance.detach()
-      seriesMgr.detach()
+      mgr.detach()
       chart.remove()
       chartRef.current = null
       seriesMgrRef.current = null
+      setSeriesMgr(null)
       bridgeRef.current = null
       setBridge(null)
     }
@@ -155,8 +161,8 @@ export function ChartContainer({
 
   useEffect(() => {
     const chart = chartRef.current
-    const seriesMgr = seriesMgrRef.current
-    if (!chart || !seriesMgr) return
+    const mgr = seriesMgrRef.current
+    if (!chart || !mgr) return
 
     const opts = buildChartOptions(chartStyle.canvas)
     chart.applyOptions({
@@ -166,7 +172,7 @@ export function ChartContainer({
       rightPriceScale: { borderColor: chartStyle.canvas.border },
       timeScale: { borderColor: chartStyle.canvas.border },
     })
-    seriesMgr.applyStyle(chartStyle.candle)
+    mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
   useEffect(() => {
@@ -182,6 +188,9 @@ export function ChartContainer({
       seriesMgrRef.current.updateCandle(last)
     }
   }, [candles])
+
+  // Candle-level delta histogram (same timeScale)
+  useCandleDeltaSeries(deltaEnabled, seriesMgr, exchange, symbol, interval, candles)
 
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return
@@ -256,7 +265,6 @@ export function ChartContainer({
     >
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* When Deep Print is on, pass passThrough so chart receives hover/click */}
       <DrawingLayer
         panelId={panelId}
         symbol={symbol}

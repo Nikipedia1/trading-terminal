@@ -1,2 +1,3 @@
 export { DeepPrintOverlay } from './DeepPrintOverlay'
-export type { DeepPrintModel, PrintLevel } from './types'
+export { aggregatePrint, computeCandleDeltas } from './aggregate'
+export type { DeepPrintModel, PrintLevel, CandleDeltaBar } from './types'

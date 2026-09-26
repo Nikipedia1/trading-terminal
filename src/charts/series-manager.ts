@@ -1,6 +1,6 @@
 /**
- * Series Manager – owns candlestick + volume series lifecycle.
- * Style applied via applyStyle() from chartStyleStore.
+ * Series Manager – candlestick + volume + optional delta histogram.
+ * Delta shares the chart timeScale (anti-pellicola / no second chart).
  */
 
 import {
@@ -13,13 +13,17 @@ import {
 import type { Candle } from '@/types'
 import type { CandleStyle } from '@/stores/chartStyleStore'
 import { DEFAULT_CHART_STYLE, hexToRgba } from '@/stores/chartStyleStore'
+import type { CandleDeltaBar } from '@/analysis/deepPrint/types'
+
+const DELTA_UP = 'rgba(14, 203, 129, 0.85)'
+const DELTA_DOWN = 'rgba(246, 70, 93, 0.85)'
 
 export class SeriesManager {
   private chart: IChartApi | null = null
   private candleSeries: ISeriesApi<'Candlestick'> | null = null
   private volumeSeries: ISeriesApi<'Histogram'> | null = null
+  private deltaSeries: ISeriesApi<'Histogram'> | null = null
   private candleStyle: CandleStyle = { ...DEFAULT_CHART_STYLE.candle }
-  /** Cached candles so volume colors can be rebuilt on style change */
   private lastCandles: Candle[] = []
 
   attach(chart: IChartApi, style?: CandleStyle) {
@@ -40,17 +44,27 @@ export class SeriesManager {
       priceScaleId: 'volume',
     })
 
+    this.deltaSeries = chart.addHistogramSeries({
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'delta',
+      base: 0,
+    })
+
     chart.priceScale('volume').applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.72, bottom: 0.16 },
+    })
+    chart.priceScale('delta').applyOptions({
+      scaleMargins: { top: 0.88, bottom: 0 },
     })
     chart.priceScale('right').applyOptions({
-      scaleMargins: { top: 0.05, bottom: 0.25 },
+      scaleMargins: { top: 0.05, bottom: 0.32 },
     })
   }
 
   detach() {
     this.candleSeries = null
     this.volumeSeries = null
+    this.deltaSeries = null
     this.chart = null
     this.lastCandles = []
   }
@@ -59,7 +73,6 @@ export class SeriesManager {
     return this.candleSeries
   }
 
-  /** Live update of body / border / wick colors */
   applyStyle(style: CandleStyle) {
     this.candleStyle = { ...style }
     if (!this.candleSeries) return
@@ -71,7 +84,6 @@ export class SeriesManager {
       wickUpColor: style.upWick,
       wickDownColor: style.downWick,
     })
-    // Rebuild volume colors from cache
     if (this.lastCandles.length > 0) {
       this.setCandles(this.lastCandles)
     }
@@ -105,7 +117,6 @@ export class SeriesManager {
   updateCandle(candle: Candle) {
     if (!this.candleSeries || !this.volumeSeries) return
 
-    // Keep cache in sync for style rebuilds
     if (this.lastCandles.length > 0) {
       const last = this.lastCandles[this.lastCandles.length - 1]
       if (last && last.time === candle.time) {
@@ -132,5 +143,20 @@ export class SeriesManager {
       value: candle.volume,
       color: candle.close >= candle.open ? upVol : downVol,
     })
+  }
+
+  /** Full replace of candle-level delta histogram (same timeScale). */
+  setDeltaBars(bars: CandleDeltaBar[]) {
+    if (!this.deltaSeries) return
+    const data: HistogramData[] = bars.map((b) => ({
+      time: b.time as Time,
+      value: b.delta,
+      color: b.delta >= 0 ? DELTA_UP : DELTA_DOWN,
+    }))
+    this.deltaSeries.setData(data)
+  }
+
+  clearDelta() {
+    this.deltaSeries?.setData([])
   }
 }

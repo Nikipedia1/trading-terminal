@@ -1,8 +1,11 @@
-/** Aggregate aggressor trades into bid/ask print levels. */
+/** Aggregate aggressor trades into bid/ask print levels + delta. */
 
 import type { AggressorTrade } from '@/data/shared'
-import type { DeepPrintModel, PrintLevel } from './types'
-import { inferTickSize, roundToTick } from './interval'
+import type { DeepPrintModel, PrintLevel, CandleDeltaBar } from './types'
+import { inferTickSize, roundToTick, intervalToSeconds } from './interval'
+import type { Interval } from '@/types'
+import { queryTradesInRange } from './tradeBuffer'
+import type { ExchangeId } from '@/types'
 
 export function aggregatePrint(
   trades: AggressorTrade[],
@@ -38,6 +41,7 @@ export function aggregatePrint(
       price,
       sellQty: v.sell,
       buyQty: v.buy,
+      delta: v.buy - v.sell,
     }))
     .sort((a, b) => b.price - a.price)
 
@@ -48,7 +52,30 @@ export function aggregatePrint(
     levels,
     totalBuy,
     totalSell,
+    totalDelta: totalBuy - totalSell,
     tradeCount: trades.length,
     tickSize: tick,
   }
+}
+
+/** Candle-level delta for each bar time (from shared trade buffer). */
+export function computeCandleDeltas(
+  exchange: ExchangeId,
+  symbol: string,
+  candleTimes: number[],
+  interval: Interval
+): CandleDeltaBar[] {
+  const sec = intervalToSeconds(interval)
+  const out: CandleDeltaBar[] = []
+  for (const t of candleTimes) {
+    const trades = queryTradesInRange(exchange, symbol, t, t + sec)
+    let buy = 0
+    let sell = 0
+    for (const tr of trades) {
+      if (tr.aggressor === 'buy') buy += tr.qty
+      else sell += tr.qty
+    }
+    out.push({ time: t, delta: buy - sell })
+  }
+  return out
 }

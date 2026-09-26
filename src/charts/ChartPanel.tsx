@@ -30,6 +30,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
   const [deepPrint, setDeepPrint] = useState(false)
+  const [deltaOn, setDeltaOn] = useState(false)
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
     symbol,
@@ -42,10 +43,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const toggleDeepPrint = () => {
     setDeepPrint((v) => {
       const next = !v
-      if (next) {
-        // Chart must receive mouse events → Pan mode (drawing canvas pointer-events:none)
-        setActiveTool('pan')
-      }
+      if (next) setActiveTool('pan')
       return next
     })
   }
@@ -137,7 +135,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
             <button
               type="button"
               className="text-xxs px-1.5 py-0.5 border border-terminal-border rounded hover:bg-terminal-hover"
-              title="Ricarica storico + WS"
+              title="Ricarica"
               onClick={(e) => {
                 e.stopPropagation()
                 reload()
@@ -166,15 +164,13 @@ export function ChartPanel({ config }: ChartPanelProps) {
       {lastError && (
         <div className="shrink-0 px-2 py-1 text-xxs bg-terminal-red/10 text-terminal-red border-b border-terminal-red/30">
           <strong>[{lastError.code}]</strong> {lastError.message}
-          {lastError.exchange ? ` · ${lastError.exchange}` : ''}
         </div>
       )}
 
-      {/* Toolbar row: drawings + Deep Print (always visible) */}
       <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10 flex items-center">
         <button
           type="button"
-          title="Deep Print – attiva, poi hover/click su una candela (usa Pan)"
+          title="Deep Print – hover/click candela"
           className={`ml-2 shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             deepPrint
               ? 'bg-terminal-blue text-white border-terminal-blue'
@@ -188,15 +184,32 @@ export function ChartPanel({ config }: ChartPanelProps) {
         >
           Print
         </button>
+        <button
+          type="button"
+          title="Delta Print – histogram buy−sell per candela (trade live)"
+          className={`ml-1 shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
+            deltaOn
+              ? 'bg-terminal-blue text-white border-terminal-blue'
+              : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setDeltaOn((v) => !v)
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Delta
+        </button>
         <span className="w-px h-4 bg-terminal-border mx-1 shrink-0" />
         <div className="flex-1 min-w-0">
           <DrawingToolbar panelId={id} symbol={symbol} />
         </div>
       </div>
 
-      {deepPrint && (
+      {(deepPrint || deltaOn) && (
         <div className="shrink-0 px-2 py-0.5 text-xxs bg-terminal-blue/10 text-terminal-blue border-b border-terminal-blue/30">
-          Print ON — passa il mouse o clicca una candela · tool impostato su Pan · solo trade live nel buffer
+          {deepPrint && 'Print ON (hover/click candela) · '}
+          {deltaOn && 'Delta ON (histogram in basso, solo trade nel buffer live)'}
         </div>
       )}
 
@@ -211,6 +224,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           lastError={lastError}
           syncGroup={syncGroup}
           deepPrintEnabled={deepPrint}
+          deltaEnabled={deltaOn}
         />
       </div>
     </div>

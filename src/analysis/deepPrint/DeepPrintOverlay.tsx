@@ -1,9 +1,6 @@
 /**
- * Deep Print overlay – Bid/Ask volume by price for one candle.
- *
- * Anti-pellicola:
- * - Stores candleTime + anchorPrice (logical only)
- * - Pixel position from CoordinateBridge on every pan/zoom/resize
+ * Deep Print overlay – Bid/Ask + per-tick delta bars.
+ * Anti-pellicola: logical candleTime/anchorPrice → CoordinateBridge pixels.
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react'
@@ -25,8 +22,8 @@ interface DeepPrintOverlayProps {
 }
 
 function formatQty(q: number): string {
-  if (q >= 1000) return q.toFixed(1)
-  if (q >= 1) return q.toFixed(3)
+  if (Math.abs(q) >= 1000) return q.toFixed(1)
+  if (Math.abs(q) >= 1) return q.toFixed(3)
   return q.toFixed(5)
 }
 
@@ -40,12 +37,11 @@ export function DeepPrintOverlay({
   candles,
 }: DeepPrintOverlayProps) {
   const [model, setModel] = useState<DeepPrintModel | null>(null)
-  const [pinned, setPinned] = useState(false) // click = pin, hover = temporary
+  const [pinned, setPinned] = useState(false)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const modelRef = useRef<DeepPrintModel | null>(null)
   modelRef.current = model
 
-  // Retain shared trade buffer while enabled
   useEffect(() => {
     if (!enabled) return
     return retainTradeBuffer(exchange, symbol)
@@ -62,13 +58,11 @@ export function DeepPrintOverlay({
       const end = candleTime + sec
       const trades = queryTradesInRange(exchange, symbol, candleTime, end)
       const anchor = (candle.high + candle.low) / 2
-      const m = aggregatePrint(trades, candleTime, end, anchor)
-      setModel(m)
+      setModel(aggregatePrint(trades, candleTime, end, anchor))
     },
     [candles, exchange, symbol, interval]
   )
 
-  // Recompute pixel position from logical coords (anti-pellicola)
   const updatePosition = useCallback(() => {
     const m = modelRef.current
     if (!m || !bridge) {
@@ -97,16 +91,12 @@ export function DeepPrintOverlay({
       ro = new ResizeObserver(() => updatePosition())
       ro.observe(parent)
     }
-    const chart = bridge.getChart()
-    // Also subscribe crosshair / logical range if available via timeScale
     return () => {
       unsub()
       ro?.disconnect()
-      void chart
     }
   }, [bridge, enabled, updatePosition, containerRef])
 
-  // Live trades while print open → refresh aggregation for same candle
   useEffect(() => {
     if (!enabled || !model) return
     const id = window.setInterval(() => {
@@ -115,7 +105,6 @@ export function DeepPrintOverlay({
     return () => window.clearInterval(id)
   }, [enabled, model?.candleTime, rebuildModel])
 
-  // Click / crosshair on chart
   useEffect(() => {
     if (!enabled || !bridge) return
     const chart = bridge.getChart()
@@ -125,22 +114,23 @@ export function DeepPrintOverlay({
       if (!param?.time) return
       const t = typeof param.time === 'number' ? param.time : null
       if (t === null) return
-      // Snap to candle open if we have data
-      const candle = candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
+      const candle =
+        candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
       if (!candle) return
       setPinned(true)
       rebuildModel(candle.time)
     }
 
     const onMove = (param: any) => {
-      if (pinned) return // don't fight pinned selection
+      if (pinned) return
       if (!param?.time) {
         if (!pinned) setModel(null)
         return
       }
       const t = typeof param.time === 'number' ? param.time : null
       if (t === null) return
-      const candle = candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
+      const candle =
+        candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
       if (!candle) return
       rebuildModel(candle.time)
     }
@@ -153,7 +143,6 @@ export function DeepPrintOverlay({
     }
   }, [enabled, bridge, candles, interval, pinned, rebuildModel])
 
-  // Reset when disabled / symbol change
   useEffect(() => {
     if (!enabled) {
       setModel(null)
@@ -167,10 +156,9 @@ export function DeepPrintOverlay({
   const parent = containerRef.current
   const cw = parent?.clientWidth ?? 0
   const ch = parent?.clientHeight ?? 0
-  const panelW = 160
-  const panelH = Math.min(280, 40 + model.levels.length * 16)
+  const panelW = 200
+  const panelH = Math.min(300, 48 + model.levels.length * 18)
 
-  // Prefer right of candle; flip if near edge
   let left = pos.x + 12
   let top = pos.y - panelH / 2
   if (left + panelW > cw - 4) left = pos.x - panelW - 12
@@ -182,6 +170,7 @@ export function DeepPrintOverlay({
     ...model.levels.map((l) => Math.max(l.buyQty, l.sellQty)),
     0.0001
   )
+  const maxAbsDelta = Math.max(...model.levels.map((l) => Math.abs(l.delta)), 0.0001)
 
   return (
     <div
@@ -192,8 +181,12 @@ export function DeepPrintOverlay({
       <div className="bg-terminal-panel/95 border border-terminal-border rounded shadow-lg text-xxs font-mono-nums overflow-hidden">
         <div className="flex items-center justify-between px-1.5 py-1 border-b border-terminal-border bg-terminal-bg">
           <span className="text-terminal-muted">Deep Print</span>
-          <span className="text-terminal-muted">
-            {pinned ? 'pinned' : 'hover'} · {model.tradeCount} ticks
+          <span
+            className={
+              model.totalDelta >= 0 ? 'text-terminal-green' : 'text-terminal-red'
+            }
+          >
+            Δ {formatQty(model.totalDelta)}
           </span>
           <button
             type="button"
@@ -208,10 +201,11 @@ export function DeepPrintOverlay({
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-0 px-1 py-0.5 text-terminal-muted border-b border-terminal-border/50">
+        <div className="grid grid-cols-4 gap-0 px-1 py-0.5 text-terminal-muted border-b border-terminal-border/50">
           <span className="text-left text-terminal-red">SELL</span>
           <span className="text-center">PX</span>
           <span className="text-right text-terminal-green">BUY</span>
+          <span className="text-right">Δ</span>
         </div>
 
         <div className="max-h-52 overflow-y-auto">
@@ -221,28 +215,43 @@ export function DeepPrintOverlay({
               <div className="mt-1 opacity-70">Wait for live ticks or select a recent bar.</div>
             </div>
           ) : (
-            model.levels.map((l) => (
-              <div
-                key={l.price}
-                className="grid grid-cols-3 gap-0 px-1 py-0.5 items-center relative"
-              >
+            model.levels.map((l) => {
+              const dRatio = Math.abs(l.delta) / maxAbsDelta
+              return (
                 <div
-                  className="absolute inset-y-0 left-0 bg-terminal-red/15"
-                  style={{ width: (l.sellQty / maxSide) * 50 + '%' }}
-                />
-                <div
-                  className="absolute inset-y-0 right-0 bg-terminal-green/15"
-                  style={{ width: (l.buyQty / maxSide) * 50 + '%' }}
-                />
-                <span className="relative text-left text-terminal-red">
-                  {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
-                </span>
-                <span className="relative text-center text-terminal-text">{l.price}</span>
-                <span className="relative text-right text-terminal-green">
-                  {l.buyQty > 0 ? formatQty(l.buyQty) : ''}
-                </span>
-              </div>
-            ))
+                  key={l.price}
+                  className="grid grid-cols-4 gap-0 px-1 py-0.5 items-center relative"
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-terminal-red/15"
+                    style={{ width: (l.sellQty / maxSide) * 35 + '%' }}
+                  />
+                  <div
+                    className="absolute inset-y-0 right-0 bg-terminal-green/15"
+                    style={{ width: (l.buyQty / maxSide) * 35 + '%' }}
+                  />
+                  <span className="relative text-left text-terminal-red">
+                    {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
+                  </span>
+                  <span className="relative text-center text-terminal-text">{l.price}</span>
+                  <span className="relative text-right text-terminal-green">
+                    {l.buyQty > 0 ? formatQty(l.buyQty) : ''}
+                  </span>
+                  <span className="relative text-right flex items-center justify-end gap-0.5">
+                    <span
+                      className="inline-block h-2 rounded-sm"
+                      style={{
+                        width: Math.max(2, dRatio * 28) + 'px',
+                        backgroundColor: l.delta >= 0 ? '#0ecb81' : '#f6465d',
+                      }}
+                    />
+                    <span className={l.delta >= 0 ? 'text-terminal-green' : 'text-terminal-red'}>
+                      {l.delta !== 0 ? formatQty(l.delta) : ''}
+                    </span>
+                  </span>
+                </div>
+              )
+            })
           )}
         </div>
 
