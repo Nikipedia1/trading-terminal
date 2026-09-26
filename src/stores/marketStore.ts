@@ -1,6 +1,7 @@
 /**
- * Primary-panel market store (trades / orderbook / ticker).
- * REST snapshot + reconnecting WS. Real data only.
+ * Primary-panel market store (candles / trades / orderbook / ticker).
+ * Trades + L2 book come from shared feeds (one WS per symbol, refcounted).
+ * Real data only.
  */
 
 import { create } from 'zustand'
@@ -15,6 +16,7 @@ import type {
   ExchangeId,
 } from '@/types'
 import { getExchangeClient } from '@/data/exchanges/registry'
+import { subscribeTradeFeed, subscribeOrderBookFeed } from '@/data/shared'
 
 interface MarketState {
   symbol: string
@@ -139,29 +141,41 @@ export const useMarketStore = create<MarketState>((set, get) => ({
       onStatus
     )
 
-    unsubTrades = client.subscribeTrades(
-      symbol,
-      (trade) => {
-        set((state) => {
-          const trades = [trade, ...state.trades].slice(0, 100)
-          return { trades }
+    // Shared trade feed – same socket reused by future deep modules
+    const tradeSub = subscribeTradeFeed(exchange, symbol, {
+      onTrade: (t) => {
+        const trade: Trade = {
+          id: t.id,
+          time: t.time,
+          price: t.price,
+          qty: t.qty,
+          isBuyerMaker: t.isBuyerMaker,
+          symbol: t.symbol,
+        }
+        set((state) => ({
+          trades: [trade, ...state.trades].slice(0, 100),
+        }))
+      },
+      onError: ({ error }) => set({ lastError: error }),
+    })
+    unsubTrades = () => tradeSub.unsubscribe()
+
+    // Shared L2 book – local reconstruction
+    const bookSub = subscribeOrderBookFeed(exchange, symbol, {
+      onBook: (snap) => {
+        if (!snap.ready) return
+        set({
+          orderBook: {
+            symbol: snap.symbol,
+            lastUpdateId: snap.lastUpdateId,
+            bids: snap.bids,
+            asks: snap.asks,
+          },
         })
       },
-      (err) => set({ status: 'error', lastError: err }),
-      undefined
-    )
-
-    unsubDepth = client.subscribeDepth(
-      symbol,
-      (book) => set({ orderBook: book }),
-      (err) => {
-        // KuCoin incremental depth may not deliver full book – don't wipe UI on soft issues
-        if (err.code === 'WS_ERROR') {
-          set({ lastError: err })
-        }
-      },
-      undefined
-    )
+      onError: ({ error }) => set({ lastError: error }),
+    })
+    unsubDepth = () => bookSub.unsubscribe()
   },
 
   stopLive: () => {
