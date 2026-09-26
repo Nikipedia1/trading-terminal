@@ -7,6 +7,7 @@ function StatusBadge() {
   const status = useMarketStore((s) => s.status)
   const colors: Record<string, string> = {
     connecting: 'bg-terminal-yellow/20 text-terminal-yellow',
+    reconnecting: 'bg-terminal-yellow/20 text-terminal-yellow',
     connected: 'bg-terminal-green/20 text-terminal-green',
     disconnected: 'bg-terminal-muted/20 text-terminal-muted',
     error: 'bg-terminal-red/20 text-terminal-red',
@@ -44,7 +45,6 @@ function Controls() {
   const stopLive = useMarketStore((s) => s.stopLive)
   const status = useMarketStore((s) => s.status)
 
-  // Keep primary panel in sync when user changes global controls
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const updatePanel = useLayoutStore((s) => s.updatePanel)
 
@@ -79,7 +79,7 @@ function Controls() {
       >
         Load History
       </button>
-      {status === 'connected' || status === 'connecting' ? (
+      {status === 'connected' || status === 'connecting' || status === 'reconnecting' ? (
         <button
           onClick={stopLive}
           className="px-3 py-1 bg-terminal-red/20 text-terminal-red rounded text-sm hover:bg-terminal-red/30"
@@ -123,7 +123,7 @@ function TradesTape() {
                 {t.price.toFixed(2)}
               </td>
               <td className="text-right px-2 py-0.5">{t.qty.toFixed(5)}</td>
-              <td className={`text-right px-2 py-0.5 ${t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green'}`}>
+              <td className={`text-right px-2 py-0.5 ${t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green'`}>
                 {t.isBuyerMaker ? 'SELL' : 'BUY'}
               </td>
             </tr>
@@ -201,12 +201,13 @@ function TickerBar() {
   )
 }
 
-/** Keep marketStore (trades/orderbook/ticker) aligned with primary chart panel */
+/** Keep marketStore aligned with primary chart panel */
 function usePrimarySync() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
   const setSymbol = useMarketStore((s) => s.setSymbol)
   const setInterval = useMarketStore((s) => s.setInterval)
+  const setExchange = useMarketStore((s) => s.setExchange)
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
   const stopLive = useMarketStore((s) => s.stopLive)
@@ -218,8 +219,9 @@ function usePrimarySync() {
     stopLive()
     setSymbol(primary.symbol)
     setInterval(primary.interval)
+    setExchange(primary.exchange)
     loadHistorical().then(() => startLive())
-  }, [primary?.symbol, primary?.interval, primaryPanelId])
+  }, [primary?.symbol, primary?.interval, primary?.exchange, primaryPanelId])
 }
 
 function ChartArea() {
@@ -257,7 +259,7 @@ export default function App() {
     <div className="h-full flex flex-col">
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
-        <span className="text-xxs text-terminal-muted">Binance · Real-time · Multi-panel · No mocks</span>
+        <span className="text-xxs text-terminal-muted">Binance · KuCoin · Real-time · No mocks</span>
       </header>
 
       <ErrorBanner />
@@ -265,12 +267,10 @@ export default function App() {
       <TickerBar />
 
       <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden min-h-0">
-        {/* Chart area – multi-panel grid (2 cols) */}
         <section className="col-span-2 bg-terminal-bg flex flex-col min-h-0 min-w-0">
           <ChartArea />
         </section>
 
-        {/* Right column: Trades + OrderBook (primary panel) */}
         <section className="bg-terminal-panel flex flex-col min-h-0">
           <div className="flex-1 flex flex-col min-h-0 border-b border-terminal-border">
             <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
