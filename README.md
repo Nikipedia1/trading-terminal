@@ -1,6 +1,6 @@
 # Trading Terminal
 
-Personal multi-panel trading terminal with **real-time data only** from Binance (KuCoin planned).
+Personal multi-panel trading terminal with **real-time data only** from Binance and KuCoin.
 
 Inspired by KuCoin terminal UI (dark, high information density) and built with modular architecture.
 
@@ -11,23 +11,36 @@ Inspired by KuCoin terminal UI (dark, high information density) and built with m
 3. **Modular** – data-layer / rendering / drawing-tools / indicators / layout-manager are separated.
 4. **Anti-film** – any overlay (drawings, indicators) must stay anchored to real price/time via Lightweight Charts coordinate APIs and redraw on pan/zoom/resize/data update.
 
-## Current Status (Step 4 complete)
+## Current Status (Step 5 – data layer consolidated)
 
 - Vite + React 18 + TypeScript + Tailwind
-- Binance Spot client (REST + WebSocket) – real data only
-- Normalized types + Zustand market store
-- **Lightweight Charts** candlestick + volume with live updates
-- **CoordinateBridge** – per-chart instance (anti-pellicola)
-- SeriesManager for clean series lifecycle
-- **Multi-panel layout** (react-grid-layout magnetic grid)
-- **Drawing tools** (anchored to time/price):
-  - Trendline, horizontal, vertical, rectangle, parallel channel
-  - Fibonacci retracement & extension, text annotations
-  - Persist per panel+symbol (localStorage)
-  - JSON export / import
-  - Survive pan, zoom, panel drag/resize (no film effect)
-- Side panels: Live Trades + Order Book
-- Auto-loads BTCUSDT 1m on start
+- **Binance + KuCoin** Spot clients (REST history + reconnecting WebSocket)
+- Per-panel connection badge (ONLINE / RECONNECTING / ERROR / …) + Retry
+- Normalized types + Zustand stores
+- Lightweight Charts + CoordinateBridge (anti-pellicola)
+- Multi-panel layout, drawing tools, chart style customization
+
+## Data flow
+
+1. **REST** `getKlines` → initial candles (real only; empty/error → explicit message)
+2. **WebSocket** kline stream → live bar updates
+3. On disconnect → **exponential backoff** reconnect (`reconnecting` status)
+4. Never synthesizes OHLC or fills gaps with demo data
+
+## Public API limits (read before scaling panels)
+
+### Binance
+- REST weight ≈ **1200/min per IP** – many panels × refresh can 429
+- Klines `limit` max **1000**
+- Invalid symbol → HTTP 400 (shown as `BAD_SYMBOL`)
+- WS is fine for multiple streams; control frames limited
+
+### KuCoin
+- Symbol format **BASE-QUOTE** (`BTC-USDT`); client maps `BTCUSDT` automatically
+- Public WS needs **bullet-public** token before connect
+- Intervals **3d / 1M not supported** on public candles → `UNSUPPORTED_INTERVAL`
+- Must **ping** on server `pingInterval` or socket drops
+- L2 depth WS is incremental; full book UI may stay on REST snapshot until a local book engine exists
 
 ## Quick Start
 
@@ -38,69 +51,50 @@ npm run dev
 
 Open http://localhost:5173
 
-Use the drawing toolbar under each chart header. Click tool → click chart points.
-
-## Project Structure
+## Project Structure (data layer)
 
 ```
-src/
-├── charts/
-│   ├── ChartContainer.tsx      # Chart + DrawingLayer host
-│   ├── ChartPanel.tsx          # Panel chrome + DrawingToolbar
-│   ├── coordinate-bridge.ts    # time/price ↔ pixel (per instance)
-│   └── series-manager.ts
-├── drawings/
-│   ├── types.ts                # Logical drawing primitives
-│   ├── drawingStore.ts         # Zustand + localStorage
-│   ├── renderers.ts            # Pure canvas paint via bridge
-│   ├── DrawingLayer.tsx        # Overlay + interaction
-│   └── DrawingToolbar.tsx
-├── data/exchanges/
-├── hooks/usePanelMarket.ts
-├── layout/PanelGrid.tsx
-├── stores/
-│   ├── marketStore.ts
-│   └── layoutStore.ts
-└── App.tsx
+src/data/
+├── ws/reconnecting-ws.ts      # backoff reconnect primitive
+└── exchanges/
+    ├── types.ts               # ExchangeClient + PUBLIC_API_LIMITS
+    ├── binance.ts
+    ├── kucoin.ts
+    └── registry.ts            # getExchangeClient()
 ```
 
-## Changelog (Step 4 – drawing tools)
+## Changelog (Step 5 – data layer)
 
 ### Added
-- `src/drawings/types.ts` – Drawing union, logical points, fib levels, storage key
-- `src/drawings/drawingStore.ts` – per panel+symbol store, localStorage, export/import JSON
-- `src/drawings/renderers.ts` – pure canvas renderers (bridge only, no pixels stored)
-- `src/drawings/DrawingLayer.tsx` – overlay canvas, multi-click tools, redraw on range/resize
-- `src/drawings/DrawingToolbar.tsx` – tool/color/clear/export/import
+- `src/data/ws/reconnecting-ws.ts` – reconnecting WS + status callbacks
+- `src/data/exchanges/kucoin.ts` – KuCoin REST + WS (real)
+- `src/data/exchanges/registry.ts` – binance | kucoin
+- `src/charts/ConnectionBadge.tsx` – per-panel ONLINE/RECONNECTING/ERROR
+- `ConnectionStatus` includes `reconnecting`
+- `ExchangeId` includes `kucoin`
+- `PUBLIC_API_LIMITS` documentation constant
 
 ### Changed
-- `src/charts/ChartContainer.tsx` – hosts DrawingLayer; exposes bridge via state; accepts `symbol` prop
-- `src/charts/ChartPanel.tsx` – DrawingToolbar under header; passes symbol to ChartContainer
+- `binance.ts` – uses ReconnectingWebSocket; rate-limit / bad-symbol errors
+- `types.ts` (exchange) – optional `onStatus` on subscribe*
+- `usePanelMarket.ts` – exchange-aware; REST then WS; status detail; keeps candles on WS error
+- `marketStore.ts` – registry + reconnect status
+- `ChartPanel.tsx` – ConnectionBadge, Retry, error banner, KuCoin in exchange select
 
 ### Untouched (no regressions)
-- `src/data/exchanges/*`
-- `src/stores/marketStore.ts`
-- `src/stores/layoutStore.ts`
-- `src/charts/series-manager.ts`
-- `src/charts/coordinate-bridge.ts` (API unchanged; still the only conversion path)
-- `src/layout/PanelGrid.tsx`
-
-### Anti-pellicola guarantees
-- Drawings store **only** `{ time, price }` (unix seconds + price)
-- Paint path: `CoordinateBridge.toPixel` / `priceToCoordinate` / `timeToCoordinate`
-- Redraw triggers: `subscribeVisibleTimeRangeChange`, ResizeObserver, drawing list change
-- Panel move/resize → container ResizeObserver → chart.applyOptions + canvas resize + full re-paint from logical coords
+- Drawing tools / layout / coordinate-bridge / series-manager applyStyle path
+- Chart style store
 
 ## Roadmap
 
 1. ✅ Data-layer + verification UI
-2. ✅ Chart base (Lightweight Charts) + coordinate bridge
-3. ✅ Resizable / draggable multi-panel layout
-4. ✅ Drawing tools (anchored)
-5. Indicator framework + RSI / VWAP / Volume Profile
-6. Deep analysis (divergences, correlation, order flow)
-7. Alerts + layout persistence
-8. Full KuCoin-style polish
+2. ✅ Chart base + coordinate bridge
+3. ✅ Multi-panel layout
+4. ✅ Drawing tools
+5. ✅ Data layer consolidate (WS reconnect, KuCoin, badges)
+6. Indicator framework + RSI / VWAP / Volume Profile
+7. Deep analysis
+8. Alerts + layout persistence
 
 ## License
 

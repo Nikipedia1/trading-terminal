@@ -3,14 +3,15 @@
  */
 
 import { ChartContainer } from './ChartContainer'
+import { ConnectionBadge } from './ConnectionBadge'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
+import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
-const EXCHANGES: ExchangeId[] = ['binance']
 
 interface ChartPanelProps {
   config: ChartPanelConfig
@@ -26,7 +27,11 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
 
-  const { candles, status, lastError } = usePanelMarket(symbol, interval, exchange)
+  const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
+    symbol,
+    interval,
+    exchange
+  )
 
   const isPrimary = primaryPanelId === id
 
@@ -56,7 +61,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onChange={(e) => updatePanel(id, { exchange: e.target.value as ExchangeId })}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {EXCHANGES.map((ex) => (
+          {SUPPORTED_EXCHANGES.map((ex) => (
             <option key={ex} value={ex}>{ex}</option>
           ))}
         </select>
@@ -103,7 +108,22 @@ export function ChartPanel({ config }: ChartPanelProps) {
           🎨 Stile
         </button>
 
-        <span className="text-xxs text-terminal-muted ml-auto truncate">{status}</span>
+        <div className="ml-auto flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
+          <ConnectionBadge status={status} detail={statusDetail} />
+          {(status === 'error' || status === 'disconnected') && (
+            <button
+              type="button"
+              className="text-xxs px-1.5 py-0.5 border border-terminal-border rounded hover:bg-terminal-hover"
+              title="Ricarica storico + WS"
+              onClick={(e) => {
+                e.stopPropagation()
+                reload()
+              }}
+            >
+              Retry
+            </button>
+          )}
+        </div>
 
         {panelCount > 1 && (
           <button
@@ -119,6 +139,14 @@ export function ChartPanel({ config }: ChartPanelProps) {
           </button>
         )}
       </div>
+
+      {/* Explicit error banner – never silent, never fake data */}
+      {lastError && (
+        <div className="shrink-0 px-2 py-1 text-xxs bg-terminal-red/10 text-terminal-red border-b border-terminal-red/30">
+          <strong>[{lastError.code}]</strong> {lastError.message}
+          {lastError.exchange ? ` · ${lastError.exchange}` : ''}
+        </div>
+      )}
 
       <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10">
         <DrawingToolbar panelId={id} symbol={symbol} />

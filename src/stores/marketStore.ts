@@ -1,19 +1,36 @@
+/**
+ * Primary-panel market store (trades / orderbook / ticker).
+ * REST snapshot + reconnecting WS. Real data only.
+ */
+
 import { create } from 'zustand'
-import type { Candle, Trade, OrderBook, Ticker, Interval, ConnectionStatus, MarketError } from '@/types'
-import { binanceClient } from '@/data/exchanges/binance'
+import type {
+  Candle,
+  Trade,
+  OrderBook,
+  Ticker,
+  Interval,
+  ConnectionStatus,
+  MarketError,
+  ExchangeId,
+} from '@/types'
+import { getExchangeClient } from '@/data/exchanges/registry'
 
 interface MarketState {
   symbol: string
   interval: Interval
+  exchange: ExchangeId
   candles: Candle[]
   trades: Trade[]
   orderBook: OrderBook | null
   ticker: Ticker | null
   status: ConnectionStatus
   lastError: MarketError | null
+  statusDetail?: string
 
   setSymbol: (symbol: string) => void
   setInterval: (interval: Interval) => void
+  setExchange: (exchange: ExchangeId) => void
   loadHistorical: () => Promise<void>
   startLive: () => void
   stopLive: () => void
@@ -27,6 +44,7 @@ let unsubDepth: (() => void) | null = null
 export const useMarketStore = create<MarketState>((set, get) => ({
   symbol: 'BTCUSDT',
   interval: '1m',
+  exchange: 'binance',
   candles: [],
   trades: [],
   orderBook: null,
@@ -36,7 +54,13 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
   setSymbol: (symbol) => {
     get().stopLive()
-    set({ symbol: symbol.toUpperCase(), candles: [], trades: [], orderBook: null, ticker: null })
+    set({
+      symbol: symbol.toUpperCase(),
+      candles: [],
+      trades: [],
+      orderBook: null,
+      ticker: null,
+    })
   },
 
   setInterval: (interval) => {
@@ -44,46 +68,61 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     set({ interval, candles: [] })
   },
 
+  setExchange: (exchange) => {
+    get().stopLive()
+    set({ exchange, candles: [], trades: [], orderBook: null, ticker: null })
+  },
+
   clearError: () => set({ lastError: null }),
 
   loadHistorical: async () => {
-    const { symbol, interval } = get()
-    set({ status: 'connecting', lastError: null })
+    const { symbol, interval, exchange } = get()
+    const client = getExchangeClient(exchange)
+    set({ status: 'connecting', lastError: null, statusDetail: 'loading history' })
     try {
       const [candles, ticker, book] = await Promise.all([
-        binanceClient.getKlines(symbol, interval, 300),
-        binanceClient.getTicker(symbol),
-        binanceClient.getOrderBook(symbol, 20),
+        client.getKlines(symbol, interval, 300),
+        client.getTicker(symbol),
+        client.getOrderBook(symbol, 20),
       ])
       set({
         candles,
         ticker,
         orderBook: book,
         status: 'connected',
+        statusDetail: undefined,
       })
     } catch (err: any) {
       set({
         status: 'error',
-        lastError: err.code ? err : {
-          code: 'LOAD_HIST',
-          message: err.message || 'Failed to load historical data',
-          exchange: 'binance',
-          timestamp: Date.now(),
-        },
+        lastError: err.code
+          ? err
+          : {
+              code: 'LOAD_HIST',
+              message: err.message || 'Failed to load historical data',
+              exchange,
+              timestamp: Date.now(),
+            },
+        statusDetail: err.message,
       })
     }
   },
 
   startLive: () => {
-    const { symbol, interval, stopLive } = get()
+    const { symbol, interval, exchange, stopLive } = get()
     stopLive()
+    const client = getExchangeClient(exchange)
 
-    set({ status: 'connecting', lastError: null })
+    set({ status: 'connecting', lastError: null, statusDetail: 'opening websocket' })
 
-    unsubKlines = binanceClient.subscribeKlines(
+    const onStatus = (status: ConnectionStatus, detail?: string) => {
+      set({ status, statusDetail: detail })
+    }
+
+    unsubKlines = client.subscribeKlines(
       symbol,
       interval,
-      (candle, isFinal) => {
+      (candle) => {
         set((state) => {
           const candles = [...state.candles]
           const last = candles[candles.length - 1]
@@ -91,16 +130,16 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             candles[candles.length - 1] = candle
           } else if (!last || candle.time > last.time) {
             candles.push(candle)
-            // keep last ~500 candles in memory for performance
             if (candles.length > 500) candles.shift()
           }
-          return { candles, status: 'connected' }
+          return { candles, status: 'connected', lastError: null }
         })
       },
-      (err) => set({ status: 'error', lastError: err })
+      (err) => set({ status: 'error', lastError: err, statusDetail: err.message }),
+      onStatus
     )
 
-    unsubTrades = binanceClient.subscribeTrades(
+    unsubTrades = client.subscribeTrades(
       symbol,
       (trade) => {
         set((state) => {
@@ -108,13 +147,20 @@ export const useMarketStore = create<MarketState>((set, get) => ({
           return { trades }
         })
       },
-      (err) => set({ status: 'error', lastError: err })
+      (err) => set({ status: 'error', lastError: err }),
+      undefined
     )
 
-    unsubDepth = binanceClient.subscribeDepth(
+    unsubDepth = client.subscribeDepth(
       symbol,
       (book) => set({ orderBook: book }),
-      (err) => set({ status: 'error', lastError: err })
+      (err) => {
+        // KuCoin incremental depth may not deliver full book – don't wipe UI on soft issues
+        if (err.code === 'WS_ERROR') {
+          set({ lastError: err })
+        }
+      },
+      undefined
     )
   },
 
@@ -125,6 +171,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     unsubKlines = null
     unsubTrades = null
     unsubDepth = null
-    set({ status: 'disconnected' })
+    set({ status: 'disconnected', statusDetail: undefined })
   },
 }))

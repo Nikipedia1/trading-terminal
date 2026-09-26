@@ -5,7 +5,7 @@ export type Interval =
   | '1h' | '2h' | '4h' | '6h' | '8h' | '12h'
   | '1d' | '3d' | '1w' | '1M'
 
-export type ExchangeId = 'binance' // KuCoin planned
+export type ExchangeId = 'binance' | 'kucoin'
 
 export interface Candle {
   time: number          // unix seconds (Lightweight Charts expects this)
@@ -48,7 +48,12 @@ export interface Ticker {
   quoteVolume: number
 }
 
-export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+export type ConnectionStatus =
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'disconnected'
+  | 'error'
 
 export interface MarketError {
   code: string

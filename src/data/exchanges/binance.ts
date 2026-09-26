@@ -1,9 +1,11 @@
 /**
- * Binance Spot exchange client – real data only.
+ * Binance Spot – real REST + reconnecting WebSocket.
  * REST: https://api.binance.com
  * WS:   wss://stream.binance.com:9443
  *
- * No mock / fallback data ever. On error → explicit MarketError.
+ * Limits (public): ~1200 request weight/min/IP; klines limit≤1000;
+ * WS ~5 msg/s inbound control, many market streams OK.
+ * Never returns mock data.
  */
 
 import type {
@@ -15,13 +17,14 @@ import type {
   ConnectionStatus,
   MarketError,
 } from '@/types'
-import type { ExchangeClient } from './types'
+import type { ExchangeClient, StatusCallback } from './types'
+import { ReconnectingWebSocket } from '@/data/ws/reconnecting-ws'
 
 const REST_BASE = 'https://api.binance.com'
 const WS_BASE = 'wss://stream.binance.com:9443'
 
 function toBinanceInterval(interval: Interval): string {
-  return interval // Binance uses the same strings
+  return interval
 }
 
 function createError(code: string, message: string): MarketError {
@@ -36,7 +39,6 @@ function createError(code: string, message: string): MarketError {
 export class BinanceClient implements ExchangeClient {
   readonly name = 'binance'
   private status: ConnectionStatus = 'disconnected'
-  private activeSockets = new Set<WebSocket>()
 
   getStatus(): ConnectionStatus {
     return this.status
@@ -45,15 +47,26 @@ export class BinanceClient implements ExchangeClient {
   // ─── REST ───────────────────────────────────────────────────────────────
 
   async getKlines(symbol: string, interval: Interval, limit = 500): Promise<Candle[]> {
-    const url = `${REST_BASE}/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${toBinanceInterval(interval)}&limit=${limit}`
+    const lim = Math.min(Math.max(limit, 1), 1000)
+    const url = `${REST_BASE}/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${toBinanceInterval(interval)}&limit=${lim}`
     try {
       const res = await fetch(url)
       if (!res.ok) {
-        throw createError('REST_KLINES', `HTTP ${res.status}: ${await res.text()}`)
+        const body = await res.text()
+        if (res.status === 429) {
+          throw createError('RATE_LIMIT', `Binance rate limit (429). Weight budget ~1200/min per IP. ${body}`)
+        }
+        if (res.status === 400) {
+          throw createError('BAD_SYMBOL', `Binance rejected request (invalid symbol/interval?): ${body}`)
+        }
+        throw createError('REST_KLINES', `HTTP ${res.status}: ${body}`)
       }
       const raw: any[][] = await res.json()
+      if (!Array.isArray(raw) || raw.length === 0) {
+        throw createError('EMPTY_KLINES', `No klines returned for ${symbol} ${interval}`)
+      }
       return raw.map((k) => ({
-        time: Math.floor(k[0] / 1000), // ms → seconds for Lightweight Charts
+        time: Math.floor(k[0] / 1000),
         open: parseFloat(k[1]),
         high: parseFloat(k[2]),
         low: parseFloat(k[3]),
@@ -71,7 +84,11 @@ export class BinanceClient implements ExchangeClient {
     try {
       const res = await fetch(url)
       if (!res.ok) {
-        throw createError('REST_DEPTH', `HTTP ${res.status}: ${await res.text()}`)
+        const body = await res.text()
+        if (res.status === 429) {
+          throw createError('RATE_LIMIT', `Binance rate limit (429). ${body}`)
+        }
+        throw createError('REST_DEPTH', `HTTP ${res.status}: ${body}`)
       }
       const raw = await res.json()
       return {
@@ -97,7 +114,11 @@ export class BinanceClient implements ExchangeClient {
     try {
       const res = await fetch(url)
       if (!res.ok) {
-        throw createError('REST_TICKER', `HTTP ${res.status}: ${await res.text()}`)
+        const body = await res.text()
+        if (res.status === 429) {
+          throw createError('RATE_LIMIT', `Binance rate limit (429). ${body}`)
+        }
+        throw createError('REST_TICKER', `HTTP ${res.status}: ${body}`)
       }
       const raw = await res.json()
       return {
@@ -116,83 +137,71 @@ export class BinanceClient implements ExchangeClient {
     }
   }
 
-  // ─── WebSocket helpers ──────────────────────────────────────────────────
+  // ─── WebSocket ──────────────────────────────────────────────────────────
 
-  private createSocket(
+  private subscribeStream(
     stream: string,
-    onMessage: (data: any) => void,
-    onError: (err: MarketError) => void
+    onData: (data: any) => void,
+    onError: (err: MarketError) => void,
+    onStatus?: StatusCallback
   ): () => void {
-    this.status = 'connecting'
-    const ws = new WebSocket(`${WS_BASE}/ws/${stream}`)
-    this.activeSockets.add(ws)
-
-    ws.onopen = () => {
-      this.status = 'connected'
-    }
-
-    ws.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data)
-        onMessage(data)
-      } catch (e: any) {
-        onError(createError('WS_PARSE', e.message))
-      }
-    }
-
-    ws.onerror = () => {
-      this.status = 'error'
-      onError(createError('WS_ERROR', `WebSocket error on stream ${stream}`))
-    }
-
-    ws.onclose = () => {
-      this.activeSockets.delete(ws)
-      if (this.activeSockets.size === 0) {
-        this.status = 'disconnected'
-      }
-    }
-
-    return () => {
-      ws.close()
-      this.activeSockets.delete(ws)
-    }
+    const url = `${WS_BASE}/ws/${stream}`
+    const rws = new ReconnectingWebSocket(url, {
+      minBackoffMs: 1000,
+      maxBackoffMs: 30_000,
+      onStatus: (s, detail) => {
+        this.status = s
+        onStatus?.(s, detail)
+      },
+      onMessage: (data) => {
+        onData(data)
+      },
+      onError: (msg) => {
+        onError(createError('WS_ERROR', msg))
+      },
+    })
+    void rws.connect()
+    return () => rws.close()
   }
-
-  // ─── Streams ────────────────────────────────────────────────────────────
 
   subscribeKlines(
     symbol: string,
     interval: Interval,
     onCandle: (candle: Candle, isFinal: boolean) => void,
-    onError: (err: MarketError) => void
+    onError: (err: MarketError) => void,
+    onStatus?: StatusCallback
   ): () => void {
     const stream = `${symbol.toLowerCase()}@kline_${toBinanceInterval(interval)}`
-    return this.createSocket(
+    return this.subscribeStream(
       stream,
       (data) => {
         if (data.e !== 'kline') return
         const k = data.k
-        const candle: Candle = {
-          time: Math.floor(k.t / 1000),
-          open: parseFloat(k.o),
-          high: parseFloat(k.h),
-          low: parseFloat(k.l),
-          close: parseFloat(k.c),
-          volume: parseFloat(k.v),
-        }
-        onCandle(candle, k.x === true)
+        onCandle(
+          {
+            time: Math.floor(k.t / 1000),
+            open: parseFloat(k.o),
+            high: parseFloat(k.h),
+            low: parseFloat(k.l),
+            close: parseFloat(k.c),
+            volume: parseFloat(k.v),
+          },
+          k.x === true
+        )
       },
-      onError
+      onError,
+      onStatus
     )
   }
 
   subscribeTrades(
     symbol: string,
     onTrade: (trade: Trade) => void,
-    onError: (err: MarketError) => void
+    onError: (err: MarketError) => void,
+    onStatus?: StatusCallback
   ): () => void {
     const stream = `${symbol.toLowerCase()}@aggTrade`
-    return this.createSocket(
+    return this.subscribeStream(
       stream,
       (data) => {
         if (data.e !== 'aggTrade') return
@@ -205,21 +214,21 @@ export class BinanceClient implements ExchangeClient {
           symbol: data.s,
         })
       },
-      onError
+      onError,
+      onStatus
     )
   }
 
   subscribeDepth(
     symbol: string,
     onUpdate: (book: OrderBook) => void,
-    onError: (err: MarketError) => void
+    onError: (err: MarketError) => void,
+    onStatus?: StatusCallback
   ): () => void {
-    // Partial book depth @20 levels, 100ms for lower latency
     const stream = `${symbol.toLowerCase()}@depth20@100ms`
-    return this.createSocket(
+    return this.subscribeStream(
       stream,
       (data) => {
-        // depth20 stream does not have 'e' field in the same way; it is the book itself
         if (!data.bids || !data.asks) return
         onUpdate({
           symbol: symbol.toUpperCase(),
@@ -234,10 +243,10 @@ export class BinanceClient implements ExchangeClient {
           })),
         })
       },
-      onError
+      onError,
+      onStatus
     )
   }
 }
 
-/** Singleton instance – one client for the whole app */
 export const binanceClient = new BinanceClient()
