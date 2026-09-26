@@ -1,6 +1,7 @@
 /**
  * Footprint overlay – price × time cells (buy left / sell right).
  * Real aggressor trades only. Weak on illiquid symbols.
+ * Palette: buy #0ecb81 · sell #a855f7
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -11,6 +12,7 @@ import { intervalToSeconds } from '@/analysis/deepPrint/interval'
 import { buildFootprintCells } from './compute'
 import type { FootprintConfig } from './types'
 import { DEFAULT_FOOTPRINT_CONFIG, FOOTPRINT_NOTE } from './types'
+import { buyRgba, sellRgba } from '@/ui/palette'
 
 interface FootprintOverlayProps {
   enabled: boolean
@@ -75,17 +77,13 @@ export function FootprintOverlay({
     if (cells.length === 0) {
       ctx.font = '10px sans-serif'
       ctx.fillStyle = 'rgba(132, 142, 156, 0.85)'
-      ctx.fillText('Footprint: sparse trades — ' + FOOTPRINT_NOTE.slice(0, 70), 8, h - 12)
+      ctx.fillText('Footprint: No trades in buffer — ' + FOOTPRINT_NOTE.slice(0, 60), 8, h - 12)
       return
     }
 
-    const maxCell = Math.max(
-      ...cells.map((c) => c.buyQty + c.sellQty),
-      0.0001
-    )
+    const maxCell = Math.max(...cells.map((c) => c.buyQty + c.sellQty), 0.0001)
     const minQty = maxCell * (config.minCellPct / 100)
 
-    // Column width ≈ candle width
     for (const cell of cells) {
       const tot = cell.buyQty + cell.sellQty
       if (tot < minQty) continue
@@ -106,25 +104,19 @@ export function FootprintOverlay({
       const buyW = (cell.buyQty / maxCell) * half
       const sellW = (cell.sellQty / maxCell) * half
 
-      // sell (left of center)
       if (cell.sellQty > 0) {
-        ctx.fillStyle = 'rgba(246, 70, 93, 0.45)'
+        ctx.fillStyle = sellRgba(0.5)
         ctx.fillRect(x + half - sellW, y - rowH / 2, sellW, rowH)
       }
-      // buy (right of center)
       if (cell.buyQty > 0) {
-        ctx.fillStyle = 'rgba(14, 203, 129, 0.45)'
+        ctx.fillStyle = buyRgba(0.5)
         ctx.fillRect(x + half, y - rowH / 2, buyW, rowH)
       }
     }
 
     ctx.font = '9px sans-serif'
     ctx.fillStyle = 'rgba(132, 142, 156, 0.9)'
-    ctx.fillText(
-      `Footprint · ${cells.length} cells · ${trades.length} ticks`,
-      8,
-      h - 12
-    )
+    ctx.fillText(`Footprint · ${cells.length} cells · ${trades.length} ticks`, 8, h - 12)
   }, [bridge, containerRef, enabled, exchange, symbol, interval, candles, config])
 
   useEffect(() => {
