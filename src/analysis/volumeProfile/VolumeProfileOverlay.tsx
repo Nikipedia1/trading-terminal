@@ -1,7 +1,7 @@
 /**
  * Volume Profile – developing + optional fixed overlay.
- * Levels span profile time range (timeToCoordinate) – anti-pellicola.
- * Labels POC / VAH / VAL in monospace; full-width lines over profile period.
+ * POC / VAH / VAL / LVN: full-width horizontal lines (anti-pellicola via priceToCoordinate).
+ * Labels monospace.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'
@@ -35,7 +35,6 @@ const BAR_MAX_FIXED = 70
 const RIGHT_PAD = 6
 const MONO = 'bold 11px ui-monospace, SFMono-Regular, Menlo, monospace'
 const MONO_SM = 'bold 10px ui-monospace, SFMono-Regular, Menlo, monospace'
-const MONO_XS = '9px ui-monospace, SFMono-Regular, Menlo, monospace'
 
 export function VolumeProfileOverlay({
   enabled,
@@ -167,45 +166,39 @@ export function VolumeProfileOverlay({
     }
   }
 
-  const paintLevels = (
+  /**
+   * Full-width levels: POC / VAH / VAL / LVN span almost entire chart width.
+   * Y from priceToCoordinate (anti-pellicola).
+   */
+  const paintLevelsFullWidth = (
     ctx: CanvasRenderingContext2D,
     bridge: CoordinateBridge,
     model: VolumeProfileModel,
     w: number,
     colors: { vah: string; val: string; poc: string },
-    labelPrefix = '',
-    fullWidthLvn = false
+    labelPrefix = ''
   ) => {
-    let x0 = bridge.timeToCoordinate(Math.floor(model.fromSec) as any)
-    let x1 = bridge.timeToCoordinate(Math.floor(model.toSec) as any)
-    if (x0 === null) x0 = 8
-    if (x1 === null) x1 = w - BAR_MAX_DEV - 16
-    if (x1 < x0) {
-      const t = x0
-      x0 = x1
-      x1 = t
-    }
-    x0 = Math.max(4, Math.min(w - 4, x0))
-    x1 = Math.max(4, Math.min(w - BAR_MAX_DEV - 8, x1))
+    const xLeft = 8
+    const xRight = Math.max(xLeft + 40, w - BAR_MAX_DEV - 12)
 
-    const draw = (price: number, color: string, label: string, lw = 1.2) => {
+    const draw = (price: number, color: string, label: string, lw = 1.25) => {
       const y = bridge.priceToCoordinate(price)
       if (y === null) return
       ctx.strokeStyle = color
       ctx.lineWidth = lw
       ctx.setLineDash([6, 4])
       ctx.beginPath()
-      ctx.moveTo(x0, y)
-      ctx.lineTo(x1, y)
+      ctx.moveTo(xLeft, y)
+      ctx.lineTo(xRight, y)
       ctx.stroke()
       ctx.setLineDash([])
 
       const text = `${labelPrefix}${label} ${price}`
       ctx.font = MONO
       const tw = ctx.measureText(text).width
-      const lx = Math.max(x0 + 2, Math.min(x1 - tw - 4, x1 - tw - 6))
-      ctx.fillStyle = 'rgba(11, 14, 17, 0.82)'
-      ctx.fillRect(lx - 3, y - 8, tw + 6, 14)
+      const lx = Math.max(xLeft + 2, Math.min(xRight - tw - 6, xRight - tw - 8))
+      ctx.fillStyle = 'rgba(11, 14, 17, 0.85)'
+      ctx.fillRect(lx - 3, y - 9, tw + 6, 15)
       ctx.fillStyle = color
       ctx.textAlign = 'left'
       ctx.fillText(text, lx, y + 3)
@@ -213,69 +206,39 @@ export function VolumeProfileOverlay({
 
     draw(model.vah, colors.vah, 'VAH')
     draw(model.val, colors.val, 'VAL')
-    draw(model.poc, colors.poc, 'POC', 1.5)
+    draw(model.poc, colors.poc, 'POC', 1.6)
 
     for (const p of model.lvns) {
       const y = bridge.priceToCoordinate(p)
       if (y === null) continue
-      if (fullWidthLvn) {
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.55)'
-        ctx.lineWidth = 1
-        ctx.setLineDash([4, 3])
-        ctx.beginPath()
-        ctx.moveTo(8, y)
-        ctx.lineTo(w - BAR_MAX_DEV - 12, y)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.95)'
-        ctx.font = MONO_SM
-        ctx.textAlign = 'left'
-        ctx.fillText(`LVN ${p}`, 10, y - 3)
-      } else {
-        ctx.strokeStyle = 'rgba(168, 85, 247, 0.75)'
-        ctx.lineWidth = 1
-        ctx.setLineDash([2, 2])
-        ctx.beginPath()
-        ctx.moveTo(x1 - 28, y)
-        ctx.lineTo(x1, y)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.9)'
-        ctx.font = MONO_XS
-        ctx.textAlign = 'right'
-        ctx.fillText('LVN', x1 - 30, y + 3)
-      }
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.55)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 3])
+      ctx.beginPath()
+      ctx.moveTo(xLeft, y)
+      ctx.lineTo(xRight, y)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.95)'
+      ctx.font = MONO_SM
+      ctx.textAlign = 'left'
+      ctx.fillText(`LVN ${p}`, xLeft + 2, y - 3)
     }
     for (const p of model.hvns) {
       const y = bridge.priceToCoordinate(p)
       if (y === null) continue
-      if (fullWidthLvn) {
-        ctx.strokeStyle = 'rgba(240, 185, 11, 0.4)'
-        ctx.lineWidth = 1
-        ctx.setLineDash([3, 3])
-        ctx.beginPath()
-        ctx.moveTo(8, y)
-        ctx.lineTo(w - BAR_MAX_DEV - 12, y)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(240, 185, 11, 0.9)'
-        ctx.font = MONO_SM
-        ctx.textAlign = 'left'
-        ctx.fillText(`HVN ${p}`, 10, y - 3)
-      } else {
-        ctx.strokeStyle = 'rgba(240, 185, 11, 0.75)'
-        ctx.lineWidth = 1
-        ctx.setLineDash([2, 2])
-        ctx.beginPath()
-        ctx.moveTo(x1 - 28, y)
-        ctx.lineTo(x1, y)
-        ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = 'rgba(240, 185, 11, 0.95)'
-        ctx.font = MONO_XS
-        ctx.textAlign = 'right'
-        ctx.fillText('HVN', x1 - 30, y + 3)
-      }
+      ctx.strokeStyle = 'rgba(240, 185, 11, 0.4)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(xLeft, y)
+      ctx.lineTo(xRight, y)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = 'rgba(240, 185, 11, 0.9)'
+      ctx.font = MONO_SM
+      ctx.textAlign = 'left'
+      ctx.fillText(`HVN ${p}`, xLeft + 2, y - 3)
     }
   }
 
@@ -312,7 +275,7 @@ export function VolumeProfileOverlay({
         lvn: 'rgba(168, 85, 247, 0.25)',
         hvn: 'rgba(96, 165, 250, 0.4)',
       })
-      paintLevels(
+      paintLevelsFullWidth(
         ctx,
         bridge,
         fixed,
@@ -322,8 +285,7 @@ export function VolumeProfileOverlay({
           val: 'rgba(96, 165, 250, 0.85)',
           poc: 'rgba(147, 197, 253, 1)',
         },
-        'F ',
-        true
+        'F '
       )
     }
 
@@ -335,7 +297,7 @@ export function VolumeProfileOverlay({
         lvn: 'rgba(168, 85, 247, 0.28)',
         hvn: 'rgba(240, 185, 11, 0.35)',
       })
-      paintLevels(ctx, bridge, dev, w, {
+      paintLevelsFullWidth(ctx, bridge, dev, w, {
         vah: 'rgba(14, 203, 129, 0.95)',
         val: 'rgba(14, 203, 129, 0.95)',
         poc: 'rgba(240, 185, 11, 1)',
