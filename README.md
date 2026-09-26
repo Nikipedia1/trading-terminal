@@ -46,11 +46,13 @@ book.unsubscribe()
 Side panel tab **Paper** – simulated futures-style account (local only, no API keys):
 
 - Buy/Long · Sell/Short, Market / Limit
+- **Cross / Isolated** margin
 - Leverage 1x–125x (KuCoin-style slider + presets)
+- Optional **TP / SL** (validated vs side/entry; auto-close on real mark)
+- Isolated **liquidation** when margin + uPnL ≤ 0
 - Size in USDT notional → base qty from **real** last price
-- Open positions with unrealized PnL (mark-to-market on live ticker)
-- Limit orders fill when real last crosses limit
-- Balance / equity / history persisted in `localStorage` (`tt-paper:v1`)
+- Chart lines: entry (solid) + TP/SL (dashed) via `CoordinateBridge.priceToCoordinate` only
+- Persist `localStorage` key `tt-paper:v2`
 
 ## Public API limits
 
@@ -203,6 +205,23 @@ GitHub Codespaces: open the repo → Create codespace → after `postCreateComma
 ### Constraints
 - Fills / marks use live `marketStore` ticker only (never synthetic prices)
 - Paper module fully separated from data-layer
+
+## Changelog (feat – paper TP/SL, isolated, chart lines)
+
+**Commits:** `47a7ceb`, `2cd501f`
+
+### Added
+- TP / SL on place order + `setTpsl` per position; auto close on real mark (`tp` / `sl`)
+- Margin mode **cross** | **isolated**; isolated liquidation when margin + uPnL ≤ 0
+- `PaperPositionLines.tsx` – entry / TP / SL horizontal lines via `priceToCoordinate` only
+- History actions: `tp` | `sl` | `liquidate`
+
+### Changed
+- `paperStore` / types / panel UI; storage key `tt-paper:v2`
+- `ChartContainer` mounts `PaperPositionLines` for matching symbol
+
+### Untouched
+- exchange clients, shared feeds, drawings, other analysis overlays
 
 ## License
 
