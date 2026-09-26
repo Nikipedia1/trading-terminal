@@ -39,8 +39,11 @@ export function ChartContainer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMgrRef = useRef<SeriesManager | null>(null)
+  const lastHistoryKeyRef = useRef<string>('')
 
   const candles = useMarketStore((s) => s.candles)
+  const symbol = useMarketStore((s) => s.symbol)
+  const interval = useMarketStore((s) => s.interval)
   const status = useMarketStore((s) => s.status)
   const lastError = useMarketStore((s) => s.lastError)
 
@@ -57,7 +60,6 @@ export function ChartContainer() {
     const seriesMgr = new SeriesManager()
     seriesMgr.attach(chart)
 
-    // Attach coordinate bridge to the primary series
     const candleSeries = seriesMgr.getCandleSeries()
     if (candleSeries) {
       coordinateBridge.attach(chart, candleSeries)
@@ -66,7 +68,6 @@ export function ChartContainer() {
     chartRef.current = chart
     seriesMgrRef.current = seriesMgr
 
-    // ResizeObserver – keeps chart sized and forces coordinate recalculation
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       if (width > 0 && height > 0) {
@@ -85,26 +86,27 @@ export function ChartContainer() {
     }
   }, [])
 
-  // ── Sync historical / full replace ──────────────────────────────────────
+  // ── Full replace when history is (re)loaded (symbol/interval change or first load)
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
-    seriesMgrRef.current.setCandles(candles)
-    // Fit content only on first meaningful load
-    chartRef.current?.timeScale().fitContent()
-  }, [candles.length > 0 && candles[0]?.time]) // trigger only when history is replaced
 
-  // ── Live incremental update (last candle) ───────────────────────────────
-  useEffect(() => {
-    if (!seriesMgrRef.current || candles.length === 0) return
-    const last = candles[candles.length - 1]
-    seriesMgrRef.current.updateCandle(last)
-  }, [candles])
+    const historyKey = `${symbol}|${interval}|${candles[0].time}|${candles.length}`
+    // Only full setData when the history set actually changed
+    if (historyKey !== lastHistoryKeyRef.current) {
+      lastHistoryKeyRef.current = historyKey
+      seriesMgrRef.current.setCandles(candles)
+      chartRef.current?.timeScale().fitContent()
+    } else {
+      // Same history → just update the last candle (live tick)
+      const last = candles[candles.length - 1]
+      seriesMgrRef.current.updateCandle(last)
+    }
+  }, [candles, symbol, interval])
 
   return (
     <div className="relative w-full h-full bg-terminal-panel">
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Explicit error overlay – never show fake data */}
       {lastError && (
         <div className="absolute inset-0 flex items-center justify-center bg-terminal-bg/80 z-10">
           <div className="bg-terminal-red/10 border border-terminal-red/50 text-terminal-red px-6 py-4 rounded text-sm max-w-md text-center">
@@ -114,7 +116,6 @@ export function ChartContainer() {
         </div>
       )}
 
-      {/* Loading state */}
       {status === 'connecting' && candles.length === 0 && !lastError && (
         <div className="absolute inset-0 flex items-center justify-center text-terminal-muted text-sm z-10">
           Connecting to Binance…
