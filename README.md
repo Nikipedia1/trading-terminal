@@ -52,6 +52,16 @@ npm install
 npm run dev
 ```
 
+### Tests (Codespaces / CI / local)
+
+```bash
+npm install
+npm test          # vitest run – non-interactive, exits with code
+npm run test:watch  # interactive watch mode
+```
+
+GitHub Codespaces: open the repo → Create codespace → after `postCreateCommand` finishes, run `npm test` in the terminal.
+
 ## Changelog (Step 6 – shared data layer)
 
 ### Added
@@ -69,6 +79,21 @@ npm run dev
 
 ### Not in this step
 - Deep Print, Delta, Volume Profile, Deep Trades, DeepDom UI
+
+## Changelog (chore – npm test in Codespaces)
+
+### Added
+- `.devcontainer/devcontainer.json` – Node 22 image, `postCreateCommand: npm install`
+- `src/data/shared/__tests__/types.test.ts` – aggressor + feedKey
+- `src/data/shared/__tests__/eventBus.test.ts` – pub/sub smoke
+
+### Changed
+- `package.json` – `test` → `vitest run` (exits cleanly in Codespaces/CI); `test:watch` for local
+- `vite.config.ts` – `test` block (node env, `src/**/*.{test,spec}.{ts,tsx}`)
+- `README.md` – test instructions
+
+### Untouched
+- Runtime data layer, charts, analysis modules
 
 ## License
 
