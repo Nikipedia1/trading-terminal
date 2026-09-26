@@ -18,6 +18,9 @@ import type {
 import { getExchangeClient } from '@/data/exchanges/registry'
 import { subscribeTradeFeed, subscribeOrderBookFeed } from '@/data/shared'
 
+const HISTORY_LIMIT = 1000
+const LIVE_BUFFER_MAX = 1500
+
 interface MarketState {
   symbol: string
   interval: Interval
@@ -83,7 +86,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     set({ status: 'connecting', lastError: null, statusDetail: 'loading history' })
     try {
       const [candles, ticker, book] = await Promise.all([
-        client.getKlines(symbol, interval, 300),
+        client.getKlines(symbol, interval, HISTORY_LIMIT),
         client.getTicker(symbol),
         client.getOrderBook(symbol, 20),
       ])
@@ -132,7 +135,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             candles[candles.length - 1] = candle
           } else if (!last || candle.time > last.time) {
             candles.push(candle)
-            if (candles.length > 500) candles.shift()
+            if (candles.length > LIVE_BUFFER_MAX) candles.shift()
           }
           return { candles, status: 'connected', lastError: null }
         })
