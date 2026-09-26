@@ -1,15 +1,13 @@
 /**
- * Volume Profile aggregation + POC / Value Area / LVN.
- * Real trades only – never invent volume.
+ * Volume Profile – POC / VA / LVN / HVN from real trades only.
  */
 
 import type { AggressorTrade } from '@/data/shared'
 import type { ProfileBucket, ProfileWindow, VolumeProfileModel } from './types'
 import { inferTickSize, roundToTick } from '@/analysis/deepPrint/interval'
 
-const VA_TARGET = 0.7
-/** Bucket volume below this fraction of POC → candidate LVN */
 const LVN_FRAC = 0.22
+const HVN_FRAC = 0.7
 
 export function resolveWindowRange(
   window: ProfileWindow,
@@ -36,28 +34,45 @@ export function resolveWindowRange(
       const d = new Date(nowSec * 1000)
       d.setUTCHours(0, 0, 0, 0)
       const start = Math.floor(d.getTime() / 1000)
-      return { fromSec: start, toSec: start + 1800 }
+      return { fromSec: start, toSec: Math.min(start + 1800, toSec) }
+    }
+    case 'previous_day': {
+      const d = new Date(nowSec * 1000)
+      d.setUTCHours(0, 0, 0, 0)
+      const end = Math.floor(d.getTime() / 1000)
+      return { fromSec: end - 86400, toSec: end }
     }
     default:
       return { fromSec: nowSec - 3600, toSec }
   }
 }
 
-function markLvns(buckets: ProfileBucket[], pocVolume: number): number[] {
-  if (buckets.length < 3 || pocVolume <= 0) return []
-  const thresh = pocVolume * LVN_FRAC
+function markNodes(
+  buckets: ProfileBucket[],
+  pocVolume: number
+): { lvns: number[]; hvns: number[] } {
   const lvns: number[] = []
+  const hvns: number[] = []
+  if (buckets.length < 3 || pocVolume <= 0) return { lvns, hvns }
+
+  const lvnThresh = pocVolume * LVN_FRAC
+  const hvnThresh = pocVolume * HVN_FRAC
+
   for (let i = 1; i < buckets.length - 1; i++) {
     const v = buckets[i].volume
     const prev = buckets[i - 1].volume
     const next = buckets[i + 1].volume
-    // Local minimum + below threshold
-    if (v <= thresh && v <= prev && v <= next) {
+
+    if (v <= lvnThresh && v <= prev && v <= next) {
       buckets[i].isLvn = true
       lvns.push(buckets[i].price)
     }
+    if (v >= hvnThresh && v >= prev && v >= next && !buckets[i].isLvn) {
+      buckets[i].isHvn = true
+      hvns.push(buckets[i].price)
+    }
   }
-  return lvns
+  return { lvns, hvns }
 }
 
 export function buildVolumeProfile(
@@ -65,8 +80,9 @@ export function buildVolumeProfile(
   window: ProfileWindow,
   fromSec: number,
   toSec: number,
+  vaTarget = 0.7,
   tickSize?: number
-): VolumeProfileModel | null {
+): VolumeProfileModel {
   const empty = (tick: number): VolumeProfileModel => ({
     buckets: [],
     totalVolume: 0,
@@ -74,12 +90,14 @@ export function buildVolumeProfile(
     vah: 0,
     val: 0,
     vaShare: 0,
+    vaTarget,
     tickSize: tick,
     window,
     fromSec,
     toSec,
     tradeCount: trades.length,
     lvns: [],
+    hvns: [],
   })
 
   if (trades.length === 0) return empty(tickSize ?? 0.01)
@@ -120,7 +138,7 @@ export function buildVolumeProfile(
   const poc = buckets[pocIdx].price
   const pocVol = buckets[pocIdx].volume
 
-  const target = totalVolume * VA_TARGET
+  const target = totalVolume * vaTarget
   let acc = pocVol
   let lo = pocIdx
   let hi = pocIdx
@@ -137,7 +155,7 @@ export function buildVolumeProfile(
     } else break
   }
 
-  const lvns = markLvns(buckets, pocVol)
+  const { lvns, hvns } = markNodes(buckets, pocVol)
 
   return {
     buckets,
@@ -146,11 +164,13 @@ export function buildVolumeProfile(
     vah: buckets[hi].price,
     val: buckets[lo].price,
     vaShare: totalVolume > 0 ? acc / totalVolume : 0,
+    vaTarget,
     tickSize: tick,
     window,
     fromSec,
     toSec,
     tradeCount: trades.length,
     lvns,
+    hvns,
   }
 }
