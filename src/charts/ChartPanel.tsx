@@ -11,9 +11,20 @@ import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
+import {
+  type ProfileWindow,
+  PROFILE_WINDOW_LABELS,
+} from '@/analysis/volumeProfile'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
+
+const PROFILE_WINDOWS: ProfileWindow[] = [
+  'visible',
+  'session',
+  'last_30m',
+  'session_open_30m',
+]
 
 interface ChartPanelProps {
   config: ChartPanelConfig
@@ -31,6 +42,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
   const [deepPrint, setDeepPrint] = useState(false)
   const [deltaOn, setDeltaOn] = useState(false)
+  const [profileOn, setProfileOn] = useState(false)
+  const [profileWindow, setProfileWindow] = useState<ProfileWindow>('visible')
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
     symbol,
@@ -167,10 +180,10 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </div>
       )}
 
-      <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10 flex items-center">
+      <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10 flex items-center flex-wrap gap-1">
         <button
           type="button"
-          title="Deep Print – hover/click candela"
+          title="Deep Print"
           className={`ml-2 shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             deepPrint
               ? 'bg-terminal-blue text-white border-terminal-blue'
@@ -186,8 +199,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </button>
         <button
           type="button"
-          title="Delta Print – histogram buy−sell per candela (trade live)"
-          className={`ml-1 shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
+          title="Delta Print"
+          className={`shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             deltaOn
               ? 'bg-terminal-blue text-white border-terminal-blue'
               : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
@@ -200,16 +213,49 @@ export function ChartPanel({ config }: ChartPanelProps) {
         >
           Delta
         </button>
-        <span className="w-px h-4 bg-terminal-border mx-1 shrink-0" />
+        <button
+          type="button"
+          title="Volume Profile (Deep Profile)"
+          className={`shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
+            profileOn
+              ? 'bg-terminal-blue text-white border-terminal-blue'
+              : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setProfileOn((v) => !v)
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Profile
+        </button>
+        {profileOn && (
+          <select
+            className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
+            title="Profile time window"
+            value={profileWindow}
+            onChange={(e) => setProfileWindow(e.target.value as ProfileWindow)}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {PROFILE_WINDOWS.map((w) => (
+              <option key={w} value={w}>
+                {PROFILE_WINDOW_LABELS[w]}
+              </option>
+            ))}
+          </select>
+        )}
+        <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <DrawingToolbar panelId={id} symbol={symbol} />
         </div>
       </div>
 
-      {(deepPrint || deltaOn) && (
+      {(deepPrint || deltaOn || profileOn) && (
         <div className="shrink-0 px-2 py-0.5 text-xxs bg-terminal-blue/10 text-terminal-blue border-b border-terminal-blue/30">
-          {deepPrint && 'Print ON (hover/click candela) · '}
-          {deltaOn && 'Delta ON (histogram in basso, solo trade nel buffer live)'}
+          {deepPrint && 'Print · '}
+          {deltaOn && 'Delta · '}
+          {profileOn &&
+            `Profile (${PROFILE_WINDOW_LABELS[profileWindow]}) – solo trade live nel buffer`}
         </div>
       )}
 
@@ -225,6 +271,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
           syncGroup={syncGroup}
           deepPrintEnabled={deepPrint}
           deltaEnabled={deltaOn}
+          profileEnabled={profileOn}
+          profileWindow={profileWindow}
         />
       </div>
     </div>

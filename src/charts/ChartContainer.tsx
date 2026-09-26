@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + drawings + Deep Print + Delta histogram.
+ * ChartContainer – chart + drawings + Print + Delta + Volume Profile.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -20,6 +20,7 @@ import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
 import { useCandleDeltaSeries } from '@/analysis/deltaPrint'
+import { VolumeProfileOverlay, type ProfileWindow } from '@/analysis/volumeProfile'
 
 function buildChartOptions(canvas: {
   background: string
@@ -88,6 +89,8 @@ export interface ChartContainerProps {
   syncGroup?: string | null
   deepPrintEnabled?: boolean
   deltaEnabled?: boolean
+  profileEnabled?: boolean
+  profileWindow?: ProfileWindow
 }
 
 export function ChartContainer({
@@ -101,6 +104,8 @@ export function ChartContainer({
   syncGroup = null,
   deepPrintEnabled = false,
   deltaEnabled = false,
+  profileEnabled = false,
+  profileWindow = 'visible',
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -189,7 +194,6 @@ export function ChartContainer({
     }
   }, [candles])
 
-  // Candle-level delta histogram (same timeScale)
   useCandleDeltaSeries(deltaEnabled, seriesMgr, exchange, symbol, interval, candles)
 
   useEffect(() => {
@@ -264,6 +268,15 @@ export function ChartContainer({
       style={{ backgroundColor: chartStyle.canvas.background }}
     >
       <div ref={containerRef} className="absolute inset-0" />
+
+      <VolumeProfileOverlay
+        enabled={profileEnabled}
+        bridge={bridge}
+        containerRef={containerRef}
+        exchange={exchange}
+        symbol={symbol}
+        windowMode={profileWindow}
+      />
 
       <DrawingLayer
         panelId={panelId}
