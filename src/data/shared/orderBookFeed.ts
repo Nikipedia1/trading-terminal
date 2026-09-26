@@ -1,17 +1,10 @@
 /**
  * Shared L2 order book with local reconstruction.
  *
- * Binance (official how-to):
- * 1. Open WS depth stream (diff)
- * 2. Buffer events
- * 3. REST snapshot GET /api/v3/depth
- * 4. Drop u <= lastUpdateId; first event must cover lastUpdateId+1
- * 5. Apply diffs; resync on gap
+ * Binance: depth@100ms + REST snapshot limit=1000 (official sync).
+ * KuCoin: level2 sequence + REST level2_100 (max ~100 levels public).
  *
- * KuCoin: sequenceStart/sequenceEnd vs snapshot sequence (same idea).
- *
- * One connection per (exchange, symbol), refcounted.
- * Never fabricates levels on error – emits error + not-ready book.
+ * One connection per (exchange, symbol), refcounted. Never fabricates levels.
  */
 
 import type { ExchangeId, MarketError, ConnectionStatus } from '@/types'
@@ -29,6 +22,9 @@ import {
 const BINANCE_REST = 'https://api.binance.com'
 const BINANCE_WS = 'wss://stream.binance.com:9443'
 const KUCOIN_REST = 'https://api.kucoin.com'
+
+/** Levels published per side – enough for DeepDom band around mid */
+const SNAPSHOT_TOP_N = 200
 
 interface BookFeedEvents {
   book: OrderBookSnapshot
@@ -50,7 +46,7 @@ function createError(exchange: string, code: string, message: string): MarketErr
   return { code, message, exchange, timestamp: Date.now() }
 }
 
-function mapsToSnapshot(book: LocalOrderBook, topN = 50): OrderBookSnapshot {
+function mapsToSnapshot(book: LocalOrderBook, topN = SNAPSHOT_TOP_N): OrderBookSnapshot {
   const bids: BookLevel[] = []
   const asks: BookLevel[] = []
   for (const [price, qty] of book.bids) {
@@ -82,12 +78,7 @@ function applySide(map: Map<number, number>, levels: [string, string][]) {
   }
 }
 
-// ─── Binance L2 engine ─────────────────────────────────────────────────────
-
-function startBinanceBook(
-  symbol: string,
-  slot: Slot
-): () => void {
+function startBinanceBook(symbol: string, slot: Slot): () => void {
   const sym = symbol.toUpperCase()
   const stream = `${sym.toLowerCase()}@depth@100ms`
 
@@ -125,7 +116,6 @@ function startBinanceBook(
     setStatus('connecting', 'depth snapshot')
 
     try {
-      // Small delay so WS buffer accumulates per Binance guidance
       await new Promise((r) => setTimeout(r, 50))
 
       const url = `${BINANCE_REST}/api/v3/depth?symbol=${sym}&limit=1000`
@@ -161,13 +151,10 @@ function startBinanceBook(
         if (qty > 0) book.asks.set(parseFloat(p), qty)
       }
 
-      // Drop obsolete events
       buffer = buffer.filter((e) => e.u > lastUpdateId)
 
-      // First event should cover lastUpdateId+1
       const first = buffer[0]
       if (first && (first.U > lastUpdateId + 1 || first.u < lastUpdateId + 1)) {
-        // Gap – try again
         syncing = false
         void resync()
         return
@@ -197,11 +184,9 @@ function startBinanceBook(
     if (data.e !== 'depthUpdate') return
     if (!synced) {
       buffer.push(data)
-      // Cap buffer to avoid memory blow during long outage
       if (buffer.length > 5000) buffer.shift()
       return
     }
-    // Gap detection
     if (data.U > book.lastUpdateId + 1) {
       void resync()
       return
@@ -221,9 +206,7 @@ function startBinanceBook(
     maxBackoffMs: 30_000,
     onStatus: (s, detail) => {
       setStatus(s, detail)
-      if (s === 'connected') {
-        void resync()
-      }
+      if (s === 'connected') void resync()
       if (s === 'reconnecting' || s === 'disconnected') {
         synced = false
         book.ready = false
@@ -231,17 +214,13 @@ function startBinanceBook(
     },
     onMessage: (data) => onDiff(data),
     onError: (msg) => {
-      slot.bus.emit('error', {
-        error: createError('binance', 'WS_DEPTH', msg),
-      })
+      slot.bus.emit('error', { error: createError('binance', 'WS_DEPTH', msg) })
     },
   })
   void rws.connect()
 
   return () => rws.close()
 }
-
-// ─── KuCoin L2 engine (sequence-based) ─────────────────────────────────────
 
 async function kucoinBullet(): Promise<{ endpoint: string; token: string; pingInterval: number }> {
   const res = await fetch(`${KUCOIN_REST}/api/v1/bullet-public`, { method: 'POST' })
@@ -295,6 +274,24 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
     slot.bus.emit('status', slot.lastStatus)
   }
 
+  const applyKucoinChanges = (b: LocalOrderBook, data: any) => {
+    const changes = data.changes || {}
+    for (const row of changes.bids || []) {
+      const price = parseFloat(row[0])
+      const qty = parseFloat(row[1])
+      if (qty === 0) b.bids.delete(price)
+      else b.bids.set(price, qty)
+    }
+    for (const row of changes.asks || []) {
+      const price = parseFloat(row[0])
+      const qty = parseFloat(row[1])
+      if (qty === 0) b.asks.delete(price)
+      else b.asks.set(price, qty)
+    }
+    if (data.sequenceEnd != null) b.lastUpdateId = data.sequenceEnd
+    b.updatedAt = Date.now()
+  }
+
   const resync = async () => {
     if (syncing) return
     syncing = true
@@ -303,6 +300,7 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
     buffer = []
     setStatus('connecting', 'kucoin depth snapshot')
     try {
+      // Public API: max 100 levels – DeepDom band is limited vs Binance 1000
       const url = `${KUCOIN_REST}/api/v1/market/orderbook/level2_100?symbol=${encodeURIComponent(sym)}`
       const res = await fetch(url)
       if (!res.ok) {
@@ -340,14 +338,12 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
       }
 
       buffer = buffer.filter((e) => (e.sequenceEnd ?? 0) > seq)
-      for (const ev of buffer) {
-        applyKucoinChanges(book, ev)
-      }
+      for (const ev of buffer) applyKucoinChanges(book, ev)
       buffer = []
       book.ready = true
       synced = true
       syncing = false
-      setStatus('connected', 'depth synced')
+      setStatus('connected', 'depth synced (≤100 lvl)')
       publish()
     } catch (e: any) {
       syncing = false
@@ -355,24 +351,6 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
       slot.bus.emit('error', { error: err })
       setStatus('error', err.message)
     }
-  }
-
-  const applyKucoinChanges = (b: LocalOrderBook, data: any) => {
-    const changes = data.changes || {}
-    for (const row of changes.bids || []) {
-      const price = parseFloat(row[0])
-      const qty = parseFloat(row[1])
-      if (qty === 0) b.bids.delete(price)
-      else b.bids.set(price, qty)
-    }
-    for (const row of changes.asks || []) {
-      const price = parseFloat(row[0])
-      const qty = parseFloat(row[1])
-      if (qty === 0) b.asks.delete(price)
-      else b.asks.set(price, qty)
-    }
-    if (data.sequenceEnd != null) b.lastUpdateId = data.sequenceEnd
-    b.updatedAt = Date.now()
   }
 
   rws = new ReconnectingWebSocket('', {
@@ -437,8 +415,6 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
     rws?.close()
   }
 }
-
-// ─── Public API ────────────────────────────────────────────────────────────
 
 function getOrCreateSlot(exchange: ExchangeId, symbol: string): Slot {
   const key = feedKey(exchange, symbol)

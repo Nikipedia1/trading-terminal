@@ -20,6 +20,11 @@ import {
   type ThresholdMode,
   DEFAULT_DEEP_TRADES_CONFIG,
 } from '@/analysis/deepTrades'
+import {
+  type DeepDomConfig,
+  DEFAULT_DEEP_DOM_CONFIG,
+  L2_GRANULARITY_NOTES,
+} from '@/analysis/deepDom'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
@@ -51,6 +56,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const [profileWindow, setProfileWindow] = useState<ProfileWindow>('visible')
   const [tradesOn, setTradesOn] = useState(false)
   const [tradesCfg, setTradesCfg] = useState<DeepTradesConfig>(DEFAULT_DEEP_TRADES_CONFIG)
+  const [domOn, setDomOn] = useState(false)
+  const [domCfg, setDomCfg] = useState<DeepDomConfig>(DEFAULT_DEEP_DOM_CONFIG)
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
     symbol,
@@ -134,7 +141,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
         <button
           type="button"
-          title="Personalizza candele e canvas"
+          title="Stile"
           className={`text-xxs px-1.5 py-0.5 rounded border ${
             stylePanelOpen
               ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
@@ -155,7 +162,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
             <button
               type="button"
               className="text-xxs px-1.5 py-0.5 border border-terminal-border rounded hover:bg-terminal-hover"
-              title="Ricarica"
               onClick={(e) => {
                 e.stopPropagation()
                 reload()
@@ -169,7 +175,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
         {panelCount > 1 && (
           <button
             className="text-terminal-red/80 hover:text-terminal-red text-xs px-1"
-            title="Remove panel"
             onClick={(e) => {
               e.stopPropagation()
               removePanel(id)
@@ -190,7 +195,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
       <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10 flex items-center flex-wrap gap-1">
         <button
           type="button"
-          title="Deep Print"
           className={`ml-2 shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             deepPrint
               ? 'bg-terminal-blue text-white border-terminal-blue'
@@ -206,7 +210,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </button>
         <button
           type="button"
-          title="Delta Print"
           className={`shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             deltaOn
               ? 'bg-terminal-blue text-white border-terminal-blue'
@@ -222,7 +225,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </button>
         <button
           type="button"
-          title="Volume Profile"
           className={`shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             profileOn
               ? 'bg-terminal-blue text-white border-terminal-blue'
@@ -252,7 +254,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
         )}
         <button
           type="button"
-          title="Deep Trades – large prints (bubble size ∝ qty)"
+          title="Deep Trades"
           className={`shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
             tradesOn
               ? 'bg-terminal-blue text-white border-terminal-blue'
@@ -270,7 +272,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
           <>
             <select
               className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
-              title="Threshold mode"
               value={tradesCfg.mode}
               onChange={(e) =>
                 setTradesCfg((c) => ({ ...c, mode: e.target.value as ThresholdMode }))
@@ -286,7 +287,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
                 min={50}
                 max={99}
                 className="w-12 bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
-                title="Percentile (e.g. 90 = top 10%)"
                 value={tradesCfg.percentile}
                 onChange={(e) =>
                   setTradesCfg((c) => ({
@@ -302,7 +302,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
                 min={0}
                 step="any"
                 className="w-16 bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
-                title="Minimum size (base asset)"
                 value={tradesCfg.fixedMin}
                 onChange={(e) =>
                   setTradesCfg((c) => ({
@@ -315,19 +314,53 @@ export function ChartPanel({ config }: ChartPanelProps) {
             )}
           </>
         )}
+        <button
+          type="button"
+          title={L2_GRANULARITY_NOTES[exchange] || 'DeepDom L2 heatmap'}
+          className={`shrink-0 px-2 py-0.5 text-xs rounded border font-medium ${
+            domOn
+              ? 'bg-terminal-blue text-white border-terminal-blue'
+              : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setDomOn((v) => !v)
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Dom
+        </button>
+        {domOn && (
+          <input
+            type="number"
+            min={1}
+            max={30}
+            className="w-12 bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
+            title="Finestra scorrevole (minuti)"
+            value={domCfg.windowMinutes}
+            onChange={(e) =>
+              setDomCfg((c) => ({
+                ...c,
+                windowMinutes: Math.max(1, Number(e.target.value) || 5),
+              }))
+            }
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        )}
         <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
         <div className="flex-1 min-w-0">
           <DrawingToolbar panelId={id} symbol={symbol} />
         </div>
       </div>
 
-      {(deepPrint || deltaOn || profileOn || tradesOn) && (
+      {(deepPrint || deltaOn || profileOn || tradesOn || domOn) && (
         <div className="shrink-0 px-2 py-0.5 text-xxs bg-terminal-blue/10 text-terminal-blue border-b border-terminal-blue/30">
           {deepPrint && 'Print · '}
           {deltaOn && 'Delta · '}
-          {profileOn && `Profile (${PROFILE_WINDOW_LABELS[profileWindow]}) · `}
-          {tradesOn &&
-            `Trades (${tradesCfg.mode === 'fixed' ? `min ${tradesCfg.fixedMin}` : `p${tradesCfg.percentile}`}) – solo trade live`}
+          {profileOn && `Profile · `}
+          {tradesOn && 'Trades · '}
+          {domOn &&
+            `Dom (${domCfg.windowMinutes}m) – ${L2_GRANULARITY_NOTES[exchange] || 'L2'}`}
         </div>
       )}
 
@@ -347,6 +380,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
           profileWindow={profileWindow}
           deepTradesEnabled={tradesOn}
           deepTradesConfig={tradesCfg}
+          deepDomEnabled={domOn}
+          deepDomConfig={domCfg}
         />
       </div>
     </div>

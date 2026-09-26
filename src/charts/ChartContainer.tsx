@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + drawings + Print + Delta + Profile + Deep Trades.
+ * ChartContainer – chart + analysis overlays (Print/Delta/Profile/Trades/Dom).
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -26,6 +26,11 @@ import {
   type DeepTradesConfig,
   DEFAULT_DEEP_TRADES_CONFIG,
 } from '@/analysis/deepTrades'
+import {
+  DeepDomOverlay,
+  type DeepDomConfig,
+  DEFAULT_DEEP_DOM_CONFIG,
+} from '@/analysis/deepDom'
 
 function buildChartOptions(canvas: {
   background: string
@@ -98,6 +103,8 @@ export interface ChartContainerProps {
   profileWindow?: ProfileWindow
   deepTradesEnabled?: boolean
   deepTradesConfig?: DeepTradesConfig
+  deepDomEnabled?: boolean
+  deepDomConfig?: DeepDomConfig
 }
 
 export function ChartContainer({
@@ -115,6 +122,8 @@ export function ChartContainer({
   profileWindow = 'visible',
   deepTradesEnabled = false,
   deepTradesConfig = DEFAULT_DEEP_TRADES_CONFIG,
+  deepDomEnabled = false,
+  deepDomConfig = DEFAULT_DEEP_DOM_CONFIG,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -142,9 +151,7 @@ export function ChartContainer({
 
     const bridgeInstance = new CoordinateBridge()
     const candleSeries = mgr.getCandleSeries()
-    if (candleSeries) {
-      bridgeInstance.attach(chart, candleSeries)
-    }
+    if (candleSeries) bridgeInstance.attach(chart, candleSeries)
 
     chartRef.current = chart
     seriesMgrRef.current = mgr
@@ -154,9 +161,7 @@ export function ChartContainer({
 
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
-      if (width > 0 && height > 0) {
-        chart.applyOptions({ width, height })
-      }
+      if (width > 0 && height > 0) chart.applyOptions({ width, height })
     })
     ro.observe(containerRef.current)
 
@@ -177,7 +182,6 @@ export function ChartContainer({
     const chart = chartRef.current
     const mgr = seriesMgrRef.current
     if (!chart || !mgr) return
-
     const opts = buildChartOptions(chartStyle.canvas)
     chart.applyOptions({
       layout: opts.layout,
@@ -191,15 +195,13 @@ export function ChartContainer({
 
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
-
     const historyKey = `${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       seriesMgrRef.current.setCandles(candles)
       chartRef.current?.timeScale().fitContent()
     } else {
-      const last = candles[candles.length - 1]
-      seriesMgrRef.current.updateCandle(last)
+      seriesMgrRef.current.updateCandle(candles[candles.length - 1])
     }
   }, [candles])
 
@@ -207,7 +209,6 @@ export function ChartContainer({
 
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return
-
     const chart = chartRef.current
     const candleSeries = seriesMgrRef.current?.getCandleSeries() as
       | ISeriesApi<'Candlestick'>
@@ -246,7 +247,6 @@ export function ChartContainer({
       if (sourceId === panelId) return
       const c = chartRef.current
       if (!c) return
-
       applyingRemoteRef.current = true
       try {
         if (payload.type === 'timeRange') {
@@ -277,6 +277,16 @@ export function ChartContainer({
       style={{ backgroundColor: chartStyle.canvas.background }}
     >
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* z-order: Dom (passive liq) under Profile under Trades under drawings */}
+      <DeepDomOverlay
+        enabled={deepDomEnabled}
+        bridge={bridge}
+        containerRef={containerRef}
+        exchange={exchange}
+        symbol={symbol}
+        config={deepDomConfig}
+      />
 
       <VolumeProfileOverlay
         enabled={profileEnabled}
