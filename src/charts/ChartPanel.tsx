@@ -45,6 +45,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
     tradesCfg: DEFAULT_DEEP_TRADES_CONFIG,
     dom: false,
     domCfg: DEFAULT_DEEP_DOM_CONFIG,
+    footprint: false,
+    replay: false,
   })
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
@@ -215,6 +217,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
           deepTradesConfig={of.tradesCfg}
           deepDomEnabled={of.dom}
           deepDomConfig={of.domCfg}
+          footprintEnabled={of.footprint}
+          replayEnabled={of.replay}
           isPrimary={isPrimary}
         />
       </div>
