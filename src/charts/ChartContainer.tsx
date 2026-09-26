@@ -17,10 +17,12 @@ import { IndicatorSeriesManager } from './indicator-series'
 import { IndicatorPanes } from './IndicatorPanes'
 import { IndicatorValuesHud } from './IndicatorValuesHud'
 import { CoordinateBridge } from './coordinate-bridge'
+import { attachFreePan } from './free-pan'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useChartFocusStore } from '@/stores/chartFocusStore'
 import { useIndicatorStore } from '@/stores/indicatorStore'
+import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
@@ -87,6 +89,8 @@ function buildChartOptions(canvas: {
     rightPriceScale: {
       borderColor: canvas.border,
       scaleMargins: { top: 0.05, bottom: 0.28 },
+      // Keep autoScale true by default; free-pan locks it while dragging vertically
+      autoScale: true,
     },
     timeScale: {
       borderColor: canvas.border,
@@ -95,6 +99,7 @@ function buildChartOptions(canvas: {
       rightOffset: 8,
       shiftVisibleRangeOnNewBar: true,
     },
+    // Full free scroll: time + touch vertical; main-area vertical price via free-pan.ts
     handleScroll: {
       mouseWheel: true,
       pressedMouseMove: true,
@@ -173,6 +178,7 @@ export function ChartContainer({
   const indicatorByPanel = useIndicatorStore((s) => s.byPanel)
   const getIndicatorParams = useIndicatorStore((s) => s.getParams)
   const indicatorParams = getIndicatorParams(panelId)
+  const activeTool = useDrawingStore((s) => s.activeTool)
   void indicatorByPanel
 
   useEffect(() => {
@@ -224,6 +230,30 @@ export function ChartContainer({
       setBridge(null)
     }
   }, [])
+
+  // Free vertical price pan while drawing tool is Pan (horizontal stays on LWC)
+  useEffect(() => {
+    const chart = chartRef.current
+    const series = seriesMgrRef.current?.getCandleSeries() as
+      | ISeriesApi<'Candlestick'>
+      | null
+      | undefined
+    const el = containerRef.current
+    if (!chart || !series || !el) return
+
+    const detach = attachFreePan(
+      { chart, series, container: el },
+      () => useDrawingStore.getState().activeTool === 'pan'
+    )
+    return detach
+  }, [mainChart, seriesMgr])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    if (activeTool === 'pan') el.style.cursor = 'grab'
+    else if (el.style.cursor === 'grab' || el.style.cursor === 'grabbing') el.style.cursor = ''
+  }, [activeTool])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -351,7 +381,6 @@ export function ChartContainer({
       className="w-full h-full flex flex-col"
       style={{ backgroundColor: chartStyle.canvas.background }}
     >
-      {/* Main price chart */}
       <div className="relative flex-1 min-h-0">
         <div ref={containerRef} className="absolute inset-0" />
 
@@ -455,7 +484,6 @@ export function ChartContainer({
         )}
       </div>
 
-      {/* Oscillator panes under the price chart */}
       <IndicatorPanes mainChart={mainChart} candles={candles} params={indicatorParams} />
     </div>
   )

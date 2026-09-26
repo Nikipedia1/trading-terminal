@@ -99,17 +99,15 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Pan – free chart movement */}
       <button
         type="button"
-        title="Pan – trascina il grafico, zoom con rotella (scorciatoia: H)"
+        title="Pan – trascina libero (orizzontale + verticale). Doppio clic = reset auto-scale. Zoom rotella. Scorciatoia: H"
         onClick={() => setActiveTool('pan')}
         className={`px-2 py-0.5 text-xs rounded border font-medium ${modeBtn(activeTool === 'pan')}`}
       >
         ✋ Pan
       </button>
 
-      {/* Select drawings */}
       <button
         type="button"
         title="Selezione disegni – clicca per selezionare/modificare (scorciatoia: V)"
