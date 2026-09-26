@@ -91,12 +91,9 @@ export function ChartStylePanel() {
           Reset
         </button>
         <button
-          type="button"	le
+          type="button"
           className="px-2 py-1 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
-          onClick={() => {
-            // Quick dark preset = default
-            resetStyle()
-          }}
+          onClick={() => resetStyle()}
         >
           Dark
         </button>
