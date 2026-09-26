@@ -2,6 +2,7 @@
  * ChartPanel – one draggable/resizable chart unit.
  */
 
+import { useState } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
@@ -26,6 +27,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const panelCount = useLayoutStore((s) => s.panels.length)
   const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
+  const [deepPrint, setDeepPrint] = useState(false)
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
     symbol,
@@ -52,7 +54,9 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onMouseDown={(e) => e.stopPropagation()}
         >
           {INTERVALS.map((i) => (
-            <option key={i} value={i}>{i}</option>
+            <option key={i} value={i}>
+              {i}
+            </option>
           ))}
         </select>
         <select
@@ -62,7 +66,9 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onMouseDown={(e) => e.stopPropagation()}
         >
           {SUPPORTED_EXCHANGES.map((ex) => (
-            <option key={ex} value={ex}>{ex}</option>
+            <option key={ex} value={ex}>
+              {ex}
+            </option>
           ))}
         </select>
 
@@ -80,7 +86,11 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </select>
 
         <button
-          className={`text-xxs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-terminal-blue/30 text-terminal-blue' : 'text-terminal-muted hover:text-terminal-text'}`}
+          className={`text-xxs px-1.5 py-0.5 rounded ${
+            isPrimary
+              ? 'bg-terminal-blue/30 text-terminal-blue'
+              : 'text-terminal-muted hover:text-terminal-text'
+          }`}
           title="Primary panel"
           onClick={(e) => {
             e.stopPropagation()
@@ -89,6 +99,23 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onMouseDown={(e) => e.stopPropagation()}
         >
           {isPrimary ? '★' : '☆'}
+        </button>
+
+        <button
+          type="button"
+          title="Deep Print – hover/click a candle for bid/ask print"
+          className={`text-xxs px-1.5 py-0.5 rounded border ${
+            deepPrint
+              ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
+              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
+          }`}
+          onClick={(e) => {
+            e.stopPropagation()
+            setDeepPrint((v) => !v)
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Print
         </button>
 
         <button
@@ -140,7 +167,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
         )}
       </div>
 
-      {/* Explicit error banner – never silent, never fake data */}
       {lastError && (
         <div className="shrink-0 px-2 py-1 text-xxs bg-terminal-red/10 text-terminal-red border-b border-terminal-red/30">
           <strong>[{lastError.code}]</strong> {lastError.message}
@@ -156,10 +182,13 @@ export function ChartPanel({ config }: ChartPanelProps) {
         <ChartContainer
           panelId={id}
           symbol={symbol}
+          exchange={exchange}
+          interval={interval}
           candles={candles}
           status={status}
           lastError={lastError}
           syncGroup={syncGroup}
+          deepPrintEnabled={deepPrint}
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 /**
  * ChartContainer – single chart pane with real exchange data.
- * Applies chartStyleStore for candle + canvas colors.
+ * Hosts DrawingLayer + DeepPrintOverlay (anti-pellicola via CoordinateBridge).
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -12,13 +12,14 @@ import {
   ColorType,
   CrosshairMode,
 } from 'lightweight-charts'
-import type { Candle, ConnectionStatus, MarketError } from '@/types'
+import type { Candle, ConnectionStatus, MarketError, ExchangeId, Interval } from '@/types'
 import { SeriesManager } from './series-manager'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
+import { DeepPrintOverlay } from '@/analysis/deepPrint'
 
 function buildChartOptions(canvas: {
   background: string
@@ -79,19 +80,25 @@ function buildChartOptions(canvas: {
 export interface ChartContainerProps {
   panelId: string
   symbol: string
+  exchange: ExchangeId
+  interval: Interval
   candles: Candle[]
   status: ConnectionStatus
   lastError: MarketError | null
   syncGroup?: string | null
+  deepPrintEnabled?: boolean
 }
 
 export function ChartContainer({
   panelId,
   symbol,
+  exchange,
+  interval,
   candles,
   status,
   lastError,
   syncGroup = null,
+  deepPrintEnabled = false,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -103,7 +110,6 @@ export function ChartContainer({
 
   const chartStyle = useChartStyleStore((s) => s.style)
 
-  // ── Create chart once ───────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
 
@@ -148,7 +154,6 @@ export function ChartContainer({
     }
   }, [])
 
-  // ── Apply style changes live ────────────────────────────────────────────
   useEffect(() => {
     const chart = chartRef.current
     const seriesMgr = seriesMgrRef.current
@@ -165,7 +170,6 @@ export function ChartContainer({
     seriesMgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
-  // ── Data sync ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
 
@@ -180,7 +184,6 @@ export function ChartContainer({
     }
   }, [candles])
 
-  // ── Sync group ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return
 
@@ -259,6 +262,16 @@ export function ChartContainer({
         symbol={symbol}
         bridge={bridge}
         containerRef={containerRef}
+      />
+
+      <DeepPrintOverlay
+        enabled={deepPrintEnabled}
+        bridge={bridge}
+        containerRef={containerRef}
+        exchange={exchange}
+        symbol={symbol}
+        interval={interval}
+        candles={candles}
       />
 
       <ChartStylePanel />
