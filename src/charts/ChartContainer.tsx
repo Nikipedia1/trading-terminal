@@ -52,6 +52,7 @@ import {
   DEFAULT_FOOTPRINT_CONFIG,
 } from '@/analysis/footprint'
 import { ReplayBar } from '@/analysis/replay'
+import { PaperPositionLines } from '@/trading/paper'
 
 function buildChartOptions(canvas: {
   background: string
@@ -423,6 +424,13 @@ export function ChartContainer({
           symbol={symbol}
           interval={interval}
           candles={candles}
+        />
+
+        <PaperPositionLines
+          enabled
+          bridge={bridge}
+          containerRef={containerRef}
+          symbol={symbol}
         />
 
         <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
