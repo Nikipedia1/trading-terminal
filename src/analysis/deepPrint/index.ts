@@ -1,3 +1,5 @@
 export { DeepPrintOverlay } from './DeepPrintOverlay'
 export { aggregatePrint, computeCandleDeltas } from './aggregate'
+export { retainTradeBuffer, queryTradesInRange } from './tradeBuffer'
+export { buyRatio, levelImbalance, stackedImbalancePrices } from './imbalance'
 export type { DeepPrintModel, PrintLevel, CandleDeltaBar } from './types'

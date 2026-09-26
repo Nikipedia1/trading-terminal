@@ -1,15 +1,16 @@
 /**
- * Deep Print – Bid/Ask footprint beside the candle (guide-style).
- * SELL | PX | BUY with thick bars + Delta as horizontal bars.
+ * Deep Print – Bid/Ask footprint with imbalance + stacked imbalance.
+ * Anti-pellicola: position from timeToCoordinate / priceToCoordinate.
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import type { CoordinateBridge } from '@/charts/coordinate-bridge'
 import type { Candle, ExchangeId, Interval } from '@/types'
 import { retainTradeBuffer, queryTradesInRange } from './tradeBuffer'
 import { aggregatePrint } from './aggregate'
 import { intervalToSeconds } from './interval'
-import type { DeepPrintModel } from './types'
+import { buyRatio, levelImbalance, stackedImbalancePrices } from './imbalance'
+import type { DeepPrintModel, PrintLevel } from './types'
 
 interface DeepPrintOverlayProps {
   enabled: boolean
@@ -21,11 +22,18 @@ interface DeepPrintOverlayProps {
   candles: Candle[]
 }
 
+const IMB_THRESHOLD = 0.7
+const STACK_MIN = 3
+
 function formatQty(q: number): string {
   if (Math.abs(q) >= 1000) return q.toFixed(2)
   if (Math.abs(q) >= 1) return q.toFixed(3)
   if (Math.abs(q) >= 0.01) return q.toFixed(4)
   return q.toFixed(5)
+}
+
+function formatPct(r: number): string {
+  return `${(r * 100).toFixed(0)}%`
 }
 
 export function DeepPrintOverlay({
@@ -39,7 +47,12 @@ export function DeepPrintOverlay({
 }: DeepPrintOverlayProps) {
   const [model, setModel] = useState<DeepPrintModel | null>(null)
   const [pinned, setPinned] = useState(false)
+  const [pinnedTime, setPinnedTime] = useState<number | null>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  /** Filter: only levels with |delta| ≥ this fraction of max |delta| (0 = off) */
+  const [deltaFilterOn, setDeltaFilterOn] = useState(false)
+  const [deltaFilterPct, setDeltaFilterPct] = useState(15) // % of max abs delta
+
   const modelRef = useRef<DeepPrintModel | null>(null)
   modelRef.current = model
 
@@ -63,6 +76,23 @@ export function DeepPrintOverlay({
     },
     [candles, exchange, symbol, interval]
   )
+
+  const pinCandle = useCallback(
+    (candleTime: number) => {
+      setPinned(true)
+      setPinnedTime(candleTime)
+      rebuildModel(candleTime)
+    },
+    [rebuildModel]
+  )
+
+  /** Last fully closed candle (not the forming bar) */
+  const pinLastClosed = useCallback(() => {
+    if (candles.length < 2) return
+    // candles are chronological; last is live, previous is last closed
+    const closed = candles[candles.length - 2]
+    if (closed) pinCandle(closed.time)
+  }, [candles, pinCandle])
 
   const updatePosition = useCallback(() => {
     const m = modelRef.current
@@ -98,13 +128,21 @@ export function DeepPrintOverlay({
     }
   }, [bridge, enabled, updatePosition, containerRef])
 
+  // Keep pinned candle data fresh
   useEffect(() => {
-    if (!enabled || !model) return
+    if (!enabled || !pinned || pinnedTime == null) return
+    const id = window.setInterval(() => rebuildModel(pinnedTime), 1000)
+    return () => window.clearInterval(id)
+  }, [enabled, pinned, pinnedTime, rebuildModel])
+
+  // Hover refresh when not pinned
+  useEffect(() => {
+    if (!enabled || pinned || !model) return
     const id = window.setInterval(() => {
       if (modelRef.current) rebuildModel(modelRef.current.candleTime)
     }, 1000)
     return () => window.clearInterval(id)
-  }, [enabled, model?.candleTime, rebuildModel])
+  }, [enabled, pinned, model?.candleTime, rebuildModel])
 
   useEffect(() => {
     if (!enabled || !bridge) return
@@ -118,8 +156,7 @@ export function DeepPrintOverlay({
       const candle =
         candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
       if (!candle) return
-      setPinned(true)
-      rebuildModel(candle.time)
+      pinCandle(candle.time)
     }
 
     const onMove = (param: any) => {
@@ -142,24 +179,68 @@ export function DeepPrintOverlay({
       chart.unsubscribeClick(onClick)
       chart.unsubscribeCrosshairMove(onMove)
     }
-  }, [enabled, bridge, candles, interval, pinned, rebuildModel])
+  }, [enabled, bridge, candles, interval, pinned, rebuildModel, pinCandle])
+
+  // Keyboard: P = pin last closed (when print enabled)
+  useEffect(() => {
+    if (!enabled) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+        return
+      if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault()
+        pinLastClosed()
+      }
+      if (e.key === 'Escape' && pinned) {
+        setPinned(false)
+        setPinnedTime(null)
+        setModel(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [enabled, pinned, pinLastClosed])
 
   useEffect(() => {
     if (!enabled) {
       setModel(null)
       setPinned(false)
+      setPinnedTime(null)
       setPos(null)
     }
   }, [enabled, symbol, exchange, interval])
 
-  if (!enabled || !model || !pos) return null
+  const maxAbsDelta = useMemo(() => {
+    if (!model?.levels.length) return 0.0001
+    return Math.max(...model.levels.map((l) => Math.abs(l.delta)), 0.0001)
+  }, [model])
+
+  const visibleLevels: PrintLevel[] = useMemo(() => {
+    if (!model) return []
+    if (!deltaFilterOn) return model.levels
+    const thresh = maxAbsDelta * (deltaFilterPct / 100)
+    return model.levels.filter((l) => Math.abs(l.delta) >= thresh)
+  }, [model, deltaFilterOn, deltaFilterPct, maxAbsDelta])
+
+  const stacked = useMemo(
+    () => stackedImbalancePrices(visibleLevels, STACK_MIN, IMB_THRESHOLD),
+    [visibleLevels]
+  )
+
+  if (!enabled || !model || !pos) {
+    // When enabled but no model yet, still allow shortcut via keyboard
+    if (enabled && !model) return null
+    return null
+  }
 
   const parent = containerRef.current
   const cw = parent?.clientWidth ?? 0
   const ch = parent?.clientHeight ?? 0
-  const panelW = 248
-  const rowH = 20
-  const panelH = Math.min(340, 56 + Math.max(1, model.levels.length) * rowH)
+
+  // Adaptive width from level count / content
+  const panelW = Math.min(320, Math.max(260, 240 + Math.min(visibleLevels.length, 12) * 2))
+  const rowH = 22
+  const panelH = Math.min(380, 88 + Math.max(1, visibleLevels.length) * rowH)
 
   let left = pos.x + 14
   let top = pos.y - panelH / 2
@@ -169,10 +250,12 @@ export function DeepPrintOverlay({
   if (top + panelH > ch - 4) top = Math.max(4, ch - panelH - 4)
 
   const maxSide = Math.max(
-    ...model.levels.map((l) => Math.max(l.buyQty, l.sellQty)),
+    ...visibleLevels.map((l) => Math.max(l.buyQty, l.sellQty)),
     0.0001
   )
-  const maxAbsDelta = Math.max(...model.levels.map((l) => Math.abs(l.delta)), 0.0001)
+
+  const totalVol = model.totalBuy + model.totalSell
+  const buyPct = totalVol > 0 ? model.totalBuy / totalVol : 0.5
 
   return (
     <div
@@ -180,94 +263,217 @@ export function DeepPrintOverlay({
       style={{ left, top, width: panelW }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="bg-[#0b0e11]/96 border border-[#2b3139] rounded-md shadow-xl overflow-hidden font-mono">
-        {/* Header */}
-        <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#2b3139] bg-[#12161c]">
-          <span className="text-[11px] font-semibold text-[#eaecef]">Deep Print</span>
-          <span
-            className={`text-[11px] font-bold ${
-              model.totalDelta >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-            }`}
-          >
-            Δ {formatQty(model.totalDelta)}
-          </span>
-          <span className="text-[10px] text-[#848e9c]">
-            {pinned ? 'pinned' : 'hover'} · {model.tradeCount}
-          </span>
-          <button
-            type="button"
-            className="text-[#848e9c] hover:text-[#eaecef] text-xs px-1"
-            onClick={() => {
-              setModel(null)
-              setPinned(false)
-            }}
-          >
-            ✕
-          </button>
+      <div className="bg-[#0b0e11]/97 border border-[#2b3139] rounded-md shadow-2xl overflow-hidden font-mono">
+        {/* Header: Δ + buy% */}
+        <div className="px-2.5 py-2 border-b border-[#2b3139] bg-[#12161c]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] font-bold text-[#eaecef] tracking-wide">
+              Deep Print
+            </span>
+            <span
+              className={`text-[13px] font-bold tabular-nums ${
+                model.totalDelta >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+              }`}
+            >
+              Δ {formatQty(model.totalDelta)}
+            </span>
+            <span
+              className={`text-[12px] font-semibold tabular-nums ${
+                buyPct >= 0.55
+                  ? 'text-[#0ecb81]'
+                  : buyPct <= 0.45
+                    ? 'text-[#f6465d]'
+                    : 'text-[#848e9c]'
+              }`}
+              title="Buy volume share"
+            >
+              buy {formatPct(buyPct)}
+            </span>
+            <button
+              type="button"
+              className="text-[#848e9c] hover:text-[#eaecef] text-sm px-1 leading-none"
+              title="Close (Esc)"
+              onClick={() => {
+                setModel(null)
+                setPinned(false)
+                setPinnedTime(null)
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="text-[10px] text-[#848e9c]">
+              {pinned ? `📌 pinned` : 'hover'} · {model.tradeCount} trades · tick{' '}
+              {model.tickSize}
+            </span>
+            <button
+              type="button"
+              className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
+              title="Pin last closed candle (P)"
+              onClick={pinLastClosed}
+            >
+              Last closed
+            </button>
+            {pinned && (
+              <button
+                type="button"
+                className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef]"
+                onClick={() => {
+                  setPinned(false)
+                  setPinnedTime(null)
+                }}
+              >
+                Unpin
+              </button>
+            )}
+          </div>
+
+          {/* Delta filter */}
+          <div className="flex items-center gap-2 mt-1.5">
+            <label className="flex items-center gap-1.5 text-[10px] text-[#848e9c] cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-[#0ecb81]"
+                checked={deltaFilterOn}
+                onChange={(e) => setDeltaFilterOn(e.target.checked)}
+              />
+              Solo |Δ| ≥
+            </label>
+            <input
+              type="range"
+              min={5}
+              max={50}
+              step={5}
+              disabled={!deltaFilterOn}
+              value={deltaFilterPct}
+              onChange={(e) => setDeltaFilterPct(Number(e.target.value))}
+              className="flex-1 h-1 accent-[#0ecb81]"
+            />
+            <span className="text-[10px] text-[#eaecef] w-8 tabular-nums">
+              {deltaFilterPct}%
+            </span>
+          </div>
         </div>
 
         {/* Column headers */}
-        <div className="grid grid-cols-[1fr_56px_1fr_52px] gap-0 px-1.5 py-1 text-[10px] font-semibold border-b border-[#2b3139]/80">
+        <div className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80">
           <span className="text-left text-[#f6465d]">SELL</span>
           <span className="text-center text-[#848e9c]">PRICE</span>
           <span className="text-right text-[#0ecb81]">BUY</span>
           <span className="text-right text-[#848e9c]">Δ</span>
         </div>
 
-        <div className="max-h-64 overflow-y-auto">
-          {model.levels.length === 0 ? (
-            <div className="px-3 py-4 text-[11px] text-[#848e9c] text-center leading-relaxed">
-              No trades in buffer for this candle.
-              <div className="mt-1 opacity-70">Wait for live ticks or select a recent bar.</div>
+        <div className="max-h-72 overflow-y-auto">
+          {visibleLevels.length === 0 ? (
+            <div className="px-3 py-5 text-[12px] text-[#848e9c] text-center leading-relaxed">
+              {model.levels.length === 0
+                ? 'No trades in buffer for this candle.'
+                : 'No levels pass the |Δ| filter.'}
+              <div className="mt-1 opacity-70 text-[11px]">
+                {model.levels.length === 0
+                  ? 'Wait for live ticks or press P for last closed.'
+                  : 'Lower the threshold or disable the filter.'}
+              </div>
             </div>
           ) : (
-            model.levels.map((l) => {
+            visibleLevels.map((l) => {
               const sellPct = (l.sellQty / maxSide) * 100
-              const buyPct = (l.buyQty / maxSide) * 100
+              const buyPctLvl = (l.buyQty / maxSide) * 100
               const dPct = (Math.abs(l.delta) / maxAbsDelta) * 100
-              const dPos = l.delta >= 0
+              const imb = levelImbalance(l, IMB_THRESHOLD)
+              const isStack = stacked.has(l.price)
+              const ratio = buyRatio(l)
+
+              // Stronger fill when imbalanced
+              const sellAlpha = imb === 'sell' ? 0.55 : 0.28
+              const buyAlpha = imb === 'buy' ? 0.55 : 0.28
+
+              let rowBg = 'transparent'
+              if (isStack && imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.12)'
+              else if (isStack && imb === 'sell') rowBg = 'rgba(246, 70, 93, 0.12)'
+              else if (imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.06)'
+              else if (imb === 'sell') rowBg = 'rgba(246, 70, 93, 0.06)'
+
+              const stackBorder =
+                isStack && imb === 'buy'
+                  ? '2px solid rgba(14, 203, 129, 0.75)'
+                  : isStack && imb === 'sell'
+                    ? '2px solid rgba(246, 70, 93, 0.75)'
+                    : undefined
+
               return (
                 <div
                   key={l.price}
-                  className="grid grid-cols-[1fr_56px_1fr_52px] gap-0 px-1.5 items-stretch border-b border-[#1e2329]/60"
-                  style={{ minHeight: rowH }}
+                  className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 items-stretch border-b border-[#1e2329]/50"
+                  style={{
+                    minHeight: rowH,
+                    background: rowBg,
+                    boxShadow: isStack
+                      ? imb === 'buy'
+                        ? 'inset 3px 0 0 #0ecb81'
+                        : 'inset 3px 0 0 #f6465d'
+                      : undefined,
+                    borderLeft: stackBorder,
+                  }}
+                  title={
+                    imb
+                      ? `${imb} imbalance ${formatPct(imb === 'buy' ? ratio : 1 - ratio)}${
+                          isStack ? ' · STACKED' : ''
+                        }`
+                      : undefined
+                  }
                 >
-                  {/* SELL bar + qty */}
+                  {/* SELL */}
                   <div className="relative flex items-center justify-end pr-1">
                     <div
-                      className="absolute inset-y-0.5 right-0 rounded-sm bg-[#f6465d]/35"
-                      style={{ width: `${Math.max(l.sellQty > 0 ? 8 : 0, sellPct)}%` }}
+                      className="absolute inset-y-1 right-0 rounded-sm"
+                      style={{
+                        width: `${Math.max(l.sellQty > 0 ? 10 : 0, sellPct)}%`,
+                        backgroundColor: `rgba(246, 70, 93, ${sellAlpha})`,
+                      }}
                     />
-                    <span className="relative text-[11px] font-medium text-[#f6465d] tabular-nums">
+                    <span className="relative text-[12px] font-semibold text-[#f6465d] tabular-nums">
                       {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
                     </span>
                   </div>
 
                   {/* PRICE */}
-                  <div className="flex items-center justify-center text-[11px] font-semibold text-[#eaecef] tabular-nums">
+                  <div
+                    className={`flex items-center justify-center text-[12px] font-bold tabular-nums ${
+                      imb === 'buy'
+                        ? 'text-[#0ecb81]'
+                        : imb === 'sell'
+                          ? 'text-[#f6465d]'
+                          : 'text-[#eaecef]'
+                    }`}
+                  >
                     {l.price}
                   </div>
 
-                  {/* BUY bar + qty */}
+                  {/* BUY */}
                   <div className="relative flex items-center justify-start pl-1">
                     <div
-                      className="absolute inset-y-0.5 left-0 rounded-sm bg-[#0ecb81]/35"
-                      style={{ width: `${Math.max(l.buyQty > 0 ? 8 : 0, buyPct)}%` }}
+                      className="absolute inset-y-1 left-0 rounded-sm"
+                      style={{
+                        width: `${Math.max(l.buyQty > 0 ? 10 : 0, buyPctLvl)}%`,
+                        backgroundColor: `rgba(14, 203, 129, ${buyAlpha})`,
+                      }}
                     />
-                    <span className="relative text-[11px] font-medium text-[#0ecb81] tabular-nums">
+                    <span className="relative text-[12px] font-semibold text-[#0ecb81] tabular-nums">
                       {l.buyQty > 0 ? formatQty(l.buyQty) : ''}
                     </span>
                   </div>
 
-                  {/* DELTA horizontal bar */}
-                  <div className="relative flex items-center justify-end gap-0.5 pl-0.5">
-                    <div className="relative flex-1 h-3 flex items-center justify-end">
+                  {/* DELTA bar */}
+                  <div className="relative flex items-center justify-end pl-0.5">
+                    <div className="relative w-full h-3.5 flex items-center justify-end">
                       <div
-                        className="h-2.5 rounded-sm"
+                        className="h-3 rounded-sm"
                         style={{
-                          width: `${Math.max(l.delta !== 0 ? 12 : 0, dPct)}%`,
-                          backgroundColor: dPos ? '#0ecb81' : '#a855f7',
-                          opacity: 0.85,
+                          width: `${Math.max(l.delta !== 0 ? 14 : 0, dPct)}%`,
+                          backgroundColor: l.delta >= 0 ? '#0ecb81' : '#a855f7',
+                          opacity: imb ? 0.95 : 0.75,
                         }}
                       />
                     </div>
@@ -278,10 +484,16 @@ export function DeepPrintOverlay({
           )}
         </div>
 
-        <div className="flex justify-between px-2 py-1.5 border-t border-[#2b3139] text-[10px] text-[#848e9c]">
-          <span className="text-[#f6465d] font-medium">Σ {formatQty(model.totalSell)}</span>
-          <span>tick {model.tickSize}</span>
-          <span className="text-[#0ecb81] font-medium">Σ {formatQty(model.totalBuy)}</span>
+        <div className="flex justify-between items-center px-2.5 py-1.5 border-t border-[#2b3139] text-[11px]">
+          <span className="text-[#f6465d] font-semibold tabular-nums">
+            Σ {formatQty(model.totalSell)}
+          </span>
+          <span className="text-[#848e9c] text-[10px]">
+            {stacked.size > 0 ? `stack ${stacked.size} lvl` : 'no stack'}
+          </span>
+          <span className="text-[#0ecb81] font-semibold tabular-nums">
+            Σ {formatQty(model.totalBuy)}
+          </span>
         </div>
       </div>
     </div>
