@@ -1,5 +1,5 @@
 /**
- * Volume Profile aggregation + POC / Value Area.
+ * Volume Profile aggregation + POC / Value Area / LVN.
  * Real trades only – never invent volume.
  */
 
@@ -8,6 +8,8 @@ import type { ProfileBucket, ProfileWindow, VolumeProfileModel } from './types'
 import { inferTickSize, roundToTick } from '@/analysis/deepPrint/interval'
 
 const VA_TARGET = 0.7
+/** Bucket volume below this fraction of POC → candidate LVN */
+const LVN_FRAC = 0.22
 
 export function resolveWindowRange(
   window: ProfileWindow,
@@ -41,6 +43,23 @@ export function resolveWindowRange(
   }
 }
 
+function markLvns(buckets: ProfileBucket[], pocVolume: number): number[] {
+  if (buckets.length < 3 || pocVolume <= 0) return []
+  const thresh = pocVolume * LVN_FRAC
+  const lvns: number[] = []
+  for (let i = 1; i < buckets.length - 1; i++) {
+    const v = buckets[i].volume
+    const prev = buckets[i - 1].volume
+    const next = buckets[i + 1].volume
+    // Local minimum + below threshold
+    if (v <= thresh && v <= prev && v <= next) {
+      buckets[i].isLvn = true
+      lvns.push(buckets[i].price)
+    }
+  }
+  return lvns
+}
+
 export function buildVolumeProfile(
   trades: AggressorTrade[],
   window: ProfileWindow,
@@ -48,24 +67,24 @@ export function buildVolumeProfile(
   toSec: number,
   tickSize?: number
 ): VolumeProfileModel | null {
-  if (trades.length === 0) {
-    return {
-      buckets: [],
-      totalVolume: 0,
-      poc: 0,
-      vah: 0,
-      val: 0,
-      vaShare: 0,
-      tickSize: tickSize ?? 0.01,
-      window,
-      fromSec,
-      toSec,
-      tradeCount: 0,
-    }
-  }
+  const empty = (tick: number): VolumeProfileModel => ({
+    buckets: [],
+    totalVolume: 0,
+    poc: 0,
+    vah: 0,
+    val: 0,
+    vaShare: 0,
+    tickSize: tick,
+    window,
+    fromSec,
+    toSec,
+    tradeCount: trades.length,
+    lvns: [],
+  })
 
-  const mid =
-    trades.reduce((s, t) => s + t.price, 0) / trades.length
+  if (trades.length === 0) return empty(tickSize ?? 0.01)
+
+  const mid = trades.reduce((s, t) => s + t.price, 0) / trades.length
   const tick = tickSize ?? inferTickSize(mid)
   const map = new Map<number, { vol: number; buy: number; sell: number }>()
 
@@ -92,32 +111,17 @@ export function buildVolumeProfile(
     }))
     .sort((a, b) => a.price - b.price)
 
-  if (buckets.length === 0 || totalVolume <= 0) {
-    return {
-      buckets: [],
-      totalVolume: 0,
-      poc: 0,
-      vah: 0,
-      val: 0,
-      vaShare: 0,
-      tickSize: tick,
-      window,
-      fromSec,
-      toSec,
-      tradeCount: trades.length,
-    }
-  }
+  if (buckets.length === 0 || totalVolume <= 0) return empty(tick)
 
-  // POC = max volume bucket
   let pocIdx = 0
   for (let i = 1; i < buckets.length; i++) {
     if (buckets[i].volume > buckets[pocIdx].volume) pocIdx = i
   }
   const poc = buckets[pocIdx].price
+  const pocVol = buckets[pocIdx].volume
 
-  // Value Area: accumulate from POC expanding up/down until ~70%
   const target = totalVolume * VA_TARGET
-  let acc = buckets[pocIdx].volume
+  let acc = pocVol
   let lo = pocIdx
   let hi = pocIdx
 
@@ -130,25 +134,23 @@ export function buildVolumeProfile(
     } else if (nextLo >= 0) {
       lo -= 1
       acc += buckets[lo].volume
-    } else {
-      break
-    }
+    } else break
   }
 
-  const val = buckets[lo].price
-  const vah = buckets[hi].price
+  const lvns = markLvns(buckets, pocVol)
 
   return {
     buckets,
     totalVolume,
     poc,
-    vah,
-    val,
+    vah: buckets[hi].price,
+    val: buckets[lo].price,
     vaShare: totalVolume > 0 ? acc / totalVolume : 0,
     tickSize: tick,
     window,
     fromSec,
     toSec,
     tradeCount: trades.length,
+    lvns,
   }
 }

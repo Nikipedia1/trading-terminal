@@ -1,7 +1,5 @@
 /**
- * Volume Profile canvas overlay – horizontal histogram by price.
- * Anti-pellicola: every bar Y from priceToCoordinate; redraw on
- * visible-range-change, resize, and new trades.
+ * Volume Profile – right-side histogram, full-width POC/VAH/VAL, LVN marks.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'
@@ -21,8 +19,8 @@ interface VolumeProfileOverlayProps {
   windowMode: ProfileWindow
 }
 
-const BAR_MAX_WIDTH = 120
-const PROFILE_RIGHT_PAD = 8
+const BAR_MAX_WIDTH = 110
+const PROFILE_RIGHT_PAD = 6
 
 export function VolumeProfileOverlay({
   enabled,
@@ -47,9 +45,10 @@ export function VolumeProfileOverlay({
     if (!chart) return { from: null, to: null }
     const range = chart.timeScale().getVisibleRange()
     if (!range) return { from: null, to: null }
-    const from = typeof range.from === 'number' ? range.from : null
-    const to = typeof range.to === 'number' ? range.to : null
-    return { from, to }
+    return {
+      from: typeof range.from === 'number' ? range.from : null,
+      to: typeof range.to === 'number' ? range.to : null,
+    }
   }, [bridge])
 
   const rebuildModel = useCallback(() => {
@@ -92,8 +91,7 @@ export function VolumeProfileOverlay({
 
     const model = modelRef.current
     if (!model || model.buckets.length === 0 || model.totalVolume <= 0) {
-      // subtle empty label
-      ctx.fillStyle = 'rgba(132, 142, 156, 0.7)'
+      ctx.fillStyle = 'rgba(132, 142, 156, 0.75)'
       ctx.font = '11px sans-serif'
       ctx.textAlign = 'right'
       ctx.fillText(hint || 'Profile: no trades in window', w - 12, 20)
@@ -102,7 +100,6 @@ export function VolumeProfileOverlay({
 
     const maxVol = Math.max(...model.buckets.map((b) => b.volume), 0.0001)
 
-    // Bars grow from the right edge leftward
     for (const b of model.buckets) {
       const y = bridge.priceToCoordinate(b.price)
       if (y === null || y < 0 || y > h) continue
@@ -111,55 +108,91 @@ export function VolumeProfileOverlay({
       const inVA = b.price >= model.val && b.price <= model.vah
       const isPoc = b.price === model.poc
 
-      ctx.fillStyle = isPoc
-        ? 'rgba(240, 185, 11, 0.55)'
-        : inVA
-          ? 'rgba(14, 203, 129, 0.28)'
-          : 'rgba(132, 142, 156, 0.18)'
+      if (b.isLvn) {
+        ctx.fillStyle = 'rgba(246, 70, 93, 0.22)'
+      } else if (isPoc) {
+        ctx.fillStyle = 'rgba(240, 185, 11, 0.6)'
+      } else if (inVA) {
+        ctx.fillStyle = 'rgba(14, 203, 129, 0.32)'
+      } else {
+        ctx.fillStyle = 'rgba(132, 142, 156, 0.16)'
+      }
 
       const x = w - PROFILE_RIGHT_PAD - barW
-      // approximate bucket height from neighbor spacing
       const yTop = bridge.priceToCoordinate(b.price + model.tickSize / 2)
       const yBot = bridge.priceToCoordinate(b.price - model.tickSize / 2)
       let bh = 3
-      if (yTop != null && yBot != null) {
-        bh = Math.max(1, Math.abs(yBot - yTop))
-      }
+      if (yTop != null && yBot != null) bh = Math.max(1.5, Math.abs(yBot - yTop))
       ctx.fillRect(x, y - bh / 2, barW, bh)
     }
 
-    // POC / VAH / VAL lines
-    const drawLevel = (price: number, color: string, label: string) => {
+    // Full-width dashed levels + labels
+    const drawLevel = (
+      price: number,
+      color: string,
+      label: string,
+      lineWidth = 1.25
+    ) => {
       const y = bridge.priceToCoordinate(price)
       if (y === null) return
       ctx.strokeStyle = color
-      ctx.lineWidth = 1
-      ctx.setLineDash([4, 3])
+      ctx.lineWidth = lineWidth
+      ctx.setLineDash([6, 4])
       ctx.beginPath()
-      ctx.moveTo(w - BAR_MAX_WIDTH - 24, y)
+      ctx.moveTo(8, y)
+      ctx.lineTo(w - BAR_MAX_WIDTH - 8, y)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // Label pill on the left of profile bars
+      const text = `${label} ${price}`
+      ctx.font = 'bold 11px monospace'
+      const tw = ctx.measureText(text).width
+      const lx = w - BAR_MAX_WIDTH - tw - 20
+      ctx.fillStyle = 'rgba(11, 14, 17, 0.85)'
+      ctx.fillRect(lx - 4, y - 9, tw + 8, 16)
+      ctx.fillStyle = color
+      ctx.textAlign = 'left'
+      ctx.fillText(text, lx, y + 4)
+    }
+
+    drawLevel(model.vah, 'rgba(14, 203, 129, 0.95)', 'VAH')
+    drawLevel(model.val, 'rgba(14, 203, 129, 0.95)', 'VAL')
+    drawLevel(model.poc, 'rgba(240, 185, 11, 1)', 'POC', 1.5)
+
+    // LVN short marks
+    for (const p of model.lvns || []) {
+      const y = bridge.priceToCoordinate(p)
+      if (y === null) continue
+      ctx.strokeStyle = 'rgba(246, 70, 93, 0.7)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([2, 3])
+      ctx.beginPath()
+      ctx.moveTo(w - BAR_MAX_WIDTH - 40, y)
       ctx.lineTo(w - 4, y)
       ctx.stroke()
       ctx.setLineDash([])
-      ctx.fillStyle = color
-      ctx.font = '10px monospace'
+      ctx.fillStyle = 'rgba(246, 70, 93, 0.9)'
+      ctx.font = '9px monospace'
       ctx.textAlign = 'right'
-      ctx.fillText(`${label} ${price}`, w - BAR_MAX_WIDTH - 28, y + 3)
+      ctx.fillText('LVN', w - BAR_MAX_WIDTH - 44, y + 3)
     }
 
-    drawLevel(model.poc, 'rgba(240, 185, 11, 0.95)', 'POC')
-    drawLevel(model.vah, 'rgba(14, 203, 129, 0.9)', 'VAH')
-    drawLevel(model.val, 'rgba(14, 203, 129, 0.9)', 'VAL')
-  }, [bridge, containerRef, enabled, hint])
+    ctx.font = '10px sans-serif'
+    ctx.fillStyle = 'rgba(132, 142, 156, 0.9)'
+    ctx.textAlign = 'right'
+    ctx.fillText(
+      `${PROFILE_WINDOW_LABELS[windowMode]} · VA ${(model.vaShare * 100).toFixed(0)}%`,
+      w - 10,
+      16
+    )
+  }, [bridge, containerRef, enabled, hint, windowMode])
 
-  // Rebuild + paint pipeline
   useEffect(() => {
     if (!enabled) {
       modelRef.current = null
       const canvas = canvasRef.current
-      if (canvas) {
-        const ctx = canvas.getContext('2d')
-        ctx?.clearRect(0, 0, canvas.width, canvas.height)
-      }
+      if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
       return
     }
 
@@ -170,17 +203,12 @@ export function VolumeProfileOverlay({
       rebuildModel()
       paint()
     })
-
     const parent = containerRef.current
     let ro: ResizeObserver | null = null
     if (parent) {
-      ro = new ResizeObserver(() => {
-        paint()
-      })
+      ro = new ResizeObserver(() => paint())
       ro.observe(parent)
     }
-
-    // New trades
     const id = window.setInterval(() => {
       rebuildModel()
       paint()
@@ -196,10 +224,6 @@ export function VolumeProfileOverlay({
   if (!enabled) return null
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 z-[4] pointer-events-none"
-      aria-hidden
-    />
+    <canvas ref={canvasRef} className="absolute inset-0 z-[4] pointer-events-none" aria-hidden />
   )
 }
