@@ -13,6 +13,10 @@ import { sampleBookBand, toPrevMap } from './sample'
 import type { DeepDomConfig, DomLevel } from './types'
 import { DEFAULT_DEEP_DOM_CONFIG, L2_GRANULARITY_NOTES } from './types'
 
+/** Set localStorage DEEPDOM_DEBUG=1 while diagnosing paint timing / desync; remove to disable. */
+const DEEPDOM_DEBUG =
+  typeof localStorage !== 'undefined' && localStorage.getItem('DEEPDOM_DEBUG') === '1'
+
 interface DeepDomOverlayProps {
   enabled: boolean
   bridge: CoordinateBridge | null
@@ -74,6 +78,7 @@ export function DeepDomOverlay({
   const lastBookRef = useRef<import('@/data/shared').OrderBookSnapshot | null>(null)
   const prevMapRef = useRef(toPrevMap(null))
   const statusRef = useRef('')
+  const lastPaintAtRef = useRef(0)
 
   useEffect(() => {
     bufRef.current.reconfigure(config)
@@ -132,6 +137,18 @@ export function DeepDomOverlay({
     const w = parent.clientWidth
     const h = parent.clientHeight
     if (w <= 0 || h <= 0) return
+
+    if (DEEPDOM_DEBUG) {
+      const now = performance.now()
+      const gap = lastPaintAtRef.current ? now - lastPaintAtRef.current : 0
+      lastPaintAtRef.current = now
+      const bufSize = bufRef.current.size
+      const expected = config.sampleMs
+      // 500 = interval paint loop in useEffect; sampleMs = snapshot cadence
+      console.debug(
+        `[DeepDom] paint Δ=${gap.toFixed(1)}ms | buffer=${bufSize} | sampleMs=${expected} | skew(paint-vs-500)=${(gap - 500).toFixed(1)}ms`
+      )
+    }
 
     const dpr = window.devicePixelRatio || 1
     if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
