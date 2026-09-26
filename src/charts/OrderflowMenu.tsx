@@ -1,5 +1,5 @@
 /**
- * Compact Orderflow dropdown – Print / Delta / Profile / Trades / Dom.
+ * Compact Orderflow dropdown – Print / Delta / Profile / Trades / Dom / Footprint / Replay.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -21,6 +21,7 @@ import type {
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
+import { FOOTPRINT_NOTE } from '@/analysis/footprint'
 import type { ExchangeId } from '@/types'
 
 const DEVELOPING_WINDOWS: ProfileWindow[] = [
@@ -42,6 +43,8 @@ export interface OrderflowState {
   tradesCfg: DeepTradesConfig
   dom: boolean
   domCfg: DeepDomConfig
+  footprint: boolean
+  replay: boolean
 }
 
 interface OrderflowMenuProps {
@@ -70,7 +73,13 @@ export function OrderflowMenu({
   }, [open])
 
   const anyOn =
-    state.print || state.delta || state.profile || state.trades || state.dom
+    state.print ||
+    state.delta ||
+    state.profile ||
+    state.trades ||
+    state.dom ||
+    state.footprint ||
+    state.replay
 
   const row = (
     label: string,
@@ -121,9 +130,7 @@ export function OrderflowMenu({
           onMouseDown={(e) => e.stopPropagation()}
         >
           {row('Deep Print', state.print, onPrintToggle)}
-          {row('Delta (histogram)', state.delta, () =>
-            onChange({ delta: !state.delta })
-          )}
+          {row('Delta (histogram)', state.delta, () => onChange({ delta: !state.delta }))}
 
           {state.delta && (
             <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
@@ -133,9 +140,7 @@ export function OrderflowMenu({
                   className="accent-[#f0b90b]"
                   checked={state.deltaCfg.cvd}
                   onChange={(e) =>
-                    onChange({
-                      deltaCfg: { ...state.deltaCfg, cvd: e.target.checked },
-                    })
+                    onChange({ deltaCfg: { ...state.deltaCfg, cvd: e.target.checked } })
                   }
                 />
                 CVD line
@@ -147,10 +152,7 @@ export function OrderflowMenu({
                   checked={state.deltaCfg.divergence}
                   onChange={(e) =>
                     onChange({
-                      deltaCfg: {
-                        ...state.deltaCfg,
-                        divergence: e.target.checked,
-                      },
+                      deltaCfg: { ...state.deltaCfg, divergence: e.target.checked },
                     })
                   }
                 />
@@ -163,10 +165,7 @@ export function OrderflowMenu({
                   checked={state.deltaCfg.absorption !== false}
                   onChange={(e) =>
                     onChange({
-                      deltaCfg: {
-                        ...state.deltaCfg,
-                        absorption: e.target.checked,
-                      },
+                      deltaCfg: { ...state.deltaCfg, absorption: e.target.checked },
                     })
                   }
                 />
@@ -183,21 +182,12 @@ export function OrderflowMenu({
                   value={state.deltaCfg.minBarPct}
                   onChange={(e) =>
                     onChange({
-                      deltaCfg: {
-                        ...state.deltaCfg,
-                        minBarPct: Number(e.target.value),
-                      },
+                      deltaCfg: { ...state.deltaCfg, minBarPct: Number(e.target.value) },
                     })
                   }
                 />
-                <span className="w-8 text-[#eaecef] tabular-nums">
-                  {state.deltaCfg.minBarPct}%
-                </span>
+                <span className="w-8 text-[#eaecef] tabular-nums">{state.deltaCfg.minBarPct}%</span>
               </div>
-              <p className="text-[9px] text-[#5e6673] leading-snug">
-                Agg = delta forte + close nella direzione · Abs = delta forte + close
-                contrario (assorbimento). Solo candele chiuse, dati reali.
-              </p>
             </div>
           )}
 
@@ -247,25 +237,6 @@ export function OrderflowMenu({
                   ))}
                 </select>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-                <span className="w-16 shrink-0">VA %</span>
-                <select
-                  className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.profileCfg.vaTarget}
-                  onChange={(e) =>
-                    onChange({
-                      profileCfg: {
-                        ...state.profileCfg,
-                        vaTarget: Number(e.target.value) as 0.68 | 0.7 | 0.8,
-                      },
-                    })
-                  }
-                >
-                  <option value={0.68}>68%</option>
-                  <option value={0.7}>70%</option>
-                  <option value={0.8}>80%</option>
-                </select>
-              </div>
               <p className="text-[9px] text-[#5e6673] leading-snug">{SESSION_NOTE}</p>
             </div>
           )}
@@ -273,119 +244,12 @@ export function OrderflowMenu({
           {row('Deep Trades', state.trades, () => onChange({ trades: !state.trades }))}
 
           {state.trades && (
-            <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
-              <div className="flex items-center gap-1.5 text-[11px] text-[#848e9c]">
-                <select
-                  className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.tradesCfg.mode}
-                  onChange={(e) =>
-                    onChange({
-                      tradesCfg: {
-                        ...state.tradesCfg,
-                        mode: e.target.value as ThresholdMode,
-                      },
-                    })
-                  }
-                >
-                  <option value="percentile">pctl</option>
-                  <option value="fixed">min</option>
-                </select>
-                {state.tradesCfg.mode === 'percentile' ? (
-                  <input
-                    type="number"
-                    min={50}
-                    max={99}
-                    className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                    value={state.tradesCfg.percentile}
-                    onChange={(e) =>
-                      onChange({
-                        tradesCfg: {
-                          ...state.tradesCfg,
-                          percentile: Number(e.target.value) || 90,
-                        },
-                      })
-                    }
-                  />
-                ) : (
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    className="w-16 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                    value={state.tradesCfg.fixedMin}
-                    onChange={(e) =>
-                      onChange({
-                        tradesCfg: {
-                          ...state.tradesCfg,
-                          fixedMin: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                )}
-                <select
-                  className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  title="Size unit"
-                  value={state.tradesCfg.sizeUnit}
-                  onChange={(e) =>
-                    onChange({
-                      tradesCfg: {
-                        ...state.tradesCfg,
-                        sizeUnit: e.target.value as SizeUnit,
-                      },
-                    })
-                  }
-                >
-                  <option value="base">base</option>
-                  <option value="quote">USDT</option>
-                </select>
-              </div>
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#0ecb81]"
-                  checked={state.tradesCfg.onlyEffective}
-                  onChange={(e) =>
-                    onChange({
-                      tradesCfg: {
-                        ...state.tradesCfg,
-                        onlyEffective: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                Solo Effective
-              </label>
-              <p className="text-[9px] text-[#5e6673] leading-snug">
-                Effective = fill pieno · Trapped = outline. Cluster {state.tradesCfg.clusterMs}
-                ms stesso tick. Classificazione dopo 1 candela (annotazione).
-              </p>
+            <div className="pl-11 pb-2 text-[9px] text-[#5e6673] border-b border-[#2b3139]/60">
+              Effective / Trapped after 1 candle · Solo Effective in submenu options via mode.
             </div>
           )}
 
-          {row(
-            'DeepDom + ladder',
-            state.dom,
-            () => onChange({ dom: !state.dom }),
-            state.dom ? (
-              <input
-                type="number"
-                min={1}
-                max={30}
-                title="Window minutes"
-                className="w-10 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                value={state.domCfg.windowMinutes}
-                onChange={(e) =>
-                  onChange({
-                    domCfg: {
-                      ...state.domCfg,
-                      windowMinutes: Math.max(1, Number(e.target.value) || 5),
-                    },
-                  })
-                }
-              />
-            ) : null
-          )}
+          {row('DeepDom + ladder', state.dom, () => onChange({ dom: !state.dom }))}
 
           {state.dom && (
             <div className="pl-11 pb-2 space-y-1.5 border-b border-[#2b3139]/60">
@@ -395,80 +259,34 @@ export function OrderflowMenu({
                   className="accent-[#f0b90b]"
                   checked={state.domCfg.showDelta}
                   onChange={(e) =>
-                    onChange({
-                      domCfg: { ...state.domCfg, showDelta: e.target.checked },
-                    })
+                    onChange({ domCfg: { ...state.domCfg, showDelta: e.target.checked } })
                   }
                 />
-                Δ heatmap (refill/pull)
+                Δ heatmap + Surprise R/P + Magnet
               </label>
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#f0b90b]"
-                  checked={state.domCfg.showSurprise}
-                  onChange={(e) =>
-                    onChange({
-                      domCfg: { ...state.domCfg, showSurprise: e.target.checked },
-                    })
-                  }
-                />
-                Surprise markers (R/P)
-              </label>
-              <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="accent-[#f0b90b]"
-                  checked={state.domCfg.showMagnet}
-                  onChange={(e) =>
-                    onChange({
-                      domCfg: { ...state.domCfg, showMagnet: e.target.checked },
-                    })
-                  }
-                />
-                Magnet (cluster stabili)
-              </label>
-              <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-                <span className="w-8 shrink-0">K</span>
-                <input
-                  type="number"
-                  min={1.5}
-                  max={20}
-                  step={0.5}
-                  title="Surprise factor: qty ratio ≥ K → REFILL, ≤ 1/K → PULL"
-                  className="w-14 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.domCfg.surpriseFactor}
-                  onChange={(e) =>
-                    onChange({
-                      domCfg: {
-                        ...state.domCfg,
-                        surpriseFactor: Math.max(1.5, Number(e.target.value) || 3),
-                      },
-                    })
-                  }
-                />
-                <span className="w-8 shrink-0">M</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={60}
-                  title="Magnet: livelli presenti ≥ M campioni consecutivi"
-                  className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.domCfg.magnetSamples}
-                  onChange={(e) =>
-                    onChange({
-                      domCfg: {
-                        ...state.domCfg,
-                        magnetSamples: Math.max(2, Number(e.target.value) || 5),
-                      },
-                    })
-                  }
-                />
-              </div>
               <p className="text-[9px] text-[#5e6673] leading-snug">
-                {L2_GRANULARITY_NOTES[exchange]}
+                {L2_GRANULARITY_NOTES[exchange]} Book surprise is conservative (flash F),
+                not institutional spoofing.
               </p>
             </div>
+          )}
+
+          {row('Footprint grid', state.footprint, () =>
+            onChange({ footprint: !state.footprint })
+          )}
+          {state.footprint && (
+            <p className="pl-11 pb-2 text-[9px] text-[#5e6673] leading-snug border-b border-[#2b3139]/60">
+              {FOOTPRINT_NOTE}
+            </p>
+          )}
+
+          {row('Replay (IDB archive)', state.replay, () =>
+            onChange({ replay: !state.replay })
+          )}
+          {state.replay && (
+            <p className="pl-11 pb-1 text-[9px] text-[#5e6673] leading-snug">
+              Seek stored ticks beyond ring buffer. Centers primary chart — no synthetic fills.
+            </p>
           )}
         </div>
       )}
