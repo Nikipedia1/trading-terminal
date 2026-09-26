@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
+import { ChartContainer } from '@/charts/ChartContainer'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -81,43 +82,6 @@ function Controls() {
         </button>
       )}
       <StatusBadge />
-    </div>
-  )
-}
-
-function CandleTable() {
-  const candles = useMarketStore((s) => s.candles)
-  const last = candles.slice(-15).reverse()
-
-  return (
-    <div className="overflow-auto h-full">
-      <table className="w-full text-xxs font-mono-nums">
-        <thead className="sticky top-0 bg-terminal-panel text-terminal-muted">
-          <tr>
-            <th className="text-left px-2 py-1">Time</th>
-            <th className="text-right px-2 py-1">Open</th>
-            <th className="text-right px-2 py-1">High</th>
-            <th className="text-right px-2 py-1">Low</th>
-            <th className="text-right px-2 py-1">Close</th>
-            <th className="text-right px-2 py-1">Volume</th>
-          </tr>
-        </thead>
-        <tbody>
-          {last.map((c) => (
-            <tr key={c.time} className="border-t border-terminal-border/50 hover:bg-terminal-hover">
-              <td className="px-2 py-0.5">{new Date(c.time * 1000).toLocaleTimeString()}</td>
-              <td className="text-right px-2 py-0.5">{c.open.toFixed(2)}</td>
-              <td className="text-right px-2 py-0.5 text-terminal-green">{c.high.toFixed(2)}</td>
-              <td className="text-right px-2 py-0.5 text-terminal-red">{c.low.toFixed(2)}</td>
-              <td className="text-right px-2 py-0.5">{c.close.toFixed(2)}</td>
-              <td className="text-right px-2 py-0.5 text-terminal-muted">{c.volume.toFixed(3)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {candles.length === 0 && (
-        <div className="p-4 text-terminal-muted text-sm">No candles yet. Click "Load History".</div>
-      )}
     </div>
   )
 }
@@ -241,26 +205,36 @@ export default function App() {
       <Controls />
       <TickerBar />
 
-      <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden">
-        <section className="bg-terminal-panel flex flex-col">
-          <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider">
-            Candles (last 15)
+      {/* Main layout: Chart (2/3) + side panels (1/3) */}
+      <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden min-h-0">
+        {/* Chart takes 2 columns */}
+        <section className="col-span-2 bg-terminal-panel flex flex-col min-h-0">
+          <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
+            Chart · BTCUSDT
           </div>
-          <CandleTable />
+          <div className="flex-1 min-h-0">
+            <ChartContainer />
+          </div>
         </section>
 
-        <section className="bg-terminal-panel flex flex-col">
-          <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider">
-            Live Trades
+        {/* Right column: Trades + OrderBook stacked */}
+        <section className="bg-terminal-panel flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col min-h-0 border-b border-terminal-border">
+            <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
+              Live Trades
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <TradesTape />
+            </div>
           </div>
-          <TradesTape />
-        </section>
-
-        <section className="bg-terminal-panel flex flex-col">
-          <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider">
-            Order Book
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="px-3 py-1.5 text-xxs text-terminal-muted border-b border-terminal-border uppercase tracking-wider shrink-0">
+              Order Book
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <OrderBookView />
+            </div>
           </div>
-          <OrderBookView />
         </section>
       </div>
     </div>
