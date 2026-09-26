@@ -1,45 +1,78 @@
-/** Sliding-window buffer of L2 snapshots for DeepDom. */
+/** Sliding-window buffer of L2 snapshots for DeepDom – O(1) ring buffer. */
 
 import type { DomSnapshot, DeepDomConfig } from './types'
 
 export class DomSnapshotBuffer {
-  private items: DomSnapshot[] = []
+  private buf: (DomSnapshot | undefined)[]
+  private head = 0 // index of oldest element
+  private count = 0
   private maxItems: number
 
   constructor(windowMinutes: number, sampleMs: number) {
     this.maxItems = Math.max(30, Math.ceil((windowMinutes * 60_000) / sampleMs) + 5)
+    this.buf = new Array(this.maxItems)
   }
 
   reconfigure(cfg: DeepDomConfig) {
-    this.maxItems = Math.max(30, Math.ceil((cfg.windowMinutes * 60_000) / cfg.sampleMs) + 5)
-    this.trim()
+    const next = Math.max(30, Math.ceil((cfg.windowMinutes * 60_000) / cfg.sampleMs) + 5)
+    if (next === this.maxItems) return
+    // Rebuild into a fresh ring preserving chronological order (oldest → newest)
+    const kept = this.toArray()
+    this.maxItems = next
+    this.buf = new Array(next)
+    this.head = 0
+    this.count = 0
+    const start = Math.max(0, kept.length - next)
+    for (let i = start; i < kept.length; i++) this.push(kept[i])
   }
 
   push(snap: DomSnapshot) {
-    this.items.push(snap)
-    this.trim()
-  }
-
-  private trim() {
-    while (this.items.length > this.maxItems) this.items.shift()
+    if (this.count < this.maxItems) {
+      const idx = (this.head + this.count) % this.maxItems
+      this.buf[idx] = snap
+      this.count++
+    } else {
+      // Overwrite oldest
+      this.buf[this.head] = snap
+      this.head = (this.head + 1) % this.maxItems
+    }
   }
 
   clear() {
-    this.items = []
+    this.buf = new Array(this.maxItems)
+    this.head = 0
+    this.count = 0
   }
 
   /** Last snapshot (for prev-map seeding outside sample) */
   last(): DomSnapshot | null {
-    return this.items.length ? this.items[this.items.length - 1] : null
+    if (this.count === 0) return null
+    const idx = (this.head + this.count - 1) % this.maxItems
+    return this.buf[idx] ?? null
   }
 
-  /** All snapshots still inside the time window */
+  /** All snapshots still inside the time window (chronological order) */
   list(nowSec = Math.floor(Date.now() / 1000), windowMinutes = 5): DomSnapshot[] {
     const from = nowSec - windowMinutes * 60
-    return this.items.filter((s) => s.timeSec >= from)
+    const out: DomSnapshot[] = []
+    for (let i = 0; i < this.count; i++) {
+      const s = this.buf[(this.head + i) % this.maxItems]
+      if (s && s.timeSec >= from) out.push(s)
+    }
+    return out
   }
 
   get size() {
-    return this.items.length
+    return this.count
+  }
+
+  /** Internal: chronological copy (oldest first) */
+  private toArray(): DomSnapshot[] {
+    const out: DomSnapshot[] = []
+    for (let i = 0; i < this.count; i++) {
+      const s = this.buf[(this.head + i) % this.maxItems]
+      if (s) out.push(s)
+    }
+    return out
   }
 }
