@@ -1,5 +1,6 @@
 /**
  * ChartPanel – chart unit with compact Orderflow menu.
+ * Full interval list + symbol presets (still accepts free-typed pairs).
  */
 
 import { useState } from 'react'
@@ -12,13 +13,12 @@ import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
+import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
 import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
 import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
 import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
-
-const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
 
 interface ChartPanelProps {
   config: ChartPanelConfig
@@ -56,6 +56,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   )
 
   const isPrimary = primaryPanelId === id
+  const symbolListId = `sym-list-${id}`
 
   const patchOf = (patch: Partial<OrderflowState>) =>
     setOf((s) => ({ ...s, ...patch }))
@@ -71,25 +72,61 @@ export function ChartPanel({ config }: ChartPanelProps) {
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
       <div className="panel-drag-handle flex flex-wrap items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
+        {/* Symbol: free type + datalist presets */}
         <input
-          className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
+          className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-[7.5rem] font-mono-nums"
           value={symbol}
-          onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase() })}
+          list={symbolListId}
+          placeholder="BTCUSDT"
+          title="Symbol (type or pick from list)"
+          onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         />
+        <datalist id={symbolListId}>
+          {SYMBOL_PRESETS.map((p) => (
+            <option key={p.symbol} value={p.symbol}>
+              {p.label} · {p.group}
+            </option>
+          ))}
+        </datalist>
+
+        {/* Quick pick popular */}
+        <select
+          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs max-w-[5.5rem]"
+          title="Quick symbol"
+          value={SYMBOL_PRESETS.some((p) => p.symbol === symbol) ? symbol : ''}
+          onChange={(e) => {
+            if (e.target.value) updatePanel(id, { symbol: e.target.value })
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <option value="">Pairs…</option>
+          {(['Major', 'L1', 'DeFi', 'Meme', 'Other'] as const).map((g) => (
+            <optgroup key={g} label={g}>
+              {SYMBOL_PRESETS.filter((p) => p.group === g).map((p) => (
+                <option key={p.symbol} value={p.symbol}>
+                  {p.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+
         <select
           className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           value={interval}
+          title="Timeframe"
           onChange={(e) => updatePanel(id, { interval: e.target.value as Interval })}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {INTERVALS.map((i) => (
+          {ALL_INTERVALS.map((i) => (
             <option key={i} value={i}>
               {i}
             </option>
           ))}
         </select>
+
         <select
           className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           value={exchange}
