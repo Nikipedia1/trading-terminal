@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + orderflow overlays + DOM ladder + footprint + replay.
+ * ChartContainer – chart + orderflow overlays + DOM ladder + footprint + replay + indicators.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -13,10 +13,12 @@ import {
 } from 'lightweight-charts'
 import type { Candle, ConnectionStatus, MarketError, ExchangeId, Interval } from '@/types'
 import { SeriesManager } from './series-manager'
+import { IndicatorSeriesManager } from './indicator-series'
 import { CoordinateBridge } from './coordinate-bridge'
 import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useChartFocusStore } from '@/stores/chartFocusStore'
+import { useIndicatorStore } from '@/stores/indicatorStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
@@ -155,6 +157,7 @@ export function ChartContainer({
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesMgrRef = useRef<SeriesManager | null>(null)
+  const indicatorMgrRef = useRef<IndicatorSeriesManager | null>(null)
   const [seriesMgr, setSeriesMgr] = useState<SeriesManager | null>(null)
   const bridgeRef = useRef<CoordinateBridge | null>(null)
   const [bridge, setBridge] = useState<CoordinateBridge | null>(null)
@@ -163,6 +166,8 @@ export function ChartContainer({
 
   const chartStyle = useChartStyleStore((s) => s.style)
   const focusRequest = useChartFocusStore((s) => s.request)
+  const indicatorByPanel = useIndicatorStore((s) => s.byPanel)
+  const getIndicatorParams = useIndicatorStore((s) => s.getParams)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -177,12 +182,16 @@ export function ChartContainer({
     const mgr = new SeriesManager()
     mgr.attach(chart, initial.candle)
 
+    const indMgr = new IndicatorSeriesManager()
+    indMgr.attach(chart)
+
     const bridgeInstance = new CoordinateBridge()
     const candleSeries = mgr.getCandleSeries()
     if (candleSeries) bridgeInstance.attach(chart, candleSeries)
 
     chartRef.current = chart
     seriesMgrRef.current = mgr
+    indicatorMgrRef.current = indMgr
     setSeriesMgr(mgr)
     bridgeRef.current = bridgeInstance
     setBridge(bridgeInstance)
@@ -196,10 +205,12 @@ export function ChartContainer({
     return () => {
       ro.disconnect()
       bridgeInstance.detach()
+      indMgr.detach()
       mgr.detach()
       chart.remove()
       chartRef.current = null
       seriesMgrRef.current = null
+      indicatorMgrRef.current = null
       setSeriesMgr(null)
       bridgeRef.current = null
       setBridge(null)
@@ -232,6 +243,14 @@ export function ChartContainer({
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
     }
   }, [candles])
+
+  // Indicators – real candles only; re-run on data or param change
+  useEffect(() => {
+    const ind = indicatorMgrRef.current
+    if (!ind) return
+    const params = getIndicatorParams(panelId)
+    ind.apply(candles, params)
+  }, [candles, panelId, indicatorByPanel, getIndicatorParams])
 
   useEffect(() => {
     if (!isPrimary || !focusRequest || !chartRef.current) return
