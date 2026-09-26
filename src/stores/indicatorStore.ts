@@ -10,7 +10,7 @@ import {
   DEFAULT_INDICATOR_PARAMS,
 } from '@/indicators'
 
-const STORAGE_KEY = 'tt-indicators:v1'
+const STORAGE_KEY = 'tt-indicators:v2'
 
 type PanelMap = Record<string, IndicatorParamsMap>
 
