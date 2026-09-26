@@ -1,6 +1,7 @@
 /**
  * Series Manager – owns candlestick + volume series lifecycle.
  * All data updates go through this class so the coordinate bridge stays in sync.
+ * Compatible with lightweight-charts v4.x (addCandlestickSeries / addHistogramSeries).
  */
 
 import {
@@ -9,8 +10,6 @@ import {
   type CandlestickData,
   type HistogramData,
   type Time,
-  CandlestickSeries,
-  HistogramSeries,
 } from 'lightweight-charts'
 import type { Candle } from '@/types'
 
@@ -22,7 +21,7 @@ export class SeriesManager {
   attach(chart: IChartApi) {
     this.chart = chart
 
-    this.candleSeries = chart.addSeries(CandlestickSeries, {
+    this.candleSeries = chart.addCandlestickSeries({
       upColor: '#0ecb81',
       downColor: '#f6465d',
       borderUpColor: '#0ecb81',
@@ -31,7 +30,7 @@ export class SeriesManager {
       wickDownColor: '#f6465d',
     })
 
-    this.volumeSeries = chart.addSeries(HistogramSeries, {
+    this.volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
     })
@@ -59,7 +58,7 @@ export class SeriesManager {
   setCandles(candles: Candle[]) {
     if (!this.candleSeries || !this.volumeSeries) return
 
-    const candleData: CandlestickData<Time>[] = candles.map((c) => ({
+    const candleData: CandlestickData[] = candles.map((c) => ({
       time: c.time as Time,
       open: c.open,
       high: c.high,
@@ -67,7 +66,7 @@ export class SeriesManager {
       close: c.close,
     }))
 
-    const volumeData: HistogramData<Time>[] = candles.map((c) => ({
+    const volumeData: HistogramData[] = candles.map((c) => ({
       time: c.time as Time,
       value: c.volume,
       color: c.close >= c.open ? 'rgba(14, 203, 129, 0.4)' : 'rgba(246, 70, 93, 0.4)',
