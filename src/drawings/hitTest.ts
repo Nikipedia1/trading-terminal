@@ -7,7 +7,7 @@
 import type { CoordinateBridge } from '@/charts/coordinate-bridge'
 import type { Drawing, LogicalPoint } from './types'
 
-const HIT_TOLERANCE = 8 // px
+const HIT_TOLERANCE = 12 // px – generous for easy selection
 
 function toPx(
   bridge: CoordinateBridge,
@@ -58,8 +58,8 @@ export function hitTestDrawing(
   d: Drawing,
   x: number,
   y: number,
-  width: number,
-  height: number
+  _width: number,
+  _height: number
 ): HandleId | null {
   switch (d.tool) {
     case 'trendline':
@@ -94,7 +94,6 @@ export function hitTestDrawing(
       const right = Math.max(a.x, b.x)
       const top = Math.min(a.y, b.y)
       const bottom = Math.max(a.y, b.y)
-      // edges only (not filled interior) for easier chart interaction
       const onEdge =
         (Math.abs(x - left) <= HIT_TOLERANCE || Math.abs(x - right) <= HIT_TOLERANCE) &&
         y >= top - HIT_TOLERANCE &&
@@ -103,7 +102,9 @@ export function hitTestDrawing(
         (Math.abs(y - top) <= HIT_TOLERANCE || Math.abs(y - bottom) <= HIT_TOLERANCE) &&
         x >= left - HIT_TOLERANCE &&
         x <= right + HIT_TOLERANCE
-      if (onEdge || onHoriz) return 'body'
+      // also allow click inside rectangle for easier selection
+      const inside = x >= left && x <= right && y >= top && y <= bottom
+      if (onEdge || onHoriz || inside) return 'body'
       return null
     }
     case 'channel': {
@@ -142,8 +143,7 @@ export function hitTestDrawing(
     case 'text': {
       const p = toPx(bridge, d.point)
       if (!p) return null
-      // approximate text box
-      if (x >= p.x && x <= p.x + 80 && y >= p.y - 16 && y <= p.y + 4) return 'body'
+      if (x >= p.x - 4 && x <= p.x + 100 && y >= p.y - 20 && y <= p.y + 8) return 'body'
       if (nearPoint(x, y, p.x, p.y)) return 'p1'
       return null
     }

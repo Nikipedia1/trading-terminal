@@ -1,18 +1,12 @@
 /**
  * DrawingLayer – transparent canvas overlay on top of Lightweight Charts.
  *
- * Anti-pellicola:
- * - All drawings stored as time+price only
- * - Every paint converts via CoordinateBridge (official LWC APIs)
- * - Redraws on pan/zoom/resize
- *
- * Selection / edit:
- * - Cursor tool: click drawing to select, drag handles/body to edit
- * - Delete / Backspace removes selection
- * - Color swatches recolor selection when one is active
+ * pointer-events is ALWAYS auto so selection/hit-test always works.
+ * (Previous hover-gated pointer-events caused a chicken-and-egg: canvas
+ * never received mousemove, so hover never became true.)
  */
 
-import { useEffect, useRef, useCallback, useState } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import type { CoordinateBridge } from '@/charts/coordinate-bridge'
 import type { Drawing, DrawingTool, LogicalPoint } from './types'
 import { createDrawingId, defaultStyle } from './types'
@@ -30,9 +24,7 @@ interface DrawingLayerProps {
 interface DragState {
   id: string
   handle: HandleId
-  /** Snapshot of drawing at drag start */
   origin: Drawing
-  /** Logical point at drag start */
   startLogical: LogicalPoint
 }
 
@@ -54,7 +46,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
   const draftRef = useRef<{ tool: DrawingTool; points: LogicalPoint[] } | null>(null)
   const previewRef = useRef<Drawing | null>(null)
   const dragRef = useRef<DragState | null>(null)
-  const [hoveringDrawing, setHoveringDrawing] = useState(false)
 
   useEffect(() => {
     loadFromStorage(panelId, symbol)
@@ -110,7 +101,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     }
   }, [bridge, paint, containerRef])
 
-  // Keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
@@ -156,10 +146,14 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     [bridge]
   )
 
-  const applyDrag = (origin: Drawing, handle: HandleId, start: LogicalPoint, cur: LogicalPoint): Partial<Drawing> => {
+  const applyDrag = (
+    origin: Drawing,
+    handle: HandleId,
+    start: LogicalPoint,
+    cur: LogicalPoint
+  ): Partial<Drawing> => {
     const dTime = cur.time - start.time
     const dPrice = cur.price - start.price
-
     const shift = (p: LogicalPoint): LogicalPoint => ({
       time: p.time + dTime,
       price: p.price + dPrice,
@@ -189,7 +183,9 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       case 'vertical':
         return { time: cur.time } as Partial<Drawing>
       case 'text':
-        return { point: handle === 'p1' || handle === 'body' ? cur : shift(origin.point) } as Partial<Drawing>
+        return {
+          point: handle === 'p1' || handle === 'body' ? cur : shift(origin.point),
+        } as Partial<Drawing>
       default:
         return {}
     }
@@ -308,6 +304,8 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       if (drawing) {
         addDrawing(panelId, symbol, drawing)
         setSelectedId(drawing.id)
+        // after create, switch to select mode so user can edit immediately
+        useDrawingStore.getState().setActiveTool('cursor')
       }
       draftRef.current = null
       previewRef.current = null
@@ -342,7 +340,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     const h = containerRef.current.clientHeight
     const current = useDrawingStore.getState().getDrawings(panelId, symbol)
 
-    // ── Cursor / select / drag ──────────────────────────────────────────
+    // Select mode (cursor)
     if (activeTool === 'cursor') {
       const hit = hitTestAll(bridge, current, pix.x, pix.y, w, h)
       if (hit) {
@@ -352,10 +350,11 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
         const origin = current.find((d) => d.id === hit.id)
         const logical = eventToLogical(e)
         if (origin && logical) {
+          // deep-enough snapshot for drag
           dragRef.current = {
             id: hit.id,
             handle: hit.handle,
-            origin: { ...origin } as Drawing,
+            origin: JSON.parse(JSON.stringify(origin)) as Drawing,
             startLogical: logical,
           }
         }
@@ -367,7 +366,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       return
     }
 
-    // ── Create with drawing tool ────────────────────────────────────────
+    // Create mode
     e.preventDefault()
     e.stopPropagation()
     setSelectedId(null)
@@ -394,19 +393,7 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
 
   const onPointerMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!bridge || !containerRef.current) return
-    const pix = eventToPixel(e)
-    if (!pix) return
-    const w = containerRef.current.clientWidth
-    const h = containerRef.current.clientHeight
-    const current = useDrawingStore.getState().getDrawings(panelId, symbol)
 
-    // Hover feedback for pointer-events policy
-    if (activeTool === 'cursor' && !dragRef.current) {
-      const hit = hitTestAll(bridge, current, pix.x, pix.y, w, h)
-      setHoveringDrawing(!!hit)
-    }
-
-    // Drag edit
     if (dragRef.current && activeTool === 'cursor') {
       const logical = eventToLogical(e)
       if (!logical) return
@@ -417,7 +404,6 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
       return
     }
 
-    // Draft preview
     if (activeTool !== 'cursor' && draftRef.current) {
       const pt = eventToLogical(e)
       if (!pt) return
@@ -434,30 +420,19 @@ export function DrawingLayer({ panelId, symbol, bridge, containerRef }: DrawingL
     dragRef.current = null
   }
 
-  // Capture pointer-events when: drawing tool active, hovering a drawing, or has selection / drag
-  const capturePointer =
-    activeTool !== 'cursor' || hoveringDrawing || !!selectedId || !!dragRef.current
-
   return (
     <canvas
       ref={canvasRef}
       className="absolute inset-0 z-[5]"
       style={{
-        pointerEvents: capturePointer ? 'auto' : 'none',
-        cursor:
-          activeTool !== 'cursor'
-            ? 'crosshair'
-            : hoveringDrawing || selectedId
-              ? 'pointer'
-              : 'default',
+        // ALWAYS capture events – required for selection hit-test
+        pointerEvents: 'auto',
+        cursor: activeTool !== 'cursor' ? 'crosshair' : 'default',
       }}
       onMouseDown={onPointerDown}
       onMouseMove={onPointerMove}
       onMouseUp={onPointerUp}
-      onMouseLeave={() => {
-        setHoveringDrawing(false)
-        dragRef.current = null
-      }}
+      onMouseLeave={onPointerUp}
     />
   )
 }

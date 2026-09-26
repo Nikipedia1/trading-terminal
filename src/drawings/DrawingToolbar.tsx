@@ -1,13 +1,12 @@
 /**
- * Drawing toolbar – tool selection, color, select-edit actions, export/import.
+ * Drawing toolbar – select mode + tools + edit actions.
  */
 
-import { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import { useDrawingStore } from './drawingStore'
 import type { DrawingTool } from './types'
 
-const TOOLS: { id: DrawingTool; label: string; title: string }[] = [
-  { id: 'cursor', label: '↖', title: 'Cursor / select drawings' },
+const DRAW_TOOLS: { id: DrawingTool; label: string; title: string }[] = [
   { id: 'trendline', label: '／', title: 'Trendline (2 clicks)' },
   { id: 'horizontal', label: '─', title: 'Horizontal line' },
   { id: 'vertical', label: '│', title: 'Vertical line' },
@@ -48,7 +47,6 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
   })
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // When a color is picked and something is selected → recolor that drawing
   const applyColor = (color: string) => {
     setActiveColor(color)
     if (selectedId && selectedDrawing) {
@@ -57,11 +55,6 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       })
     }
   }
-
-  // Double-click text: edit (via toolbar hint when text selected)
-  useEffect(() => {
-    // no-op placeholder for future focus
-  }, [selectedId])
 
   const onExport = () => {
     const json = exportJson(panelId, symbol)
@@ -95,15 +88,31 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
     }
   }
 
+  const isSelect = activeTool === 'cursor'
+
   return (
     <div
       className="flex items-center gap-1 px-2 py-1 h-full flex-wrap"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <span className="text-xxs text-terminal-muted mr-1 shrink-0">Draw</span>
+      {/* Explicit Select button */}
+      <button
+        type="button"
+        title="Selezione – clicca un disegno per selezionarlo"
+        onClick={() => setActiveTool('cursor')}
+        className={`px-2 py-0.5 text-xs rounded border font-medium ${
+          isSelect
+            ? 'bg-terminal-blue text-white border-terminal-blue'
+            : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
+        }`}
+      >
+        Sel
+      </button>
 
-      {TOOLS.map((t) => (
+      <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
+
+      {DRAW_TOOLS.map((t) => (
         <button
           key={t.id}
           type="button"
@@ -125,7 +134,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
         <button
           key={c}
           type="button"
-          title={selectedId ? `Recolor selected → ${c}` : c}
+          title={selectedId ? `Ricolora selezionato → ${c}` : c}
           onClick={() => applyColor(c)}
           className={`w-4 h-4 rounded-sm border-2 shrink-0 ${
             activeColor === c ? 'border-white' : 'border-terminal-border'
@@ -136,14 +145,13 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
 
       <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
 
-      {/* Selection actions */}
       {selectedId && (
         <>
-          <span className="text-xxs text-terminal-blue shrink-0">selected</span>
+          <span className="text-xxs text-terminal-blue shrink-0">selezionato</span>
           {selectedDrawing?.tool === 'text' && (
             <button
               type="button"
-              title="Edit text"
+              title="Modifica testo"
               onClick={onEditText}
               className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
             >
@@ -152,7 +160,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
           )}
           <button
             type="button"
-            title="Delete selected (Delete key)"
+            title="Elimina selezionato (tasto Canc)"
             onClick={() => removeDrawing(panelId, symbol, selectedId)}
             className="px-1.5 py-0.5 text-xxs text-terminal-red border border-terminal-red/50 rounded hover:bg-terminal-red/10"
           >
@@ -160,7 +168,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
           </button>
           <button
             type="button"
-            title="Deselect"
+            title="Deseleziona"
             onClick={() => setSelectedId(null)}
             className="px-1.5 py-0.5 text-xxs text-terminal-muted border border-terminal-border rounded hover:bg-terminal-hover"
           >
@@ -172,7 +180,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
 
       <button
         type="button"
-        title="Export drawings JSON"
+        title="Export JSON"
         onClick={onExport}
         className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
       >
@@ -180,7 +188,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       </button>
       <button
         type="button"
-        title="Import drawings JSON"
+        title="Import JSON"
         onClick={() => fileRef.current?.click()}
         className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
       >
@@ -196,7 +204,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
 
       <button
         type="button"
-        title="Clear all drawings on this panel/symbol"
+        title="Cancella tutti i disegni"
         onClick={() => {
           if (drawingCount && confirm(`Clear ${drawingCount} drawing(s)?`)) {
             clearDrawings(panelId, symbol)
