@@ -1,6 +1,6 @@
 /**
  * Oscillator panes BELOW the main price chart (TradingView-style).
- * One sub-chart per active pane indicator; time scale synced to main.
+ * Time scale: main → pane only (no reverse sync = no zoom feedback loop).
  */
 
 import { useEffect, useRef, useState, useMemo } from 'react'
@@ -46,8 +46,8 @@ import {
 } from '@/indicators'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 
-const PANE_H = 110
-const PANE_H_EXPANDED = 220
+const PANE_H = 120
+const PANE_H_EXPANDED = 240
 
 function toLine(pts: LinePoint[]) {
   const sorted = pts
@@ -74,11 +74,16 @@ function drawPane(
   chart: IChartApi,
   id: IndicatorId,
   candles: Candle[],
-  params: IndicatorParamsMap
+  params: IndicatorParamsMap,
+  seriesBag: unknown[]
 ) {
-  // Clear previous series by removing all – recreate is simpler; caller recreates chart on id change
   const p = params[id]
   if (!p?.visible) return
+
+  const track = <T,>(s: T): T => {
+    seriesBag.push(s)
+    return s
+  }
 
   const addLine = (
     pts: LinePoint[],
@@ -87,26 +92,28 @@ function drawPane(
     width = 2,
     showVal = true
   ) => {
-    const s = chart.addLineSeries({
-      color,
-      lineWidth: Math.min(4, Math.max(1, width)) as 1 | 2 | 3 | 4,
-      title,
-      lastValueVisible: showVal,
-      priceLineVisible: false,
-      crosshairMarkerVisible: true,
-    })
+    const s = track(
+      chart.addLineSeries({
+        color,
+        lineWidth: Math.min(4, Math.max(1, width)) as 1 | 2 | 3 | 4,
+        title,
+        lastValueVisible: showVal,
+        priceLineVisible: false,
+        crosshairMarkerVisible: true,
+      })
+    )
     s.setData(toLine(pts))
-    return s
   }
   const addHist = (pts: LinePoint[], up: string, down: string, title: string) => {
-    const s = chart.addHistogramSeries({
-      base: 0,
-      title,
-      lastValueVisible: true,
-      priceLineVisible: false,
-    })
+    const s = track(
+      chart.addHistogramSeries({
+        base: 0,
+        title,
+        lastValueVisible: true,
+        priceLineVisible: false,
+      })
+    )
     s.setData(toHist(pts, up, down))
-    return s
   }
 
   try {
@@ -159,13 +166,7 @@ function drawPane(
         }
         break
       case 'willr':
-        addLine(
-          computeWillR(candles, Math.max(2, p.period)),
-          p.color,
-          '%R',
-          p.lineWidth,
-          p.showValue
-        )
+        addLine(computeWillR(candles, Math.max(2, p.period)), p.color, '%R', p.lineWidth, p.showValue)
         break
       case 'momentum':
         addLine(
@@ -186,13 +187,7 @@ function drawPane(
         )
         break
       case 'atr':
-        addLine(
-          computeAtr(candles, Math.max(2, p.period)),
-          p.color,
-          'ATR',
-          p.lineWidth,
-          p.showValue
-        )
+        addLine(computeAtr(candles, Math.max(2, p.period)), p.color, 'ATR', p.lineWidth, p.showValue)
         break
       case 'adx': {
         const a = computeAdx(candles, Math.max(2, p.period))
@@ -205,13 +200,7 @@ function drawPane(
         addLine(computeObv(candles), p.color, 'OBV', p.lineWidth, p.showValue)
         break
       case 'mfi':
-        addLine(
-          computeMfi(candles, Math.max(2, p.period)),
-          p.color,
-          'MFI',
-          p.lineWidth,
-          p.showValue
-        )
+        addLine(computeMfi(candles, Math.max(2, p.period)), p.color, 'MFI', p.lineWidth, p.showValue)
         break
       case 'volsma': {
         const v = computeVolSma(candles, Math.max(1, p.period))
@@ -261,13 +250,7 @@ function drawPane(
         )
         break
       case 'cmf':
-        addLine(
-          computeCmf(candles, Math.max(2, p.period)),
-          p.color,
-          'CMF',
-          p.lineWidth,
-          p.showValue
-        )
+        addLine(computeCmf(candles, Math.max(2, p.period)), p.color, 'CMF', p.lineWidth, p.showValue)
         break
       case 'adl':
         addLine(computeAdl(candles), p.color, 'ADL', p.lineWidth, p.showValue)
@@ -341,6 +324,7 @@ function PaneRow({
   mainChart,
   expanded,
   onToggleExpand,
+  showTimeAxis,
 }: {
   id: IndicatorId
   label: string
@@ -349,163 +333,166 @@ function PaneRow({
   mainChart: IChartApi | null
   expanded: boolean
   onToggleExpand: () => void
+  showTimeAxis: boolean
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
-  const applyingRef = useRef(false)
+  const seriesBag = useRef<unknown[]>([])
   const style = useChartStyleStore((s) => s.style)
   const h = expanded ? PANE_H_EXPANDED : PANE_H
 
+  // Create chart once; only rebuild if height changes a lot
   useEffect(() => {
-    if (!hostRef.current) return
-    const canvas = style.canvas
-    const chart = createChart(hostRef.current, {
-      width: hostRef.current.clientWidth,
-      height: h,
-      layout: {
-        background: { type: ColorType.Solid, color: canvas.background },
-        textColor: canvas.text,
-      },
-      grid: {
-        vertLines: { color: canvas.grid },
-        horzLines: { color: canvas.grid },
-      },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: {
-        borderColor: canvas.border,
-        scaleMargins: { top: 0.08, bottom: 0.08 },
-      },
-      timeScale: {
-        borderColor: canvas.border,
-        timeVisible: true,
-        secondsVisible: false,
-        rightOffset: 8,
-        visible: true,
-      },
-    })
-    chartRef.current = chart
+    const el = hostRef.current
+    if (!el) return
 
-    const ro = new ResizeObserver((entries) => {
-      const { width } = entries[0].contentRect
-      if (width > 0) chart.applyOptions({ width, height: h })
-    })
-    ro.observe(hostRef.current)
+    let chart: IChartApi | null = null
+    let ro: ResizeObserver | null = null
+    let cancelled = false
+
+    const mount = () => {
+      if (cancelled || !hostRef.current) return
+      const w = hostRef.current.clientWidth
+      if (w < 8) {
+        requestAnimationFrame(mount)
+        return
+      }
+      const canvas = useChartStyleStore.getState().style.canvas
+      chart = createChart(hostRef.current, {
+        width: w,
+        height: h,
+        layout: {
+          background: { type: ColorType.Solid, color: canvas.background },
+          textColor: canvas.text,
+        },
+        grid: {
+          vertLines: { color: canvas.grid },
+          horzLines: { color: canvas.grid },
+        },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: {
+          borderColor: canvas.border,
+          scaleMargins: { top: 0.1, bottom: 0.1 },
+        },
+        timeScale: {
+          borderColor: canvas.border,
+          timeVisible: showTimeAxis,
+          secondsVisible: false,
+          rightOffset: 8,
+          visible: showTimeAxis,
+        },
+        // Pane follows main – no independent zoom that fights the price chart
+        handleScroll: false,
+        handleScale: false,
+      })
+      chartRef.current = chart
+
+      ro = new ResizeObserver((entries) => {
+        const { width } = entries[0].contentRect
+        if (width > 8 && chart) chart.applyOptions({ width, height: h })
+      })
+      ro.observe(hostRef.current)
+    }
+
+    mount()
 
     return () => {
-      ro.disconnect()
-      chart.remove()
+      cancelled = true
+      ro?.disconnect()
+      chart?.remove()
       chartRef.current = null
+      seriesBag.current = []
     }
-    // recreate when expanded height changes
-  }, [h, style.canvas.background, style.canvas.text, style.canvas.grid, style.canvas.border])
+  }, [h, showTimeAxis])
 
-  // Draw data
+  // Theme
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const c = style.canvas
+    chart.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: c.background },
+        textColor: c.text,
+      },
+      grid: {
+        vertLines: { color: c.grid },
+        horzLines: { color: c.grid },
+      },
+      rightPriceScale: { borderColor: c.border },
+      timeScale: { borderColor: c.border },
+    })
+  }, [style.canvas])
+
+  // Draw / redraw series
   useEffect(() => {
     const chart = chartRef.current
     if (!chart || candles.length === 0) return
-    // Remove all series: LWC has no clear; recreate via remove+add by drawing after wipe
-    // Workaround: remove chart series by re-creating is heavy; instead remove known by drawing on fresh chart only when deps change
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const series = (chart as any)._private?._seriesMap
-      // Prefer: destroy and recreate series via chart API – iterate removeSeries on tracked list
-    } catch {
-      /* */
+
+    for (const s of seriesBag.current) {
+      try {
+        chart.removeSeries(s as never)
+      } catch {
+        /* */
+      }
     }
-    // Simple approach: remove chart and rebuild is already handled by h/style effect;
-    // for data updates, clear by removing every series we can't track — use applyOptions height refresh
-    // Track series on chart object
-    const anyChart = chart as unknown as { __indSeries?: unknown[] }
-    if (anyChart.__indSeries) {
-      for (const s of anyChart.__indSeries) {
+    seriesBag.current = []
+    drawPane(chart, id, candles, params, seriesBag.current)
+
+    // Align to main range after data is set
+    if (mainChart) {
+      const range = mainChart.timeScale().getVisibleRange()
+      if (range) {
         try {
-          chart.removeSeries(s as never)
+          chart.timeScale().setVisibleRange(range)
         } catch {
           /* */
         }
       }
     }
-    anyChart.__indSeries = []
-    const origAddLine = chart.addLineSeries.bind(chart)
-    const origAddHist = chart.addHistogramSeries.bind(chart)
-    chart.addLineSeries = ((opts: Parameters<typeof chart.addLineSeries>[0]) => {
-      const s = origAddLine(opts)
-      anyChart.__indSeries!.push(s)
-      return s
-    }) as typeof chart.addLineSeries
-    chart.addHistogramSeries = ((opts: Parameters<typeof chart.addHistogramSeries>[0]) => {
-      const s = origAddHist(opts)
-      anyChart.__indSeries!.push(s)
-      return s
-    }) as typeof chart.addHistogramSeries
-    drawPane(chart, id, candles, params)
-    // restore
-    chart.addLineSeries = origAddLine
-    chart.addHistogramSeries = origAddHist
-  }, [candles, params, id, h])
+  }, [candles, params, id, mainChart, h])
 
-  // Sync time from main → pane
+  // One-way sync: main → pane only
   useEffect(() => {
     if (!mainChart || !chartRef.current) return
     const pane = chartRef.current
+
     const onMain = () => {
-      if (applyingRef.current) return
       const range = mainChart.timeScale().getVisibleRange()
       if (!range) return
-      applyingRef.current = true
       try {
         pane.timeScale().setVisibleRange(range)
       } catch {
-        /* */
-      } finally {
-        requestAnimationFrame(() => {
-          applyingRef.current = false
-        })
+        /* out of data */
       }
     }
+
     mainChart.timeScale().subscribeVisibleTimeRangeChange(onMain)
     onMain()
-    const onPane = () => {
-      if (applyingRef.current) return
-      const range = pane.timeScale().getVisibleRange()
-      if (!range) return
-      applyingRef.current = true
-      try {
-        mainChart.timeScale().setVisibleRange(range)
-      } catch {
-        /* */
-      } finally {
-        requestAnimationFrame(() => {
-          applyingRef.current = false
-        })
-      }
-    }
-    pane.timeScale().subscribeVisibleTimeRangeChange(onPane)
     return () => {
       mainChart.timeScale().unsubscribeVisibleTimeRangeChange(onMain)
-      pane.timeScale().unsubscribeVisibleTimeRangeChange(onPane)
     }
   }, [mainChart, h])
 
   return (
     <div
-      className="relative border-t border-terminal-border shrink-0"
+      className="relative border-t border-terminal-border shrink-0 w-full overflow-hidden"
       style={{ height: h }}
     >
-      <div className="absolute top-0 left-1 z-10 flex items-center gap-1 pointer-events-auto">
-        <span className="text-[10px] text-terminal-muted bg-terminal-panel/80 px-1 rounded">
+      <div className="absolute top-0.5 left-1 z-10 flex items-center gap-1 pointer-events-auto">
+        <span className="text-[10px] text-terminal-muted bg-terminal-panel/90 px-1 rounded">
           {label}
         </span>
         <button
           type="button"
-          className="text-[9px] text-terminal-muted hover:text-terminal-text bg-terminal-panel/80 px-1 rounded border border-terminal-border"
+          className="text-[9px] text-terminal-muted hover:text-terminal-text bg-terminal-panel/90 px-1 rounded border border-terminal-border"
           title={expanded ? 'Riduci' : 'Espandi'}
           onClick={onToggleExpand}
         >
           {expanded ? '▾' : '▴'}
         </button>
       </div>
-      <div ref={hostRef} className="absolute inset-0" />
+      <div ref={hostRef} className="absolute inset-0 w-full h-full" />
     </div>
   )
 }
@@ -520,8 +507,7 @@ export function IndicatorPanes({
   params: IndicatorParamsMap
 }) {
   const active = useMemo(
-    () =>
-      INDICATOR_CATALOG.filter((m) => m.pane === 'pane' && params[m.id]?.visible),
+    () => INDICATOR_CATALOG.filter((m) => m.pane === 'pane' && params[m.id]?.visible),
     [params]
   )
   const [expandedId, setExpandedId] = useState<IndicatorId | null>(null)
@@ -529,8 +515,8 @@ export function IndicatorPanes({
   if (active.length === 0) return null
 
   return (
-    <div className="flex flex-col shrink-0 w-full border-t border-terminal-border">
-      {active.map((m) => (
+    <div className="flex flex-col shrink-0 w-full max-w-full overflow-hidden bg-terminal-bg">
+      {active.map((m, i) => (
         <PaneRow
           key={m.id}
           id={m.id}
@@ -539,9 +525,8 @@ export function IndicatorPanes({
           params={params}
           mainChart={mainChart}
           expanded={expandedId === m.id}
-          onToggleExpand={() =>
-            setExpandedId((cur) => (cur === m.id ? null : m.id))
-          }
+          showTimeAxis={i === active.length - 1}
+          onToggleExpand={() => setExpandedId((cur) => (cur === m.id ? null : m.id))}
         />
       ))}
     </div>
