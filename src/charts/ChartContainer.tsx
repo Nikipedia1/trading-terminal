@@ -1,5 +1,5 @@
 /**
- * ChartContainer – chart + analysis overlays (Print/Delta/Profile/Trades/Dom).
+ * ChartContainer – chart + orderflow overlays + DOM ladder.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -28,6 +28,7 @@ import {
 } from '@/analysis/deepTrades'
 import {
   DeepDomOverlay,
+  DomLadder,
   type DeepDomConfig,
   DEFAULT_DEEP_DOM_CONFIG,
 } from '@/analysis/deepDom'
@@ -278,7 +279,6 @@ export function ChartContainer({
     >
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* z-order: Dom (passive liq) under Profile under Trades under drawings */}
       <DeepDomOverlay
         enabled={deepDomEnabled}
         bridge={bridge}
@@ -323,6 +323,8 @@ export function ChartContainer({
         interval={interval}
         candles={candles}
       />
+
+      <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
 
       <ChartStylePanel />
 
