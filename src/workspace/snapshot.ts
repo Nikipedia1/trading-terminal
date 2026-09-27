@@ -17,9 +17,6 @@ export function captureLayout(): WorkspaceLayoutSlice {
 export function captureIndicators(): unknown {
   try {
     const s = useIndicatorStore.getState() as Record<string, unknown>
-    // Prefer explicit export if store grows one later
-    const { panels, defaults, ...rest } = s as any
-    // Drop functions
     const clean: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(s)) {
       if (typeof v === 'function') continue
