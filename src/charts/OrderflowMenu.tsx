@@ -261,7 +261,8 @@ export function OrderflowMenu({
               </select>
             </div>
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Barre split buy (verde) / sell (viola) · buy%+sell% live · POC/VAH/VAL/LVN · {SESSION_NOTE}
+              Barre split buy (verde) / sell (viola) · buy%+sell% live · POC/VAH/VAL/LVN ·{' '}
+              {SESSION_NOTE}
             </p>
           </Row>
 
@@ -289,7 +290,7 @@ export function OrderflowMenu({
               {state.tradesCfg.mode === 'percentile' ? (
                 <input
                   type="number"
-                  min={50}
+                  min={20}
                   max={99}
                   className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
                   value={state.tradesCfg.percentile}
@@ -297,7 +298,7 @@ export function OrderflowMenu({
                     onChange({
                       tradesCfg: {
                         ...state.tradesCfg,
-                        percentile: Number(e.target.value) || 95,
+                        percentile: Number(e.target.value) || 70,
                       },
                     })
                   }
@@ -335,6 +336,24 @@ export function OrderflowMenu({
                 <option value="base">base</option>
               </select>
             </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-[#848e9c]">
+              <span className="shrink-0">max/candle</span>
+              <input
+                type="number"
+                min={1}
+                max={8}
+                className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
+                value={state.tradesCfg.maxPerCandle ?? 2}
+                onChange={(e) =>
+                  onChange({
+                    tradesCfg: {
+                      ...state.tradesCfg,
+                      maxPerCandle: Math.max(1, Math.min(8, Number(e.target.value) || 2)),
+                    },
+                  })
+                }
+              />
+            </div>
             <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
               <input
                 type="checkbox"
@@ -368,7 +387,7 @@ export function OrderflowMenu({
               Label size
             </label>
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Solo tick reali (aggTrade) · soglia default p95 USDT · effective = prezzo conferma su 2 barre · ▲ buy / ▼ sell · glow=eff · outline dashed=trapped
+              Tick reali · default p70 USDT · top N print per candela · spegni Solo Effective per densità ·▲ buy / ▼ sell
             </p>
           </Row>
 
