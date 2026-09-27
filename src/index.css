@@ -40,10 +40,33 @@ html, body, #root {
   background: #3a424d;
 }
 
-/* Utility for mono numbers */
-.font-mono-nums {
+/* Utility for mono numbers – zero layout jitter */
+.font-mono-nums,
+.tabular-nums {
   font-variant-numeric: tabular-nums;
   font-family: 'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── Density modes ── */
+/* research (default): full chrome */
+html[data-density='research'] .density-hide-research {
+  display: none;
+}
+
+/* scalp: less chrome, more chart/DOM real-estate */
+html[data-density='scalp'] .density-chrome {
+  display: none !important;
+}
+html[data-density='scalp'] .density-compact {
+  padding-top: 0.125rem !important;
+  padding-bottom: 0.125rem !important;
+}
+html[data-density='scalp'] header h1 {
+  font-size: 11px;
+}
+html[data-density='scalp'] .grid.grid-cols-3 {
+  grid-template-columns: 1fr 280px;
 }
 
 /* react-grid-layout overrides for terminal look */
