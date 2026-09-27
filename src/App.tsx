@@ -8,6 +8,7 @@ import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import type { Interval } from '@/types'
 import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
+import { ArchiveMenu } from '@/ui/ArchiveMenu'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -403,12 +404,13 @@ export default function App() {
   const startLive = useMarketStore((s) => s.startLive)
 
   useEffect(() => {
-    // Restore last workspace (local or cloud) before live feeds
-    void loadWorkspace().then((res) => {
-      if (res.ok) applyWorkspace(res.doc)
-    }).finally(() => {
-      loadHistorical().then(() => startLive())
-    })
+    void loadWorkspace()
+      .then((res) => {
+        if (res.ok) applyWorkspace(res.doc)
+      })
+      .finally(() => {
+        loadHistorical().then(() => startLive())
+      })
   }, [])
 
   usePrimarySync()
@@ -418,6 +420,7 @@ export default function App() {
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
         <div className="flex items-center gap-3">
+          <ArchiveMenu />
           <WorkspaceMenu />
           <span className="text-xxs text-terminal-muted">
             Binance · KuCoin · Paper · Real-time · No mocks
