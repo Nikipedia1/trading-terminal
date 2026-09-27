@@ -10,7 +10,7 @@ import { dispatchChannels } from './notify'
 import { useMarketStore } from '@/stores/marketStore'
 import { queryTradesInRange, retainTradeBuffer } from '@/analysis/deepPrint/tradeBuffer'
 import { stackedImbalanceRuns } from '@/analysis/metrics/stackedImbalance'
-import { buildDeepPrint } from '@/analysis/deepPrint/aggregate'
+import { aggregatePrint } from '@/analysis/deepPrint/aggregate'
 import { intervalToSeconds } from '@/analysis/deepPrint/interval'
 import type { Interval } from '@/types'
 
@@ -24,7 +24,6 @@ function loadRules(): AlertRule[] {
     if (!raw) return DEFAULT_RULES.map((r) => ({ ...r }))
     const parsed = JSON.parse(raw) as AlertRule[]
     if (!Array.isArray(parsed)) return DEFAULT_RULES.map((r) => ({ ...r }))
-    // merge defaults for new kinds
     const byId = new Map(parsed.map((r) => [r.id, r]))
     for (const d of DEFAULT_RULES) {
       if (!byId.has(d.id)) byId.set(d.id, { ...d })
@@ -75,6 +74,7 @@ interface AlertState {
 
 let timer: ReturnType<typeof setInterval> | null = null
 let releaseBuf: (() => void) | null = null
+let releaseKey = ''
 
 function fire(rule: AlertRule, symbol: string, message: string, price?: number) {
   const st = useAlertStore.getState()
@@ -116,9 +116,11 @@ function tick() {
 
   if (!(last > 0)) return
 
-  // ensure trade buffer
-  if (!releaseBuf) {
+  const key = `${exchange}:${symbol}`
+  if (releaseKey !== key) {
+    releaseBuf?.()
     releaseBuf = retainTradeBuffer(exchange, symbol)
+    releaseKey = key
   }
 
   const nowSec = Math.floor(Date.now() / 1000)
@@ -133,7 +135,7 @@ function tick() {
       switch (rule.kind) {
         case 'large_print': {
           const thr = rule.threshold ?? 50000
-          for (const t of trades.slice(-30)) {
+          for (const t of trades.slice(-40)) {
             const notional = t.price * t.qty
             if (notional >= thr) {
               fire(
@@ -150,15 +152,12 @@ function tick() {
         case 'stacked_imbalance': {
           const sec = intervalToSeconds(interval)
           const candleOpen = Math.floor(nowSec / sec) * sec
-          const model = buildDeepPrint(
-            trades.filter((t) => {
-              const ts = Math.floor(t.time / 1000)
-              return ts >= candleOpen && ts < candleOpen + sec
-            }),
-            candleOpen,
-            sec
-          )
-          if (model && model.levels.length >= 3) {
+          const inBar = trades.filter((t) => {
+            const ts = Math.floor(t.time / 1000)
+            return ts >= candleOpen && ts < candleOpen + sec
+          })
+          const model = aggregatePrint(inBar, candleOpen, candleOpen + sec, last)
+          if (model.levels.length >= 3) {
             const runs = stackedImbalanceRuns(
               model.levels,
               0.7,
@@ -180,30 +179,32 @@ function tick() {
         case 'book_pull': {
           const book = m.orderBook
           if (!book) break
-          // simple: compare top bid size drop vs previous sample stored on window
           const w = window as any
           const prev = w.__ttBookTop as { bid: number; qty: number } | undefined
           const top = book.bids[0]
           if (top && prev && prev.bid === top.price && prev.qty > 0) {
             const factor = rule.threshold ?? 3
             if (top.qty <= prev.qty / factor) {
-              fire(rule, sym, `Bid pull ${prev.qty.toFixed(4)}→${top.qty.toFixed(4)} @ ${top.price}`, top.price)
+              fire(
+                rule,
+                sym,
+                `Bid pull ${prev.qty.toFixed(4)}→${top.qty.toFixed(4)} @ ${top.price}`,
+                top.price
+              )
             }
           }
           if (top) w.__ttBookTop = { bid: top.price, qty: top.qty }
           break
         }
         case 'funding_spike': {
-          // funding from futures panel is optional; use session flag if present
           const w = window as any
           const fr = w.__ttLastFunding as number | undefined
           const thr = rule.threshold ?? 0.001
           if (fr != null && Math.abs(fr) >= thr) {
-            fire(rule, sym, `Funding ${((fr) * 100).toFixed(4)}%`, last)
+            fire(rule, sym, `Funding ${(fr * 100).toFixed(4)}%`, last)
           }
           break
         }
-        // price_poc / vah / val need profile model – fired when levels exposed on window
         case 'price_poc':
         case 'price_vah':
         case 'price_val': {
@@ -221,12 +222,16 @@ function tick() {
           if (level == null || !(level > 0)) break
           const rel = Math.abs(last - level) / level
           if (rel <= (rule.threshold ?? 0.0005)) {
-            fire(rule, sym, `Price near ${rule.kind.replace('price_', '').toUpperCase()} ${level}`, last)
+            fire(
+              rule,
+              sym,
+              `Price near ${rule.kind.replace('price_', '').toUpperCase()} ${level}`,
+              last
+            )
           }
           break
         }
         case 'delta_divergence': {
-          // lightweight: last closed candle delta vs price direction via window hook
           const w = window as any
           const flag = w.__ttDeltaDiv as { symbol: string; ts: number } | undefined
           if (flag && flag.symbol === sym && Date.now() - flag.ts < 5000) {
@@ -238,7 +243,7 @@ function tick() {
           break
       }
     } catch {
-      /* never break the UI loop */
+      /* never break UI */
     }
   }
 }
@@ -272,11 +277,11 @@ export const useAlertStore = create<AlertState>((set, get) => ({
     timer = null
     releaseBuf?.()
     releaseBuf = null
+    releaseKey = ''
     set({ running: false })
   },
 }))
 
-/** Call once from App mount */
 export function startAlertEngine() {
   useAlertStore.getState().start()
 }
