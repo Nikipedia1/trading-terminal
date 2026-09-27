@@ -1,6 +1,6 @@
 /**
  * Deep Trades – real aggTrade bubbles, anti-pellicola.
- * Dense coverage · robust coordinates · no edge-clipped monsters.
+ * Dense coverage · robust coordinates · LOD when zoomed out · layer L3.
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -17,6 +17,9 @@ import { filterDeepTrades, pickPerCandle } from './filter'
 import { classifyBubbles } from './classify'
 import type { DeepTradesConfig, DeepTradeBubble } from './types'
 import type { AggressorTrade } from '@/data/shared'
+import { lodFromVisibleBars, lodCap } from '@/analysis/lod'
+import { LAYER_Z } from '@/charts/layerStack'
+import { getSyncHighlight } from '@/stores/layoutStore'
 
 interface DeepTradesOverlayProps {
   enabled: boolean
@@ -27,6 +30,8 @@ interface DeepTradesOverlayProps {
   config: DeepTradesConfig
   candles?: Candle[]
   interval?: Interval
+  /** Sync group id for mirrored orderflow highlight */
+  syncGroup?: string | null
 }
 
 const R_MIN = 5
@@ -83,6 +88,18 @@ function tradeToX(
   return null
 }
 
+function visibleBarCount(bridge: CoordinateBridge, intervalSec: number): number {
+  try {
+    const chart = bridge.getChart()
+    if (!chart) return 120
+    const range = chart.timeScale().getVisibleRange()
+    if (!range || typeof range.from !== 'number' || typeof range.to !== 'number') return 120
+    return Math.max(1, Math.ceil((range.to - range.from) / intervalSec))
+  } catch {
+    return 120
+  }
+}
+
 export function DeepTradesOverlay({
   enabled,
   bridge,
@@ -92,6 +109,7 @@ export function DeepTradesOverlay({
   config,
   candles = [],
   interval = '1m',
+  syncGroup = null,
 }: DeepTradesOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bubblesRef = useRef<DeepTradeBubble[]>([])
@@ -138,16 +156,20 @@ export function DeepTradesOverlay({
         classified = pickPerCandle(classified, sec, maxPer)
       }
 
-      const capped =
-        classified.length > 500
-          ? [...classified].sort((a, b) => b.quoteQty - a.quoteQty).slice(0, 500)
-          : classified
+      // LOD cap from visible bars
+      const vis = bridge ? visibleBarCount(bridge, sec) : 120
+      const lod = lodFromVisibleBars(vis)
+      const capped = lodCap(
+        [...classified].sort((a, b) => b.quoteQty - a.quoteQty),
+        Math.min(lod.maxItems, 500),
+        true
+      )
 
       bubblesRef.current = capped
       thresholdRef.current = threshold
       maxQtyRef.current = Math.max(...capped.map((b) => b.qty), 1)
     },
-    [enabled, config, candles, interval]
+    [enabled, config, candles, interval, bridge]
   )
 
   const rebuild = useCallback(() => {
@@ -236,40 +258,32 @@ export function DeepTradesOverlay({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
 
-    // Hard clip: nothing can paint outside the chart pane
     ctx.save()
     ctx.beginPath()
     ctx.rect(0, 0, w, h)
     ctx.clip()
 
-    const list = bubblesRef.current
-    const maxQty = maxQtyRef.current
-    const showLabels = config.showLabels !== false
     const sec = intervalToSeconds(interval)
+    const vis = visibleBarCount(bridge, sec)
+    const lod = lodFromVisibleBars(vis)
+    const list = lodCap(bubblesRef.current, lod.maxItems, true)
+    const maxQty = maxQtyRef.current
+    const showLabels = config.showLabels !== false && lod.level === 0
     let drawn = 0
     let nEff = 0
     let nTrap = 0
     let nPend = 0
-    let skippedCoord = 0
-    let skippedEdge = 0
 
     const ordered = [...list].sort((a, b) => a.qty - b.qty)
 
     for (const b of ordered) {
       const x = tradeToX(bridge, b.timeSec, sec, candles)
       const y = bridge.priceToCoordinate(b.price)
-      if (x === null || y === null || !Number.isFinite(x) || !Number.isFinite(y)) {
-        skippedCoord += 1
-        continue
-      }
+      if (x === null || y === null || !Number.isFinite(x) || !Number.isFinite(y)) continue
 
       const r = radiusForQty(b.qty, maxQty)
-      // Glow extends to ~1.8r – require room so nothing clips on left/right
       const pad = r * 1.85 + 2
-      if (x < pad || x > w - pad || y < r + 2 || y > h - r - 2) {
-        skippedEdge += 1
-        continue
-      }
+      if (x < pad || x > w - pad || y < r + 2 || y > h - r - 2) continue
 
       const buy = b.aggressor === 'buy'
       const outcome = b.outcome
@@ -283,7 +297,7 @@ export function DeepTradesOverlay({
       if (outcome === 'effective') {
         fillA = 0.8
         strokeA = 1
-        glowA = 0.18
+        glowA = lod.level === 0 ? 0.18 : 0.08
         lineW = 1.75
         nEff += 1
       } else if (outcome === 'trapped') {
@@ -295,7 +309,7 @@ export function DeepTradesOverlay({
       } else {
         fillA = 0.55
         strokeA = 0.85
-        glowA = 0.1
+        glowA = lod.level === 0 ? 0.1 : 0
         lineW = 1.5
         nPend += 1
       }
@@ -331,7 +345,7 @@ export function DeepTradesOverlay({
       ctx.strokeStyle = `rgba(${baseRgb},${strokeA})`
       ctx.stroke()
 
-      if (outcome === 'trapped') {
+      if (outcome === 'trapped' && lod.level === 0) {
         ctx.beginPath()
         ctx.setLineDash([2.5, 2])
         ctx.arc(x, y, r + 2, 0, Math.PI * 2)
@@ -341,7 +355,7 @@ export function DeepTradesOverlay({
         ctx.setLineDash([])
       }
 
-      if (r >= 6 && (outcome === 'effective' || outcome === 'pending')) {
+      if (r >= 6 && (outcome === 'effective' || outcome === 'pending') && lod.level < 2) {
         ctx.fillStyle = 'rgba(255,255,255,0.9)'
         ctx.beginPath()
         if (buy) {
@@ -377,6 +391,28 @@ export function DeepTradesOverlay({
       drawn += 1
     }
 
+    // Synced orderflow highlight ring
+    if (syncGroup) {
+      const hl = getSyncHighlight(syncGroup)
+      if (hl) {
+        const hx = tradeToX(bridge, hl.timeSec, sec, candles)
+        const hy = bridge.priceToCoordinate(hl.price)
+        if (hx != null && hy != null) {
+          const rgb = hl.aggressor === 'sell' ? '168, 85, 247' : '240, 185, 11'
+          ctx.beginPath()
+          ctx.arc(hx, hy, 14, 0, Math.PI * 2)
+          ctx.strokeStyle = `rgba(${rgb},0.95)`
+          ctx.lineWidth = 2
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.arc(hx, hy, 18, 0, Math.PI * 2)
+          ctx.strokeStyle = `rgba(${rgb},0.35)`
+          ctx.lineWidth = 1
+          ctx.stroke()
+        }
+      }
+    }
+
     ctx.restore()
 
     {
@@ -396,14 +432,14 @@ export function DeepTradesOverlay({
       const hud =
         buf === 0 && list.length === 0
           ? `Deep Trades · buffer 0 tick – attendi stream live…`
-          : `Trades ${drawn}/${list.length} · buf ${buf} · eff ${nEff} · trap ${nTrap} · pend ${nPend} · ${thrLabel} · ${unit}`
+          : `Trades ${drawn}/${list.length} · LOD${lod.level} · buf ${buf} · eff ${nEff} · trap ${nTrap} · pend ${nPend} · ${thrLabel} · ${unit}`
       const hw = ctx.measureText(hud).width
       ctx.fillRect(6, 4, hw + 10, 16)
       ctx.fillStyle =
         drawn > 0 ? 'rgba(234, 236, 239, 0.9)' : 'rgba(240, 185, 11, 0.95)'
       ctx.fillText(hud, 11, 15)
     }
-  }, [bridge, containerRef, enabled, config, candles, interval])
+  }, [bridge, containerRef, enabled, config, candles, interval, syncGroup])
 
   useEffect(() => {
     if (!enabled) {
@@ -447,7 +483,7 @@ export function DeepTradesOverlay({
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 z-[6] pointer-events-none"
+      className={`absolute inset-0 ${LAYER_Z.bubbles} pointer-events-none`}
       aria-hidden
     />
   )
