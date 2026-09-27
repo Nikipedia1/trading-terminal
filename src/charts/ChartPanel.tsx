@@ -2,7 +2,7 @@
  * ChartPanel – chart unit with compact Orderflow menu.
  */
 
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu, type OrderflowState } from './OrderflowMenu'
@@ -67,7 +67,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
     })
   }
 
-  const onDetach = (e: React.MouseEvent) => {
+  const onDetach = (e: MouseEvent) => {
     e.stopPropagation()
     detachChartPanel({ symbol, interval, exchange })
   }
