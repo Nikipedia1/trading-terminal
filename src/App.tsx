@@ -12,6 +12,8 @@ import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 import { ArchiveMenu } from '@/ui/ArchiveMenu'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { FeedHealthHud } from '@/ui/FeedHealthHud'
+import { AlertPanel, startAlertEngine } from '@/alerts'
+import { JournalPanel } from '@/journal'
 import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 
 function StatusBadge() {
@@ -256,7 +258,7 @@ function OrderBookView() {
 function TickerBar() {
   const ticker = useMarketStore((s) => s.ticker)
   if (!ticker) return null
-  const up = ticker.priceChange >= 0
+  const up = ticker.priceChangePercent >= 0
   return (
     <div className="flex items-center gap-6 px-4 py-1.5 border-b border-terminal-border text-sm font-mono-nums">
       <span className="font-semibold">{ticker.symbol}</span>
@@ -284,12 +286,14 @@ function PrimaryLargeTrades() {
   )
 }
 
-type SideTab = 'live' | 'large' | 'book' | 'futures' | 'paper'
+type SideTab = 'live' | 'large' | 'book' | 'futures' | 'paper' | 'alerts' | 'journal'
 
 function SidePanel() {
   const [tab, setTab] = useState<SideTab>('paper')
   const tabs: { id: SideTab; label: string }[] = [
     { id: 'paper', label: 'Trade' },
+    { id: 'alerts', label: 'Alerts' },
+    { id: 'journal', label: 'Journal' },
     { id: 'live', label: 'Tape' },
     { id: 'large', label: 'Large' },
     { id: 'book', label: 'Book' },
@@ -298,12 +302,12 @@ function SidePanel() {
 
   return (
     <section className="bg-terminal-panel flex flex-col min-h-0">
-      <div className="flex border-b border-terminal-border shrink-0">
+      <div className="flex border-b border-terminal-border shrink-0 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider ${
+            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider whitespace-nowrap ${
               tab === t.id
                 ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]'
                 : 'text-terminal-muted hover:text-terminal-text'
@@ -316,6 +320,8 @@ function SidePanel() {
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'paper' && <PaperTradingPanel />}
+        {tab === 'alerts' && <AlertPanel />}
+        {tab === 'journal' && <JournalPanel />}
         {tab === 'live' && <TradesTape />}
         {tab === 'large' && <PrimaryLargeTrades />}
         {tab === 'book' && <OrderBookView />}
@@ -359,7 +365,7 @@ function ChartArea() {
     return () => ro.disconnect()
   }, [])
   return (
-    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative">
+    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative" data-chart-root>
       <PanelGrid width={size.width} height={size.height} />
     </div>
   )
@@ -370,6 +376,10 @@ export default function App() {
   const startLive = useMarketStore((s) => s.startLive)
 
   useExecutionHotkeys()
+
+  useEffect(() => {
+    startAlertEngine()
+  }, [])
 
   useEffect(() => {
     void loadWorkspace()
@@ -390,7 +400,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <ArchiveMenu />
           <WorkspaceMenu />
-          <span className="text-xxs text-terminal-muted">Paper default · Live opt-in</span>
+          <span className="text-xxs text-terminal-muted">Desk workflow</span>
         </div>
       </header>
 
