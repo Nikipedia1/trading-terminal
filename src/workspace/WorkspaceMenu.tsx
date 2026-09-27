@@ -14,6 +14,7 @@ import {
   setWorkspaceId,
   generateWorkspaceId,
 } from './id'
+import type { WorkspaceDocument } from './types'
 
 export function WorkspaceMenu() {
   const [open, setOpen] = useState(false)
@@ -37,17 +38,19 @@ export function WorkspaceMenu() {
 
   const flash = (msg: string) => {
     setStatus(msg)
-    window.setTimeout(() => setStatus(''), 4000)
+    window.setTimeout(() => setStatus(''), 4500)
   }
 
   const onSave = async () => {
     setBusy(true)
     setWorkspaceName(name)
     const snap = buildSnapshot(name)
-    const res = await saveWorkspace({ ...snap, id })
+    const res = await saveWorkspace({ ...snap, id, name })
     setBusy(false)
     if (res.ok) {
-      flash(`Saved → ${res.source} · ${new Date(res.updatedAt).toLocaleTimeString()}`)
+      flash(
+        `Saved → ${res.source} · layout+orderflow+drawings · ${new Date(res.updatedAt).toLocaleTimeString()}`
+      )
     } else {
       flash(`Save failed: ${res.error}`)
     }
@@ -69,17 +72,21 @@ export function WorkspaceMenu() {
 
   const onExport = async () => {
     const snap = buildSnapshot(name)
-    const res = await saveWorkspace({ ...snap, id })
+    const res = await saveWorkspace({ ...snap, id, name })
     if (res.ok) {
-      const doc = {
-        version: 1 as const,
+      const doc: WorkspaceDocument = {
+        version: 1,
         id: res.id,
         name,
         updatedAt: res.updatedAt,
-        ...snap,
+        layout: snap.layout,
+        indicators: snap.indicators,
+        chartStyle: snap.chartStyle,
+        orderflow: snap.orderflow,
+        drawings: snap.drawings,
       }
-      exportWorkspaceFile(doc as any)
-      flash('Exported JSON file')
+      exportWorkspaceFile(doc)
+      flash('Exported JSON (full workspace)')
     }
   }
 
@@ -101,7 +108,7 @@ export function WorkspaceMenu() {
     const nid = generateWorkspaceId()
     setWorkspaceId(nid)
     setId(nid)
-    flash('New workspace id (save to persist)')
+    flash('New workspace id – Save to create cloud slot')
   }
 
   return (
@@ -114,7 +121,7 @@ export function WorkspaceMenu() {
             : 'text-[#eaecef] border-[#2b3139] hover:bg-[#1e2329]'
         }`}
         onClick={() => setOpen((v) => !v)}
-        title="Save / load workspace (local + Cloudflare KV)"
+        title="Save / load workspace (layout, orderflow, drawings)"
       >
         Workspace {open ? '▴' : '▾'}
       </button>
@@ -139,7 +146,7 @@ export function WorkspaceMenu() {
           </label>
 
           <label className="block text-[11px] text-[#848e9c]">
-            Id (secret link)
+            Id (token segreto)
             <input
               className="mt-0.5 w-full bg-[#12161c] border border-[#2b3139] rounded px-2 py-1 text-[11px] font-mono text-[#eaecef]"
               value={id}
@@ -211,8 +218,8 @@ export function WorkspaceMenu() {
           )}
 
           <p className="text-[9px] text-[#5e6673] leading-snug">
-            Local always works. Cloud (Cloudflare KV) after Pages deploy + KV binding.
-            L'id è un link segreto: chi lo conosce può caricare il workspace.
+            Salva: griglia, simboli, orderflow, drawings, indicatori, stile. Id =
+            token: non condividerlo.
           </p>
         </div>
       )}
