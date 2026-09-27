@@ -1,5 +1,6 @@
 /**
  * ChartContainer – price chart on top; oscillator panes stacked below.
+ * Layer stack: profile (L1) → footprint (L2) → bubbles (L3) → drawings (L5).
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -18,7 +19,12 @@ import { IndicatorPanes } from './IndicatorPanes'
 import { IndicatorValuesHud } from './IndicatorValuesHud'
 import { CoordinateBridge } from './coordinate-bridge'
 import { attachFreePan } from './free-pan'
-import { publishSync, subscribeSyncGroup, type SyncPayload } from '@/stores/layoutStore'
+import {
+  publishSync,
+  subscribeSyncGroup,
+  setSyncHighlight,
+  type SyncPayload,
+} from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useChartFocusStore } from '@/stores/chartFocusStore'
 import { useIndicatorStore } from '@/stores/indicatorStore'
@@ -288,7 +294,6 @@ export function ChartContainer({
     mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
-  // Sync candles + feed times into bridge for drawing past last bar
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
     const historyKey = `${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
@@ -299,7 +304,6 @@ export function ChartContainer({
     } else {
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
     }
-    // Always refresh bridge meta so extrapolation stays accurate
     bridgeRef.current?.setDataTimes(
       candles.map((c) => c.time),
       intervalToSeconds(interval)
@@ -359,7 +363,13 @@ export function ChartContainer({
     const onCrosshair = (param: any) => {
       if (applyingRemoteRef.current) return
       if (!param || param.time === undefined) {
-        publishSync(syncGroup, panelId, { type: 'crosshair', time: null, price: null })
+        publishSync(syncGroup, panelId, {
+          type: 'crosshair',
+          time: null,
+          price: null,
+          highlight: null,
+        })
+        setSyncHighlight(syncGroup, null)
         return
       }
       const time = typeof param.time === 'number' ? param.time : null
@@ -367,8 +377,17 @@ export function ChartContainer({
       if (candleSeries && param.seriesData) {
         const d = param.seriesData.get(candleSeries)
         if (d && 'close' in d) price = d.close as number
+        else if (d && 'value' in d) price = d.value as number
       }
-      publishSync(syncGroup, panelId, { type: 'crosshair', time, price })
+      // Orderflow highlight: nearest point under crosshair (time+price)
+      const highlight =
+        time != null && price != null
+          ? { timeSec: time, price, aggressor: undefined as 'buy' | 'sell' | undefined }
+          : null
+      if (highlight) setSyncHighlight(syncGroup, highlight)
+      else setSyncHighlight(syncGroup, null)
+
+      publishSync(syncGroup, panelId, { type: 'crosshair', time, price, highlight })
     }
     chart.subscribeCrosshairMove(onCrosshair)
 
@@ -383,6 +402,27 @@ export function ChartContainer({
             from: payload.from as Time,
             to: payload.to as Time,
           })
+        } else if (payload.type === 'crosshair') {
+          const series = seriesMgrRef.current?.getCandleSeries()
+          if (payload.time == null || payload.price == null || !series) {
+            c.clearCrosshairPosition()
+            setSyncHighlight(syncGroup, null)
+          } else {
+            try {
+              c.setCrosshairPosition(payload.price, payload.time as Time, series)
+            } catch {
+              /* series may not have that time */
+            }
+            if (payload.highlight) setSyncHighlight(syncGroup, payload.highlight)
+            else if (payload.time != null && payload.price != null) {
+              setSyncHighlight(syncGroup, {
+                timeSec: payload.time,
+                price: payload.price,
+              })
+            } else {
+              setSyncHighlight(syncGroup, null)
+            }
+          }
         }
       } catch {
         /* */
@@ -421,15 +461,17 @@ export function ChartContainer({
           }
         />
 
-        <DeepDomOverlay
-          enabled={deepDomEnabled}
+        {/* L1 static profile */}
+        <VolumeProfileOverlay
+          enabled={profileEnabled}
           bridge={bridge}
           containerRef={containerRef}
           exchange={exchange}
           symbol={symbol}
-          config={deepDomConfig}
+          config={profileConfig}
         />
 
+        {/* L2 footprint */}
         <FootprintOverlay
           enabled={footprintEnabled}
           bridge={bridge}
@@ -441,15 +483,16 @@ export function ChartContainer({
           config={footprintConfig}
         />
 
-        <VolumeProfileOverlay
-          enabled={profileEnabled}
+        <DeepDomOverlay
+          enabled={deepDomEnabled}
           bridge={bridge}
           containerRef={containerRef}
           exchange={exchange}
           symbol={symbol}
-          config={profileConfig}
+          config={deepDomConfig}
         />
 
+        {/* L3 live bubbles */}
         <DeepTradesOverlay
           enabled={deepTradesEnabled}
           bridge={bridge}
@@ -459,14 +502,7 @@ export function ChartContainer({
           config={deepTradesConfig}
           candles={candles}
           interval={interval}
-        />
-
-        <DrawingLayer
-          panelId={panelId}
-          symbol={symbol}
-          bridge={bridge}
-          containerRef={containerRef}
-          passThrough={deepPrintEnabled}
+          syncGroup={syncGroup}
         />
 
         <DeepPrintOverlay
@@ -477,6 +513,15 @@ export function ChartContainer({
           symbol={symbol}
           interval={interval}
           candles={candles}
+        />
+
+        {/* L5 drawings – topmost interactive data layer */}
+        <DrawingLayer
+          panelId={panelId}
+          symbol={symbol}
+          bridge={bridge}
+          containerRef={containerRef}
+          passThrough={deepPrintEnabled}
         />
 
         <PaperPositionLines
