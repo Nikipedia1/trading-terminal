@@ -1,10 +1,7 @@
 /**
  * DrawingLayer – overlay canvas.
- *
- * Modes:
- * - pan / passThrough: pointer-events NONE → chart receives events
- * - cursor: select drawings
- * - tools: create drawings
+ * Modes: pan | cursor | draw tools
+ * Coordinate conversion works beyond last candle (bridge extrapolation).
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -20,7 +17,6 @@ interface DrawingLayerProps {
   symbol: string
   bridge: CoordinateBridge | null
   containerRef: React.RefObject<HTMLDivElement | null>
-  /** Force pointer-events none (e.g. Deep Print needs chart hover/click) */
   passThrough?: boolean
 }
 
@@ -29,6 +25,36 @@ interface DragState {
   handle: HandleId
   origin: Drawing
   startLogical: LogicalPoint
+}
+
+const EMPTY_DRAWINGS: Drawing[] = []
+
+function pointsNeeded(tool: DrawingTool): number {
+  switch (tool) {
+    case 'horizontal':
+    case 'vertical':
+    case 'crossline':
+    case 'text':
+      return 1
+    case 'trendline':
+    case 'ray':
+    case 'arrow':
+    case 'rectangle':
+    case 'ellipse':
+    case 'fib_retracement':
+    case 'measure':
+      return 2
+    case 'channel':
+    case 'fib_extension':
+    case 'triangle':
+    case 'long_position':
+    case 'short_position':
+      return 3
+    case 'polyline':
+      return 99 // double-click / Enter to finish – handled specially
+    default:
+      return 0
+  }
 }
 
 export function DrawingLayer({
@@ -45,6 +71,9 @@ export function DrawingLayer({
   })
   const activeTool = useDrawingStore((s) => s.activeTool)
   const activeColor = useDrawingStore((s) => s.activeColor)
+  const activeLineWidth = useDrawingStore((s) => s.activeLineWidth)
+  const activeLineStyle = useDrawingStore((s) => s.activeLineStyle)
+  const activeLineEnd = useDrawingStore((s) => s.activeLineEnd)
   const addDrawing = useDrawingStore((s) => s.addDrawing)
   const updateDrawing = useDrawingStore((s) => s.updateDrawing)
   const loadFromStorage = useDrawingStore((s) => s.loadFromStorage)
@@ -55,6 +84,17 @@ export function DrawingLayer({
   const draftRef = useRef<{ tool: DrawingTool; points: LogicalPoint[] } | null>(null)
   const previewRef = useRef<Drawing | null>(null)
   const dragRef = useRef<DragState | null>(null)
+
+  const currentStyle = useCallback(
+    () =>
+      defaultStyle({
+        color: activeColor,
+        lineWidth: activeLineWidth,
+        lineStyle: activeLineStyle,
+        lineEnd: activeLineEnd,
+      }),
+    [activeColor, activeLineWidth, activeLineStyle, activeLineEnd]
+  )
 
   useEffect(() => {
     loadFromStorage(panelId, symbol)
@@ -133,6 +173,12 @@ export function DrawingLayer({
       if (e.key === 'h' || e.key === 'H') {
         useDrawingStore.getState().setActiveTool('pan')
       }
+      // Finish polyline with Enter
+      if (e.key === 'Enter' && draftRef.current?.tool === 'polyline') {
+        if (draftRef.current.points.length >= 2) {
+          finalize('polyline', draftRef.current.points)
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -176,14 +222,21 @@ export function DrawingLayer({
 
     switch (origin.tool) {
       case 'trendline':
+      case 'ray':
+      case 'arrow':
       case 'rectangle':
-      case 'fib_retracement': {
+      case 'ellipse':
+      case 'fib_retracement':
+      case 'measure': {
         if (handle === 'p1') return { p1: cur } as Partial<Drawing>
         if (handle === 'p2') return { p2: cur } as Partial<Drawing>
         return { p1: shift(origin.p1), p2: shift(origin.p2) } as Partial<Drawing>
       }
       case 'channel':
-      case 'fib_extension': {
+      case 'fib_extension':
+      case 'triangle':
+      case 'long_position':
+      case 'short_position': {
         if (handle === 'p1') return { p1: cur } as Partial<Drawing>
         if (handle === 'p2') return { p2: cur } as Partial<Drawing>
         if (handle === 'p3') return { p3: cur } as Partial<Drawing>
@@ -197,6 +250,14 @@ export function DrawingLayer({
         return { price: cur.price } as Partial<Drawing>
       case 'vertical':
         return { time: cur.time } as Partial<Drawing>
+      case 'crossline':
+        return { point: cur } as Partial<Drawing>
+      case 'polyline': {
+        if (handle === 'body') {
+          return { points: origin.points.map(shift) } as Partial<Drawing>
+        }
+        return {}
+      }
       case 'text':
         return {
           point: handle === 'p1' || handle === 'body' ? cur : shift(origin.point),
@@ -208,7 +269,7 @@ export function DrawingLayer({
 
   const buildPreview = useCallback(
     (tool: DrawingTool, points: LogicalPoint[], cursor: LogicalPoint): Drawing | null => {
-      const style = defaultStyle({ color: activeColor })
+      const style = currentStyle()
       const now = Date.now()
       const base = { id: 'preview', style, createdAt: now, updatedAt: now }
 
@@ -217,13 +278,33 @@ export function DrawingLayer({
           if (points.length >= 1)
             return { ...base, tool: 'trendline', p1: points[0], p2: cursor }
           return null
+        case 'ray':
+          if (points.length >= 1)
+            return { ...base, tool: 'ray', p1: points[0], p2: cursor }
+          return null
+        case 'arrow':
+          if (points.length >= 1)
+            return { ...base, tool: 'arrow', p1: points[0], p2: cursor }
+          return null
         case 'horizontal':
           return { ...base, tool: 'horizontal', price: cursor.price }
         case 'vertical':
           return { ...base, tool: 'vertical', time: cursor.time }
+        case 'crossline':
+          return { ...base, tool: 'crossline', point: cursor }
         case 'rectangle':
           if (points.length >= 1)
             return { ...base, tool: 'rectangle', p1: points[0], p2: cursor }
+          return null
+        case 'ellipse':
+          if (points.length >= 1)
+            return { ...base, tool: 'ellipse', p1: points[0], p2: cursor }
+          return null
+        case 'triangle':
+          if (points.length === 1)
+            return { ...base, tool: 'trendline', p1: points[0], p2: cursor } as any
+          if (points.length >= 2)
+            return { ...base, tool: 'triangle', p1: points[0], p2: points[1], p3: cursor }
           return null
         case 'channel':
           if (points.length === 1)
@@ -247,18 +328,52 @@ export function DrawingLayer({
               p3: cursor,
             }
           return null
+        case 'measure':
+          if (points.length >= 1)
+            return { ...base, tool: 'measure', p1: points[0], p2: cursor }
+          return null
+        case 'long_position':
+          if (points.length === 1)
+            return { ...base, tool: 'trendline', p1: points[0], p2: cursor } as any
+          if (points.length >= 2)
+            return {
+              ...base,
+              tool: 'long_position',
+              p1: points[0],
+              p2: points[1],
+              p3: cursor,
+            }
+          return null
+        case 'short_position':
+          if (points.length === 1)
+            return { ...base, tool: 'trendline', p1: points[0], p2: cursor } as any
+          if (points.length >= 2)
+            return {
+              ...base,
+              tool: 'short_position',
+              p1: points[0],
+              p2: points[1],
+              p3: cursor,
+            }
+          return null
+        case 'polyline':
+          return {
+            ...base,
+            tool: 'polyline',
+            points: [...points, cursor],
+          }
         case 'text':
           return { ...base, tool: 'text', point: cursor, text: '…' }
         default:
           return null
       }
     },
-    [activeColor]
+    [currentStyle]
   )
 
   const finalize = useCallback(
     (tool: DrawingTool, points: LogicalPoint[]) => {
-      const style = defaultStyle({ color: activeColor })
+      const style = currentStyle()
       const now = Date.now()
       const id = createDrawingId()
       const base = { id, style, createdAt: now, updatedAt: now }
@@ -269,6 +384,14 @@ export function DrawingLayer({
           if (points.length >= 2)
             drawing = { ...base, tool: 'trendline', p1: points[0], p2: points[1] }
           break
+        case 'ray':
+          if (points.length >= 2)
+            drawing = { ...base, tool: 'ray', p1: points[0], p2: points[1] }
+          break
+        case 'arrow':
+          if (points.length >= 2)
+            drawing = { ...base, tool: 'arrow', p1: points[0], p2: points[1] }
+          break
         case 'horizontal':
           if (points.length >= 1)
             drawing = { ...base, tool: 'horizontal', price: points[0].price }
@@ -277,9 +400,27 @@ export function DrawingLayer({
           if (points.length >= 1)
             drawing = { ...base, tool: 'vertical', time: points[0].time }
           break
+        case 'crossline':
+          if (points.length >= 1)
+            drawing = { ...base, tool: 'crossline', point: points[0] }
+          break
         case 'rectangle':
           if (points.length >= 2)
             drawing = { ...base, tool: 'rectangle', p1: points[0], p2: points[1] }
+          break
+        case 'ellipse':
+          if (points.length >= 2)
+            drawing = { ...base, tool: 'ellipse', p1: points[0], p2: points[1] }
+          break
+        case 'triangle':
+          if (points.length >= 3)
+            drawing = {
+              ...base,
+              tool: 'triangle',
+              p1: points[0],
+              p2: points[1],
+              p3: points[2],
+            }
           break
         case 'channel':
           if (points.length >= 3)
@@ -305,6 +446,34 @@ export function DrawingLayer({
               p3: points[2],
             }
           break
+        case 'measure':
+          if (points.length >= 2)
+            drawing = { ...base, tool: 'measure', p1: points[0], p2: points[1] }
+          break
+        case 'long_position':
+          if (points.length >= 3)
+            drawing = {
+              ...base,
+              tool: 'long_position',
+              p1: points[0],
+              p2: points[1],
+              p3: points[2],
+            }
+          break
+        case 'short_position':
+          if (points.length >= 3)
+            drawing = {
+              ...base,
+              tool: 'short_position',
+              p1: points[0],
+              p2: points[1],
+              p3: points[2],
+            }
+          break
+        case 'polyline':
+          if (points.length >= 2)
+            drawing = { ...base, tool: 'polyline', points: [...points] }
+          break
         case 'text': {
           if (points.length >= 1) {
             const text = window.prompt('Annotation text:', 'Note')
@@ -325,26 +494,8 @@ export function DrawingLayer({
       previewRef.current = null
       paint()
     },
-    [activeColor, addDrawing, panelId, symbol, paint, setSelectedId]
+    [currentStyle, addDrawing, panelId, symbol, paint, setSelectedId]
   )
-
-  const pointsNeeded = (tool: DrawingTool): number => {
-    switch (tool) {
-      case 'horizontal':
-      case 'vertical':
-      case 'text':
-        return 1
-      case 'trendline':
-      case 'rectangle':
-      case 'fib_retracement':
-        return 2
-      case 'channel':
-      case 'fib_extension':
-        return 3
-      default:
-        return 0
-    }
-  }
 
   const onPointerDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (passThrough || activeTool === 'pan') return
@@ -387,6 +538,12 @@ export function DrawingLayer({
     const pt = eventToLogical(e)
     if (!pt) return
 
+    // Double-click finishes polyline
+    if (activeTool === 'polyline' && e.detail === 2 && draftRef.current?.points.length) {
+      finalize('polyline', draftRef.current.points)
+      return
+    }
+
     const needed = pointsNeeded(activeTool)
     if (needed === 0) return
 
@@ -394,6 +551,12 @@ export function DrawingLayer({
       draftRef.current = { tool: activeTool, points: [pt] }
     } else {
       draftRef.current.points.push(pt)
+    }
+
+    if (activeTool === 'polyline') {
+      previewRef.current = buildPreview(activeTool, draftRef.current.points, pt)
+      paint()
+      return
     }
 
     if (draftRef.current.points.length >= needed) {
@@ -453,8 +616,14 @@ export function DrawingLayer({
       onMouseMove={onPointerMove}
       onMouseUp={onPointerUp}
       onMouseLeave={onPointerUp}
+      onDoubleClick={(e) => {
+        if (activeTool === 'polyline' && draftRef.current) {
+          e.preventDefault()
+          if (draftRef.current.points.length >= 2) {
+            finalize('polyline', draftRef.current.points)
+          }
+        }
+      }}
     />
   )
 }
-
-const EMPTY_DRAWINGS: Drawing[] = []
