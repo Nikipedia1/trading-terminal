@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
+import { useUiDensityStore } from '@/stores/uiDensityStore'
 import { PanelGrid } from '@/layout/PanelGrid'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
 import { PaperTradingPanel } from '@/trading/paper'
@@ -12,6 +13,8 @@ import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 import { ArchiveMenu } from '@/ui/ArchiveMenu'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { FeedHealthHud } from '@/ui/FeedHealthHud'
+import { VirtualizedTape } from '@/ui/VirtualizedTape'
+import { useGlobalHotkeys, HotkeyHelpOverlay } from '@/ui/hotkeyMap'
 import { AlertPanel, startAlertEngine } from '@/alerts'
 import { JournalPanel } from '@/journal'
 import { ChartPanel } from '@/charts/ChartPanel'
@@ -38,7 +41,7 @@ function ErrorBanner() {
   const clearError = useMarketStore((s) => s.clearError)
   if (!lastError) return null
   return (
-    <div className="bg-terminal-red/10 border border-terminal-red/40 text-terminal-red px-4 py-2 text-sm flex justify-between items-center">
+    <div className="bg-terminal-red/10 border border-terminal-red/40 text-terminal-red px-4 py-2 text-sm flex justify-between items-center density-chrome">
       <span>
         <strong>[{lastError.code}]</strong> {lastError.message}
       </span>
@@ -93,7 +96,7 @@ function Controls() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel">
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel density-compact">
       <input
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm w-28 font-mono-nums"
         value={symbolDraft}
@@ -146,7 +149,7 @@ function Controls() {
 
       <button
         onClick={() => loadHistorical()}
-        className="px-3 py-1 bg-terminal-blue/20 text-terminal-blue rounded text-sm hover:bg-terminal-blue/30"
+        className="px-3 py-1 bg-terminal-blue/20 text-terminal-blue rounded text-sm hover:bg-terminal-blue/30 density-chrome"
       >
         Load History
       </button>
@@ -172,44 +175,7 @@ function Controls() {
 
 function TradesTape() {
   const trades = useMarketStore((s) => s.trades)
-  return (
-    <div className="overflow-auto h-full">
-      <table className="w-full text-xxs font-mono-nums">
-        <thead className="sticky top-0 bg-terminal-panel text-terminal-muted">
-          <tr>
-            <th className="text-left px-2 py-1">Time</th>
-            <th className="text-right px-2 py-1">Price</th>
-            <th className="text-right px-2 py-1">Qty</th>
-            <th className="text-right px-2 py-1">Side</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((t) => (
-            <tr key={t.id} className="border-t border-terminal-border/50">
-              <td className="px-2 py-0.5">{new Date(t.time).toLocaleTimeString()}</td>
-              <td
-                className={
-                  'text-right px-2 py-0.5 ' +
-                  (t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green')
-                }
-              >
-                {t.price.toFixed(2)}
-              </td>
-              <td className="text-right px-2 py-0.5">{t.qty.toFixed(5)}</td>
-              <td
-                className={
-                  'text-right px-2 py-0.5 ' +
-                  (t.isBuyerMaker ? 'text-terminal-red' : 'text-terminal-green')
-                }
-              >
-                {t.isBuyerMaker ? 'SELL' : 'BUY'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+  return <VirtualizedTape trades={trades} />
 }
 
 function OrderBookView() {
@@ -261,7 +227,7 @@ function TickerBar() {
   if (!ticker) return null
   const up = ticker.priceChangePercent >= 0
   return (
-    <div className="flex items-center gap-6 px-4 py-1.5 border-b border-terminal-border text-sm font-mono-nums">
+    <div className="flex items-center gap-6 px-4 py-1.5 border-b border-terminal-border text-sm font-mono-nums density-compact">
       <span className="font-semibold">{ticker.symbol}</span>
       <span className={up ? 'text-terminal-green' : 'text-terminal-red'}>
         {ticker.lastPrice.toFixed(2)}
@@ -438,6 +404,9 @@ export default function App() {
   const detach = useDetachParams()
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
+  const density = useUiDensityStore((s) => s.mode)
+  const toggleDensity = useUiDensityStore((s) => s.toggle)
+  const { helpOpen, setHelpOpen } = useGlobalHotkeys()
 
   useExecutionHotkeys()
 
@@ -471,19 +440,37 @@ export default function App() {
 
   return (
     <div className="h-full flex flex-col pb-7">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
+      <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel density-compact">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b]"
+            title="Toggle density (D)"
+            onClick={toggleDensity}
+          >
+            {density === 'scalp' ? 'SCALP' : 'RESEARCH'}
+          </button>
+          <button
+            type="button"
+            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#eaecef] density-chrome"
+            title="Hotkey map (?)"
+            onClick={() => setHelpOpen(true)}
+          >
+            ?
+          </button>
           <ArchiveMenu />
           <WorkspaceMenu />
-          <span className="text-xxs text-terminal-muted">Desk workflow</span>
+          <span className="text-xxs text-terminal-muted density-chrome">Desk workflow</span>
         </div>
       </header>
 
       <ErrorBanner />
       <Controls />
       <TickerBar />
-      <ExecutionBar />
+      <div className="density-chrome">
+        <ExecutionBar />
+      </div>
 
       <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden min-h-0">
         <section className="col-span-2 bg-terminal-bg flex flex-col min-h-0 min-w-0">
@@ -493,6 +480,7 @@ export default function App() {
       </div>
 
       <FeedHealthHud />
+      <HotkeyHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   )
 }
