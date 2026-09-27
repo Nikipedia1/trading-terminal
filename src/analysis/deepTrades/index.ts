@@ -1,6 +1,6 @@
 export { DeepTradesOverlay } from './DeepTradesOverlay'
 export { LargeTradesPanel } from './LargeTradesPanel'
-export { filterDeepTrades, resolveThreshold } from './filter'
+export { filterDeepTrades, resolveThreshold, pickPerCandle } from './filter'
 export { classifyBubbles } from './classify'
 export type {
   DeepTradesConfig,
