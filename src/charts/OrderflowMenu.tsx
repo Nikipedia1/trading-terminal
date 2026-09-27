@@ -297,7 +297,7 @@ export function OrderflowMenu({
                     onChange({
                       tradesCfg: {
                         ...state.tradesCfg,
-                        percentile: Number(e.target.value) || 90,
+                        percentile: Number(e.target.value) || 95,
                       },
                     })
                   }
@@ -331,8 +331,8 @@ export function OrderflowMenu({
                   })
                 }
               >
-                <option value="base">base</option>
                 <option value="quote">USDT</option>
+                <option value="base">base</option>
               </select>
             </div>
             <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
@@ -351,8 +351,24 @@ export function OrderflowMenu({
               />
               Solo Effective
             </label>
-            <p className="text-[9px] text-[#5e6673]">
-              Buy #0ecb81 · Sell #a855f7 · fill=eff · outline=trapped
+            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-[#f0b90b]"
+                checked={state.tradesCfg.showLabels !== false}
+                onChange={(e) =>
+                  onChange({
+                    tradesCfg: {
+                      ...state.tradesCfg,
+                      showLabels: e.target.checked,
+                    },
+                  })
+                }
+              />
+              Label size
+            </label>
+            <p className="text-[9px] text-[#5e6673] leading-snug">
+              Solo tick reali (aggTrade) · soglia default p95 USDT · effective = prezzo conferma su 2 barre · ▲ buy / ▼ sell · glow=eff · outline dashed=trapped
             </p>
           </Row>
 
