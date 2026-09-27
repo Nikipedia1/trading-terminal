@@ -1,11 +1,5 @@
 /**
- * Shared tick-by-tick trade stream (Binance aggTrade / KuCoin match).
- *
- * - One WebSocket per (exchange, symbol)
- * - Reference-counted: last unsubscriber closes the socket
- * - Emits AggressorTrade (price, qty, time, aggressor side)
- * - Reconnect + status via underlying exchange client / RWS
- * - Never synthesizes trades on error
+ * Shared tick-by-tick trade stream – refcounted, multi-venue.
  */
 
 import type { ExchangeId, MarketError } from '@/types'
@@ -18,6 +12,10 @@ import {
   aggressorFromBuyerMaker,
   feedKey,
 } from './types'
+import {
+  recordEventLatency,
+  recordFeedStatus,
+} from './feedHealth'
 
 interface TradeFeedEvents {
   trade: AggressorTrade
@@ -38,7 +36,6 @@ function getOrCreateSlot(exchange: ExchangeId, symbol: string): Slot {
   const key = feedKey(exchange, symbol)
   let slot = slots.get(key)
   if (slot) return slot
-
   slot = {
     refCount: 0,
     bus: new EventBus<TradeFeedEvents>(),
@@ -57,10 +54,12 @@ function ensureConnected(exchange: ExchangeId, symbol: string, slot: Slot) {
 
   slot.lastStatus = { status: 'connecting', detail: 'trade stream' }
   slot.bus.emit('status', slot.lastStatus)
+  recordFeedStatus(exchange, sym, 'connecting')
 
   slot.unsubWs = client.subscribeTrades(
     sym,
     (trade) => {
+      recordEventLatency(exchange, sym, trade.time)
       const payload: AggressorTrade = {
         id: trade.id,
         exchange,
@@ -77,10 +76,12 @@ function ensureConnected(exchange: ExchangeId, symbol: string, slot: Slot) {
       slot.bus.emit('error', { error: err })
       slot.lastStatus = { status: 'error', detail: err.message }
       slot.bus.emit('status', slot.lastStatus)
+      recordFeedStatus(exchange, sym, 'error')
     },
     (status, detail) => {
       slot.lastStatus = { status, detail }
       slot.bus.emit('status', slot.lastStatus)
+      recordFeedStatus(exchange, sym, status)
     }
   )
 }
@@ -99,15 +100,10 @@ function release(exchange: ExchangeId, symbol: string) {
 }
 
 export interface TradeFeedSubscription {
-  /** Latest connection status for this feed */
   getStatus: () => FeedStatusEvent
   unsubscribe: () => void
 }
 
-/**
- * Subscribe to shared trade stream for exchange+symbol.
- * Multiple callers share one WS until all unsubscribe.
- */
 export function subscribeTradeFeed(
   exchange: ExchangeId,
   symbol: string,
@@ -125,7 +121,6 @@ export function subscribeTradeFeed(
   if (handlers.onTrade) unsubs.push(slot.bus.on('trade', handlers.onTrade))
   if (handlers.onStatus) {
     unsubs.push(slot.bus.on('status', handlers.onStatus))
-    // replay current status
     handlers.onStatus(slot.lastStatus)
   }
   if (handlers.onError) unsubs.push(slot.bus.on('error', handlers.onError))
@@ -142,7 +137,6 @@ export function subscribeTradeFeed(
   }
 }
 
-/** Test/debug: active feed keys */
 export function activeTradeFeedKeys(): string[] {
   return Array.from(slots.keys())
 }

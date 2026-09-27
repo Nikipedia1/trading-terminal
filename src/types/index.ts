@@ -5,10 +5,16 @@ export type Interval =
   | '1h' | '2h' | '4h' | '6h' | '8h' | '12h'
   | '1d' | '3d' | '1w' | '1M'
 
-export type ExchangeId = 'binance' | 'binance_futures' | 'kucoin'
+/** Free public venues only (no paid data). */
+export type ExchangeId =
+  | 'binance'
+  | 'binance_futures'
+  | 'kucoin'
+  | 'bybit'
+  | 'okx'
 
 export interface Candle {
-  time: number          // unix seconds (Lightweight Charts expects this)
+  time: number
   open: number
   high: number
   low: number
@@ -18,7 +24,7 @@ export interface Candle {
 
 export interface Trade {
   id: string
-  time: number          // ms
+  time: number
   price: number
   qty: number
   isBuyerMaker: boolean
@@ -62,13 +68,11 @@ export interface MarketError {
   timestamp: number
 }
 
-/** Multi-panel layout */
 export interface ChartPanelConfig {
   id: string
   symbol: string
   interval: Interval
   exchange: ExchangeId
-  /** Optional sync group id – panels sharing the same group sync crosshair + time zoom */
   syncGroup: string | null
 }
 
@@ -82,15 +86,12 @@ export interface GridLayoutItem {
   minH?: number
 }
 
-/** Binance USDT-M liquidation (forceOrder) – public stream */
 export interface LiquidationEvent {
   exchange: ExchangeId
   symbol: string
-  /** sell = long liquidated, buy = short liquidated */
   side: 'buy' | 'sell'
   price: number
   qty: number
-  /** Average fill price if provided */
   averagePrice: number
   time: number
   orderStatus?: string

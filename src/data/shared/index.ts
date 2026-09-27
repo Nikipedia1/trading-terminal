@@ -1,6 +1,4 @@
-/**
- * Shared microstructure data layer – entry point for analysis modules.
- */
+/** Shared microstructure data layer */
 
 export { EventBus } from './eventBus'
 export { subscribeTradeFeed, activeTradeFeedKeys } from './tradeFeed'
@@ -12,6 +10,18 @@ export {
   activeFuturesMetricsKeys,
 } from './futuresMetricsFeed'
 export type { FuturesMetricsSubscription } from './futuresMetricsFeed'
+export {
+  getFeedHealth,
+  getAllFeedHealth,
+  subscribeFeedHealth,
+  recordEventLatency,
+  recordBookUpdate,
+  recordGap,
+  recordResync,
+  recordFeedStatus,
+  FEED_HEALTH_NOTES,
+} from './feedHealth'
+export type { FeedHealthSnapshot } from './feedHealth'
 export type {
   AggressorTrade,
   AggressorSide,
