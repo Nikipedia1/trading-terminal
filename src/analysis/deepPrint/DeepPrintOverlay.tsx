@@ -3,6 +3,7 @@
  * Palette: buy #0ecb81 · sell #a855f7
  * Layout: SELL | PX | BUY | Δ
  * Anti-pellicola: position from timeToCoordinate / priceToCoordinate.
+ * Header shows live buy% AND sell% from real aggressor trades.
  */
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
@@ -252,6 +253,7 @@ export function DeepPrintOverlay({
 
   const totalVol = model.totalBuy + model.totalSell
   const buyPct = totalVol > 0 ? model.totalBuy / totalVol : 0.5
+  const sellPct = totalVol > 0 ? model.totalSell / totalVol : 0.5
 
   return (
     <div
@@ -261,7 +263,7 @@ export function DeepPrintOverlay({
     >
       <div className="bg-[#0b0e11]/97 border border-[#2b3139] rounded-md shadow-2xl overflow-hidden font-mono">
         <div className="px-2.5 py-2 border-b border-[#2b3139] bg-[#12161c]">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[12px] font-bold text-[#eaecef] tracking-wide">Deep Print</span>
             <span
               className={`text-[13px] font-bold tabular-nums ${
@@ -270,18 +272,16 @@ export function DeepPrintOverlay({
             >
               Δ {formatQty(model.totalDelta)}
             </span>
-            <span
-              className={`text-[12px] font-semibold tabular-nums ${
-                buyPct >= 0.55
-                  ? 'text-[#0ecb81]'
-                  : buyPct <= 0.45
-                    ? 'text-[#a855f7]'
-                    : 'text-[#848e9c]'
-              }`}
-              title="Buy volume share"
-            >
-              buy {formatPct(buyPct)}
-            </span>
+            {/* Live buy% + sell% from real aggressor volume */}
+            <div className="flex items-center gap-1.5 text-[12px] font-semibold tabular-nums">
+              <span className="text-[#0ecb81]" title="Buy aggressor volume share">
+                buy {formatPct(buyPct)}
+              </span>
+              <span className="text-[#5e6673]">·</span>
+              <span className="text-[#a855f7]" title="Sell aggressor volume share">
+                sell {formatPct(sellPct)}
+              </span>
+            </div>
             <button
               type="button"
               className="text-[#848e9c] hover:text-[#eaecef] text-sm px-1 leading-none"
@@ -381,7 +381,7 @@ export function DeepPrintOverlay({
             </div>
           ) : (
             visibleLevels.map((l) => {
-              const sellPct = (l.sellQty / maxSide) * 100
+              const sellPctBar = (l.sellQty / maxSide) * 100
               const buyPctLvl = (l.buyQty / maxSide) * 100
               const dPct = (Math.abs(l.delta) / maxAbsDelta) * 100
               const imb = levelImbalance(l, IMB_THRESHOLD)
@@ -421,7 +421,7 @@ export function DeepPrintOverlay({
                     <div
                       className="absolute inset-y-1 right-0 rounded-sm"
                       style={{
-                        width: `${Math.max(l.sellQty > 0 ? 10 : 0, sellPct)}%`,
+                        width: `${Math.max(l.sellQty > 0 ? 10 : 0, sellPctBar)}%`,
                         backgroundColor: `rgba(168, 85, 247, ${sellAlpha})`,
                       }}
                     />
@@ -472,13 +472,15 @@ export function DeepPrintOverlay({
 
         <div className="flex justify-between items-center px-2.5 py-1.5 border-t border-[#2b3139] text-[11px]">
           <span className="text-[#a855f7] font-semibold tabular-nums">
-            Σ {formatQty(model.totalSell)}
+            Σ {formatQty(model.totalSell)}{' '}
+            <span className="opacity-80 font-normal">({formatPct(sellPct)})</span>
           </span>
           <span className="text-[#848e9c] text-[10px]">
             {stacked.size > 0 ? `stack ${stacked.size} lvl` : 'no stack'}
           </span>
           <span className="text-[#0ecb81] font-semibold tabular-nums">
-            Σ {formatQty(model.totalBuy)}
+            Σ {formatQty(model.totalBuy)}{' '}
+            <span className="opacity-80 font-normal">({formatPct(buyPct)})</span>
           </span>
         </div>
       </div>
