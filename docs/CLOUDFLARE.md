@@ -1,80 +1,44 @@
-# Cloudflare Pages + Workspace KV (free)
+# Cloudflare Pages (free)
 
-Deploy the terminal on **Cloudflare Pages** and persist workspaces on **Workers KV**. No paid plan required.
+## Deploy via dashboard (recommended)
 
-## What you get
+1. [dash.cloudflare.com](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+2. Select repo `trading-terminal`
+3. Build settings:
+   - **Build command:** `npm run build`
+   - **Build output directory:** `dist`
+   - **Production branch:** `main`
+   - Framework: React (Vite) or Vite or None
+4. Optional env: `NODE_VERSION` = `20`
+5. **Save and Deploy**
 
-| Piece | Role | Cost |
-|-------|------|------|
-| Pages | Hosts the Vite SPA (`dist/`) | Free |
-| Pages Function `functions/api/workspace/[[id]].ts` | GET/PUT workspace JSON | Free |
-| KV `WORKSPACE_KV` | Stores workspace documents | Free tier |
-| Browser localStorage | Always-on fallback offline | Free |
+When status is **Success**, open `https://<project>.pages.dev`.
 
-## One-time setup
+Workspace **Save/Load** works on **localStorage** even without KV.
+
+## Optional: cloud workspace (KV)
+
+Only after the site deploys successfully:
+
+1. **Workers & Pages** → **KV** → **Create a namespace** (name e.g. `WORKSPACE_KV`)
+2. Open your Pages project → **Settings** → **Functions** (or **Bindings**)
+3. **Add binding**:
+   - Type: **KV namespace**
+   - Variable name: **`WORKSPACE_KV`** (exact spelling)
+   - Namespace: the one you created
+4. **Deployments** → **Retry deployment** (or push a new commit)
+
+Then in the app: **Workspace → Save** should report `cloud`.
+
+Do **not** put `REPLACE_WITH_...` ids in `wrangler.toml` — that breaks Function publish (error 8000022).
+
+## CLI alternative
 
 ```bash
-git pull
 npm install
-
-# Login (browser)
 npx wrangler login
-
-# Create KV namespaces (copy the ids into wrangler.toml)
-npm run cf:kv:create
-npm run cf:kv:create:preview
+npm run build
+npx wrangler pages deploy dist
 ```
 
-Edit `wrangler.toml`:
-
-```toml
-[[kv_namespaces]]
-binding = "WORKSPACE_KV"
-id = "<id from create>"
-preview_id = "<preview id>"
-```
-
-## Deploy
-
-```bash
-npm run deploy:cf
-```
-
-Wrangler uploads `dist/` + `functions/`. You get a URL like:
-
-`https://trading-terminal-xxxx.pages.dev`
-
-## Local with Functions + KV
-
-```bash
-npm run cf:pages:dev
-```
-
-Opens a local Pages server that serves the build and binds KV (preview).
-
-## In the app
-
-Header → **Workspace**:
-
-- **Save** – layout, panels, indicators, chart style → localStorage + KV (if deployed)
-- **Load** – restore by workspace id
-- **Export / Import** – JSON file (works without cloud)
-- **New id** – new secret link for a blank cloud slot
-
-The workspace **id** is an opaque secret. Anyone with the id can read/write that document. Do not share it publicly.
-
-## Limits (free)
-
-- KV value size ~1 MB (we cap ~900 KB)
-- No real user accounts (id = capability URL)
-- Tick history stays in the browser (IndexedDB); KV is for UI workspace only
-
-## Optional env
-
-Only if the API is on another origin:
-
-```env
-VITE_WORKSPACE_API=https://your-project.pages.dev
-```
-
-Same-origin deploy: leave unset.
+Bind KV from the dashboard as above, or create real namespace ids and only then uncomment `[[kv_namespaces]]` in `wrangler.toml`.
