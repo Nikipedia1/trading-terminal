@@ -38,10 +38,6 @@ interface ClusterAcc {
   count: number
 }
 
-/**
- * Merge consecutive trades within clusterMs at same rounded tick + side.
- * Anchor time = first fill (earliest) – real event time.
- */
 function clusterTrades(
   trades: AggressorTrade[],
   clusterMs: number,
@@ -112,4 +108,37 @@ export function filterDeepTrades(
     })
   }
   return { bubbles, threshold }
+}
+
+/**
+ * Keep the largest `maxPer` bubbles inside each candle bar.
+ * Spreads prints across the chart so almost every active bar has a marker.
+ */
+export function pickPerCandle(
+  bubbles: DeepTradeBubble[],
+  intervalSec: number,
+  maxPer: number
+): DeepTradeBubble[] {
+  if (maxPer <= 0 || bubbles.length === 0) return bubbles
+  const sec = Math.max(1, intervalSec)
+  const byBar = new Map<number, DeepTradeBubble[]>()
+
+  for (const b of bubbles) {
+    const bar = Math.floor(b.timeSec / sec) * sec
+    let list = byBar.get(bar)
+    if (!list) {
+      list = []
+      byBar.set(bar, list)
+    }
+    list.push(b)
+  }
+
+  const out: DeepTradeBubble[] = []
+  for (const list of byBar.values()) {
+    list.sort((a, b) => b.qty - a.qty)
+    for (let i = 0; i < Math.min(maxPer, list.length); i++) {
+      out.push(list[i])
+    }
+  }
+  return out
 }
