@@ -1,4 +1,4 @@
-/** Volume Profile (Deep Profile) types */
+/** Volume Profile – session windows (UTC honesty for crypto) */
 
 export type ProfileWindow =
   | 'visible'
@@ -6,9 +6,14 @@ export type ProfileWindow =
   | 'last_30m'
   | 'session_open_30m'
   | 'previous_day'
+  | 'weekly'
+  | 'last_3d'
 
-/** Fixed reference profiles (UTC – no official NY session on public crypto) */
-export type FixedProfileKind = 'none' | 'session_open_30m' | 'previous_day'
+export type FixedProfileKind =
+  | 'none'
+  | 'session_open_30m'
+  | 'previous_day'
+  | 'weekly'
 
 export interface ProfileBucket {
   price: number
@@ -25,9 +30,7 @@ export interface VolumeProfileModel {
   poc: number
   vah: number
   val: number
-  /** Realized VA share after accumulation */
   vaShare: number
-  /** Target used for VA expansion (0.68 / 0.70 / 0.80) */
   vaTarget: number
   tickSize: number
   window: ProfileWindow
@@ -39,11 +42,8 @@ export interface VolumeProfileModel {
 }
 
 export interface ProfileConfig {
-  /** Developing profile window (usually visible range) */
   developing: ProfileWindow
-  /** Optional fixed overlay */
   fixed: FixedProfileKind
-  /** Value Area target fraction */
   vaTarget: 0.68 | 0.7 | 0.8
 }
 
@@ -59,13 +59,16 @@ export const PROFILE_WINDOW_LABELS: Record<ProfileWindow, string> = {
   last_30m: 'Last 30 min',
   session_open_30m: 'UTC open 30m',
   previous_day: 'Previous UTC day',
+  weekly: 'UTC week (Mon 00:00)',
+  last_3d: 'Last 3 UTC days',
 }
 
 export const FIXED_PROFILE_LABELS: Record<FixedProfileKind, string> = {
   none: 'None',
   session_open_30m: 'UTC open 30m',
   previous_day: 'Previous UTC day',
+  weekly: 'UTC week',
 }
 
 export const SESSION_NOTE =
-  'Crypto spot has no official NY session. Presets use UTC midnight only.'
+  'Crypto has no official RTH/ETH. Presets use UTC midnight / Monday only — not NY session.'

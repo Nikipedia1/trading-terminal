@@ -1,27 +1,42 @@
-/** Footprint – price × time cells of aggressor buy/sell volume */
+/** Footprint – price × time cells + bar metrics from raw aggressor ticks */
 
 export interface FootprintCell {
-  /** candle open unix sec */
   timeSec: number
   price: number
   buyQty: number
   sellQty: number
+  delta: number
+}
+
+/** Per-candle footprint summary (FORMULAS.md) */
+export interface FootprintBar {
+  timeSec: number
+  delta: number
+  buyQty: number
+  sellQty: number
+  /** Price tick with max volume in bar */
+  poc: number
+  /** Highest tick only has buys (no sell) */
+  unfinishedHigh: boolean
+  /** Lowest tick only has sells (no buy) */
+  unfinishedLow: boolean
+  cellCount: number
 }
 
 export interface FootprintConfig {
-  /** Max candles to paint (perf) */
   maxCandles: number
-  /** Hide cells with total qty below this fraction of max cell in window */
   minCellPct: number
-  /** Show only when enough trades per candle (density gate) */
   minTradesPerCandle: number
+  /** Draw bar delta / POC markers */
+  showBarMetrics: boolean
 }
 
 export const DEFAULT_FOOTPRINT_CONFIG: FootprintConfig = {
   maxCandles: 40,
   minCellPct: 2,
   minTradesPerCandle: 3,
+  showBarMetrics: true,
 }
 
 export const FOOTPRINT_NOTE =
-  'Footprint needs dense trades (e.g. BTCUSDT 1s–1m). Weak on illiquid alts – cells may be empty.'
+  'Footprint from aggressor ticks only. Needs dense stream (e.g. BTC 1m). See FORMULAS.md.'

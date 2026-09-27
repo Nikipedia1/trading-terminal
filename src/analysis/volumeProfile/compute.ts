@@ -1,6 +1,4 @@
-/**
- * Volume Profile – POC / VA / LVN / HVN from real trades only.
- */
+/** Volume Profile – POC / VA / LVN / HVN from real trades. */
 
 import type { AggressorTrade } from '@/data/shared'
 import type { ProfileBucket, ProfileWindow, VolumeProfileModel } from './types'
@@ -42,6 +40,16 @@ export function resolveWindowRange(
       const end = Math.floor(d.getTime() / 1000)
       return { fromSec: end - 86400, toSec: end }
     }
+    case 'weekly': {
+      const d = new Date(nowSec * 1000)
+      const day = d.getUTCDay() // 0 Sun
+      const diffToMon = (day + 6) % 7
+      d.setUTCHours(0, 0, 0, 0)
+      d.setUTCDate(d.getUTCDate() - diffToMon)
+      return { fromSec: Math.floor(d.getTime() / 1000), toSec }
+    }
+    case 'last_3d':
+      return { fromSec: nowSec - 3 * 86400, toSec }
     default:
       return { fromSec: nowSec - 3600, toSec }
   }
@@ -54,15 +62,12 @@ function markNodes(
   const lvns: number[] = []
   const hvns: number[] = []
   if (buckets.length < 3 || pocVolume <= 0) return { lvns, hvns }
-
   const lvnThresh = pocVolume * LVN_FRAC
   const hvnThresh = pocVolume * HVN_FRAC
-
   for (let i = 1; i < buckets.length - 1; i++) {
     const v = buckets[i].volume
     const prev = buckets[i - 1].volume
     const next = buckets[i + 1].volume
-
     if (v <= lvnThresh && v <= prev && v <= next) {
       buckets[i].isLvn = true
       lvns.push(buckets[i].price)
@@ -105,7 +110,6 @@ export function buildVolumeProfile(
   const mid = trades.reduce((s, t) => s + t.price, 0) / trades.length
   const tick = tickSize ?? inferTickSize(mid)
   const map = new Map<number, { vol: number; buy: number; sell: number }>()
-
   let totalVolume = 0
   for (const t of trades) {
     const p = roundToTick(t.price, tick)
@@ -142,7 +146,6 @@ export function buildVolumeProfile(
   let acc = pocVol
   let lo = pocIdx
   let hi = pocIdx
-
   while (acc < target && (lo > 0 || hi < buckets.length - 1)) {
     const nextLo = lo > 0 ? buckets[lo - 1].volume : -1
     const nextHi = hi < buckets.length - 1 ? buckets[hi + 1].volume : -1
