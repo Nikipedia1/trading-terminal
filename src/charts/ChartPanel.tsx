@@ -16,6 +16,7 @@ import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
 import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
 import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
 import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
+import { detachChartPanel } from '@/layout/detachPanel'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
@@ -64,6 +65,11 @@ export function ChartPanel({ config }: ChartPanelProps) {
       if (next) setActiveTool('pan')
       return { ...s, print: next }
     })
+  }
+
+  const onDetach = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    detachChartPanel({ symbol, interval, exchange })
   }
 
   return (
@@ -147,6 +153,16 @@ export function ChartPanel({ config }: ChartPanelProps) {
           🎨 Stile
         </button>
 
+        <button
+          type="button"
+          title="Open on second monitor"
+          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b] hover:border-[#f0b90b]/50"
+          onClick={onDetach}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          ⧉
+        </button>
+
         <div className="ml-auto flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
           <ConnectionBadge status={status} detail={statusDetail} />
           {(status === 'error' || status === 'disconnected') && (
@@ -196,7 +212,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative" data-chart-root>
         <ChartContainer
           panelId={id}
           symbol={symbol}
