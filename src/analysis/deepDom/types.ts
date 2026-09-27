@@ -58,7 +58,9 @@ export const DEFAULT_DEEP_DOM_CONFIG: DeepDomConfig = {
 
 /** Known public L2 limits – shown in UI, not hidden. */
 export const L2_GRANULARITY_NOTES: Record<string, string> = {
-  binance: 'Binance L2: snapshot 1000 levels + depth@100ms – adatto a DeepDom.',
+  binance: 'Binance Spot L2: snapshot 1000 livelli + diff@100ms – adatto a DeepDom.',
+  binance_futures:
+    'Binance Futures USDT-M: depth fino a 1000 livelli + depth@100ms. forceOrder/mark/OI pubblici. Multi-symbol → rate limit IP.',
   kucoin:
     'KuCoin pubblico: REST level2_100 (≤100 livelli/lato). Heatmap più stretta rispetto a Binance; niente inventare livelli. Nessuna spoofing detection istituzionale su feed pubblico.',
 }

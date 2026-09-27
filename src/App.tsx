@@ -9,6 +9,8 @@ import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import type { Interval } from '@/types'
 import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 import { ArchiveMenu } from '@/ui/ArchiveMenu'
+import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
+import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -312,7 +314,7 @@ function PrimaryLargeTrades() {
   )
 }
 
-type SideTab = 'live' | 'large' | 'book' | 'paper'
+type SideTab = 'live' | 'large' | 'book' | 'futures' | 'paper'
 
 function SidePanel() {
   const [tab, setTab] = useState<SideTab>('live')
@@ -320,6 +322,7 @@ function SidePanel() {
     { id: 'live', label: 'Live' },
     { id: 'large', label: 'Large' },
     { id: 'book', label: 'Book' },
+    { id: 'futures', label: 'Futures' },
     { id: 'paper', label: 'Paper' },
   ]
 
@@ -330,7 +333,7 @@ function SidePanel() {
           <button
             key={t.id}
             type="button"
-            className={`flex-1 px-2 py-1.5 text-xxs uppercase tracking-wider ${
+            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider ${
               tab === t.id
                 ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]'
                 : 'text-terminal-muted hover:text-terminal-text'
@@ -345,6 +348,7 @@ function SidePanel() {
         {tab === 'live' && <TradesTape />}
         {tab === 'large' && <PrimaryLargeTrades />}
         {tab === 'book' && <OrderBookView />}
+        {tab === 'futures' && <FuturesMetricsPanel />}
         {tab === 'paper' && <PaperTradingPanel />}
       </div>
       {tab === 'large' && (
@@ -423,7 +427,7 @@ export default function App() {
           <ArchiveMenu />
           <WorkspaceMenu />
           <span className="text-xxs text-terminal-muted">
-            Binance · KuCoin · Paper · Real-time · No mocks
+            Spot · Futures · KuCoin · Paper · Real-time · No mocks
           </span>
         </div>
       </header>
@@ -442,3 +446,6 @@ export default function App() {
     </div>
   )
 }
+
+// keep labels referenced for tree-shake safety in case ChartPanel uses ids only
+void EXCHANGE_LABELS

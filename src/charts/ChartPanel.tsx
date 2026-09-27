@@ -1,22 +1,24 @@
 /**
  * ChartPanel – chart unit with compact Orderflow menu.
- * Orderflow state lives in orderflowStore (persisted via Workspace).
  */
 
-import { useEffect } from 'react'
+import { useState } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu, type OrderflowState } from './OrderflowMenu'
-import { IndicatorsMenu } from './IndicatorsMenu'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
-import { useOrderflowStore } from '@/stores/orderflowStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
-import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
-import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
+import { SUPPORTED_EXCHANGES, EXCHANGE_LABELS } from '@/data/exchanges/registry'
+import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
+import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
+import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
+import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
+
+const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
 
 interface ChartPanelProps {
   config: ChartPanelConfig
@@ -33,24 +35,17 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
 
-  const of = useOrderflowStore((s) => s.byPanel[id] ?? s.get(id))
-  const patchOfStore = useOrderflowStore((s) => s.patch)
-
-  useEffect(() => {
-    const st = useOrderflowStore.getState()
-    if (!st.byPanel[id]) {
-      st.set(id, st.get(id))
-    }
-  }, [id])
-
-  const patchOf = (patch: Partial<OrderflowState>) => patchOfStore(id, patch)
-
-  const togglePrint = () => {
-    const cur = useOrderflowStore.getState().get(id)
-    const next = !cur.print
-    if (next) setActiveTool('pan')
-    patchOfStore(id, { print: next })
-  }
+  const [of, setOf] = useState<OrderflowState>({
+    print: false,
+    delta: false,
+    deltaCfg: DEFAULT_DELTA_CONFIG,
+    profile: false,
+    profileCfg: DEFAULT_PROFILE_CONFIG,
+    trades: false,
+    tradesCfg: DEFAULT_DEEP_TRADES_CONFIG,
+    dom: false,
+    domCfg: DEFAULT_DEEP_DOM_CONFIG,
+  })
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
     symbol,
@@ -59,77 +54,49 @@ export function ChartPanel({ config }: ChartPanelProps) {
   )
 
   const isPrimary = primaryPanelId === id
-  const symbolListId = `sym-list-${id}`
+
+  const patchOf = (patch: Partial<OrderflowState>) =>
+    setOf((s) => ({ ...s, ...patch }))
+
+  const togglePrint = () => {
+    setOf((s) => {
+      const next = !s.print
+      if (next) setActiveTool('pan')
+      return { ...s, print: next }
+    })
+  }
 
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
       <div className="panel-drag-handle flex flex-wrap items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
         <input
-          className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-[7.5rem] font-mono-nums"
+          className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
           value={symbol}
-          list={symbolListId}
-          placeholder="BTCUSDT"
-          title="Symbol (type or pick from list)"
-          onChange={(e) =>
-            updatePanel(id, {
-              symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
-            })
-          }
+          onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase() })}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         />
-        <datalist id={symbolListId}>
-          {SYMBOL_PRESETS.map((p) => (
-            <option key={p.symbol} value={p.symbol}>
-              {p.label} · {p.group}
-            </option>
-          ))}
-        </datalist>
-
-        <select
-          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs max-w-[5.5rem]"
-          title="Quick symbol"
-          value={SYMBOL_PRESETS.some((p) => p.symbol === symbol) ? symbol : ''}
-          onChange={(e) => {
-            if (e.target.value) updatePanel(id, { symbol: e.target.value })
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <option value="">Pairs…</option>
-          {(['Major', 'L1', 'DeFi', 'Meme', 'Other'] as const).map((g) => (
-            <optgroup key={g} label={g}>
-              {SYMBOL_PRESETS.filter((p) => p.group === g).map((p) => (
-                <option key={p.symbol} value={p.symbol}>
-                  {p.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-
         <select
           className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           value={interval}
-          title="Timeframe"
           onChange={(e) => updatePanel(id, { interval: e.target.value as Interval })}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {ALL_INTERVALS.map((i) => (
+          {INTERVALS.map((i) => (
             <option key={i} value={i}>
               {i}
             </option>
           ))}
         </select>
-
         <select
-          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
+          className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs max-w-[9rem]"
           value={exchange}
           onChange={(e) => updatePanel(id, { exchange: e.target.value as ExchangeId })}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {SUPPORTED_EXCHANGES.map((ex) => (
             <option key={ex} value={ex}>
-              {ex}
+              {EXCHANGE_LABELS[ex] ?? ex}
             </option>
           ))}
         </select>
@@ -162,10 +129,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
         >
           {isPrimary ? '★' : '☆'}
         </button>
-
-        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-          <IndicatorsMenu panelId={id} />
-        </div>
 
         <button
           type="button"
@@ -252,9 +215,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
           deepTradesConfig={of.tradesCfg}
           deepDomEnabled={of.dom}
           deepDomConfig={of.domCfg}
-          footprintEnabled={of.footprint}
-          replayEnabled={of.replay}
-          isPrimary={isPrimary}
         />
       </div>
     </div>
