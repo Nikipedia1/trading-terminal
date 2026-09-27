@@ -9,6 +9,7 @@ import { useUiDensityStore } from '@/stores/uiDensityStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { detachChartPanel } from '@/layout/detachPanel'
+import type { DrawingTool } from '@/drawings/types'
 
 export interface HotkeyDef {
   keys: string
@@ -24,11 +25,10 @@ export const HOTKEY_DEFS: HotkeyDef[] = [
   { keys: 'Esc', action: 'Cancel all open orders', group: 'trade' },
   { keys: 'D', action: 'Toggle density (research ↔ scalp)', group: 'view' },
   { keys: '?', action: 'Show / hide hotkey map', group: 'view' },
-  { keys: 'F', action: 'Fit content (primary chart)', group: 'chart' },
   { keys: 'Space', action: 'Pan tool', group: 'tools' },
-  { keys: 'V', action: 'Vertical line tool', group: 'tools' },
-  { keys: 'H', action: 'Horizontal line tool', group: 'tools' },
-  { keys: 'T', action: 'Trend line tool', group: 'tools' },
+  { keys: 'V', action: 'Vertical line', group: 'tools' },
+  { keys: 'H', action: 'Horizontal line', group: 'tools' },
+  { keys: 'T', action: 'Trendline', group: 'tools' },
   { keys: 'Ctrl+Shift+D', action: 'Detach primary panel', group: 'layout' },
   { keys: '+', action: 'Add chart panel', group: 'layout' },
 ]
@@ -90,18 +90,18 @@ export function useGlobalHotkeys() {
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         const k = e.key.toLowerCase()
         const setTool = useDrawingStore.getState().setActiveTool
-        if (k === ' ' || e.code === 'Space') {
+        const toolMap: Record<string, DrawingTool> = {
+          ' ': 'pan',
+          v: 'vertical',
+          h: 'horizontal',
+          t: 'trendline',
+        }
+        if (e.code === 'Space') {
           e.preventDefault()
           setTool('pan')
-        } else if (k === 'v') {
+        } else if (toolMap[k]) {
           e.preventDefault()
-          setTool('vline')
-        } else if (k === 'h') {
-          e.preventDefault()
-          setTool('hline')
-        } else if (k === 't') {
-          e.preventDefault()
-          setTool('trend')
+          setTool(toolMap[k])
         }
       }
     }
