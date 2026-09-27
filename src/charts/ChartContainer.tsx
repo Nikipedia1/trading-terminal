@@ -56,6 +56,27 @@ import {
 import { ReplayBar } from '@/analysis/replay'
 import { PaperPositionLines } from '@/trading/paper'
 
+function intervalToSeconds(interval: Interval): number {
+  const m: Record<string, number> = {
+    '1m': 60,
+    '3m': 180,
+    '5m': 300,
+    '15m': 900,
+    '30m': 1800,
+    '1h': 3600,
+    '2h': 7200,
+    '4h': 14400,
+    '6h': 21600,
+    '8h': 28800,
+    '12h': 43200,
+    '1d': 86400,
+    '3d': 259200,
+    '1w': 604800,
+    '1M': 2592000,
+  }
+  return m[interval] ?? 60
+}
+
 function buildChartOptions(canvas: {
   background: string
   text: string
@@ -89,17 +110,15 @@ function buildChartOptions(canvas: {
     rightPriceScale: {
       borderColor: canvas.border,
       scaleMargins: { top: 0.05, bottom: 0.28 },
-      // Keep autoScale true by default; free-pan locks it while dragging vertically
       autoScale: true,
     },
     timeScale: {
       borderColor: canvas.border,
       timeVisible: true,
       secondsVisible: false,
-      rightOffset: 8,
+      rightOffset: 12,
       shiftVisibleRangeOnNewBar: true,
     },
-    // Full free scroll: time + touch vertical; main-area vertical price via free-pan.ts
     handleScroll: {
       mouseWheel: true,
       pressedMouseMove: true,
@@ -231,7 +250,6 @@ export function ChartContainer({
     }
   }, [])
 
-  // Free vertical price pan while drawing tool is Pan (horizontal stays on LWC)
   useEffect(() => {
     const chart = chartRef.current
     const series = seriesMgrRef.current?.getCandleSeries() as
@@ -270,6 +288,7 @@ export function ChartContainer({
     mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
+  // Sync candles + feed times into bridge for drawing past last bar
   useEffect(() => {
     if (!seriesMgrRef.current || candles.length === 0) return
     const historyKey = `${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
@@ -280,7 +299,12 @@ export function ChartContainer({
     } else {
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
     }
-  }, [candles])
+    // Always refresh bridge meta so extrapolation stays accurate
+    bridgeRef.current?.setDataTimes(
+      candles.map((c) => c.time),
+      intervalToSeconds(interval)
+    )
+  }, [candles, interval])
 
   useEffect(() => {
     const ind = indicatorMgrRef.current
