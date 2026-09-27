@@ -10,14 +10,23 @@ export interface WorkspaceLayoutSlice {
   primaryPanelId: string
 }
 
+/**
+ * Full workspace payload stored in localStorage + Cloudflare KV.
+ * id is an opaque capability token (keep private).
+ */
 export interface WorkspaceDocument {
   version: typeof WORKSPACE_VERSION
   id: string
   name: string
   updatedAt: number
   layout: WorkspaceLayoutSlice
+  /** indicatorStore serializable fields */
   indicators?: unknown
+  /** chartStyleStore serializable fields */
   chartStyle?: unknown
+  /** useOrderflowStore.byPanel */
+  orderflow?: unknown
+  /** useDrawingStore.byPanelSymbol */
   drawings?: unknown
 }
 
