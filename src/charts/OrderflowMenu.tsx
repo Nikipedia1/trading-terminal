@@ -26,8 +26,16 @@ const DEVELOPING_WINDOWS: ProfileWindow[] = [
   'session',
   'last_30m',
   'session_open_30m',
+  'previous_day',
+  'weekly',
+  'last_3d',
 ]
-const FIXED_OPTIONS: FixedProfileKind[] = ['none', 'session_open_30m', 'previous_day']
+const FIXED_OPTIONS: FixedProfileKind[] = [
+  'none',
+  'session_open_30m',
+  'previous_day',
+  'weekly',
+]
 
 export interface OrderflowState {
   print: boolean
@@ -261,8 +269,7 @@ export function OrderflowMenu({
               </select>
             </div>
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Barre split buy (verde) / sell (viola) · buy%+sell% live · POC/VAH/VAL/LVN ·{' '}
-              {SESSION_NOTE}
+              POC/VAH/VAL/LVN · {SESSION_NOTE}
             </p>
           </Row>
 
@@ -336,24 +343,6 @@ export function OrderflowMenu({
                 <option value="base">base</option>
               </select>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-[#848e9c]">
-              <span className="shrink-0">max/candle</span>
-              <input
-                type="number"
-                min={1}
-                max={8}
-                className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                value={state.tradesCfg.maxPerCandle ?? 2}
-                onChange={(e) =>
-                  onChange({
-                    tradesCfg: {
-                      ...state.tradesCfg,
-                      maxPerCandle: Math.max(1, Math.min(8, Number(e.target.value) || 2)),
-                    },
-                  })
-                }
-              />
-            </div>
             <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
               <input
                 type="checkbox"
@@ -370,25 +359,6 @@ export function OrderflowMenu({
               />
               Solo Effective
             </label>
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#f0b90b]"
-                checked={state.tradesCfg.showLabels !== false}
-                onChange={(e) =>
-                  onChange({
-                    tradesCfg: {
-                      ...state.tradesCfg,
-                      showLabels: e.target.checked,
-                    },
-                  })
-                }
-              />
-              Label size
-            </label>
-            <p className="text-[9px] text-[#5e6673] leading-snug">
-              Tick reali · default p70 USDT · top N print per candela · spegni Solo Effective per densità ·▲ buy / ▼ sell
-            </p>
           </Row>
 
           <Row
@@ -396,42 +366,8 @@ export function OrderflowMenu({
             on={state.dom}
             onToggle={() => onChange({ dom: !state.dom })}
           >
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#f0b90b]"
-                checked={state.domCfg.showDelta}
-                onChange={(e) =>
-                  onChange({ domCfg: { ...state.domCfg, showDelta: e.target.checked } })
-                }
-              />
-              Δ heatmap (refill/pull)
-            </label>
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#f0b90b]"
-                checked={state.domCfg.showSurprise}
-                onChange={(e) =>
-                  onChange({
-                    domCfg: { ...state.domCfg, showSurprise: e.target.checked },
-                  })
-                }
-              />
-              Surprise R/P + flash F
-            </label>
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#f0b90b]"
-                checked={state.domCfg.showMagnet}
-                onChange={(e) =>
-                  onChange({ domCfg: { ...state.domCfg, showMagnet: e.target.checked } })
-                }
-              />
-              Magnet clusters
-            </label>
             <p className="text-[9px] text-[#5e6673] leading-snug">
+              Ladder: agg 1/5/10 tick · min size · flash pull/refill.{" "}
               {L2_GRANULARITY_NOTES[exchange]}
             </p>
           </Row>
@@ -441,7 +377,9 @@ export function OrderflowMenu({
             on={state.footprint}
             onToggle={() => onChange({ footprint: !state.footprint })}
           >
-            <p className="text-[9px] text-[#5e6673] leading-snug">{FOOTPRINT_NOTE}</p>
+            <p className="text-[9px] text-[#5e6673] leading-snug">
+              Cells + POC + UA↑/UA↓ · {FOOTPRINT_NOTE}
+            </p>
           </Row>
 
           <Row
