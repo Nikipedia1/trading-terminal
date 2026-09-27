@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useJournalStore } from './journalStore'
+import { captureChartScreenshot } from './captureScreenshot'
 import { useMarketStore } from '@/stores/marketStore'
 import { useChartFocusStore } from '@/stores/chartFocusStore'
 
@@ -17,19 +18,18 @@ export function JournalPanel() {
 
   const [note, setNote] = useState('')
   const [pnl, setPnl] = useState('')
+  const [capturing, setCapturing] = useState(false)
 
   const onAdd = async () => {
-    if (!note.trim()) return
+    if (!note.trim() || capturing) return
+    setCapturing(true)
     let shot: string | undefined
     try {
-      // Best-effort: capture main chart area if html2canvas not available, skip
-      const el = document.querySelector('[data-chart-root]') as HTMLElement | null
-      if (el && 'toDataURL' in document.createElement('canvas')) {
-        // minimal placeholder – full canvas capture needs external lib; store note only
-        shot = undefined
-      }
+      shot = await captureChartScreenshot()
     } catch {
-      /* */
+      shot = undefined
+    } finally {
+      setCapturing(false)
     }
     add({
       chartTimeSec: Math.floor(Date.now() / 1000),
@@ -61,10 +61,11 @@ export function JournalPanel() {
           />
           <button
             type="button"
-            className="px-2 py-0.5 rounded bg-[#f0b90b]/20 text-[#f0b90b]"
+            className="px-2 py-0.5 rounded bg-[#f0b90b]/20 text-[#f0b90b] disabled:opacity-50"
             onClick={() => void onAdd()}
+            disabled={capturing || !note.trim()}
           >
-            Add
+            {capturing ? '…' : 'Add'}
           </button>
           <button
             type="button"
@@ -100,6 +101,11 @@ export function JournalPanel() {
                     {e.pnlTag}
                   </span>
                 )}
+                {e.screenshot && (
+                  <span className="ml-1 text-[#f0b90b]" title="Has screenshot">
+                    📷
+                  </span>
+                )}
               </span>
               <span className="flex gap-2">
                 {e.chartTimeSec != null && (
@@ -121,6 +127,21 @@ export function JournalPanel() {
               </span>
             </div>
             <div className="text-[#eaecef] whitespace-pre-wrap">{e.note}</div>
+            {e.screenshot && (
+              <img
+                src={e.screenshot}
+                alt="chart"
+                className="mt-1 max-h-24 rounded border border-[#2b3139] object-contain cursor-pointer"
+                onClick={() => {
+                  const w = window.open()
+                  if (w) {
+                    w.document.write(
+                      `<img src="${e.screenshot}" style="max-width:100%;background:#0b0e11" />`
+                    )
+                  }
+                }}
+              />
+            )}
           </div>
         ))}
       </div>
