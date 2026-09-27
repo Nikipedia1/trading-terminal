@@ -28,7 +28,6 @@ const mockInstances: MockRwsInstance[] = []
 vi.mock('@/data/ws/reconnecting-ws', () => {
   class ReconnectingWebSocket {
     connect = vi.fn(async () => {
-      // default: go connected after microtask so callers can attach handlers
       queueMicrotask(() => this.emitStatus('connected'))
     })
     close = vi.fn()
@@ -96,6 +95,37 @@ function waitResyncDelay(): Promise<void> {
   return new Promise((r) => setTimeout(r, 80))
 }
 
+async function binanceSynced(symbol = 'BTCUSDT') {
+  ;(fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
+    if (String(url).includes('/api/v3/depth')) {
+      return {
+        ok: true,
+        json: async () => ({
+          lastUpdateId: 100,
+          bids: [
+            ['50000.0', '1.5'],
+            ['49999.0', '2.0'],
+          ],
+          asks: [
+            ['50001.0', '1.0'],
+            ['50002.0', '3.0'],
+          ],
+        }),
+      }
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  })
+
+  const books: any[] = []
+  const sub = subscribeOrderBookFeed('binance', symbol, {
+    onBook: (b) => books.push(b),
+  })
+  await flush()
+  await waitResyncDelay()
+  await flush()
+  return { books, sub, rws: lastRws() }
+}
+
 describe('orderBookFeed', () => {
   beforeEach(() => {
     mockInstances.length = 0
@@ -141,15 +171,14 @@ describe('orderBookFeed', () => {
       onStatus: (s) => statuses.push(s),
     })
 
-    await flush() // connect → status connected → resync starts
+    await flush()
     const rws = lastRws()
 
-    // Buffer a diff that arrives BEFORE snapshot completes (while !synced)
     rws.emitMessage({
       e: 'depthUpdate',
       U: 101,
       u: 102,
-      b: [['50000.0', '2.0']], // qty update
+      b: [['50000.0', '2.0']],
       a: [],
     })
 
@@ -161,15 +190,13 @@ describe('orderBookFeed', () => {
     expect(snap.ready).toBe(true)
     expect(snap.lastUpdateId).toBe(102)
     expect(snap.bids[0].price).toBe(50000)
-    expect(snap.bids[0].qty).toBe(2) // buffer applied over snapshot
+    expect(snap.bids[0].qty).toBe(2)
     expect(
       statuses.some((s) => s.status === 'connected' && s.detail?.includes('synced'))
     ).toBe(true)
 
     sub.unsubscribe()
   })
-
-  // ── Binance: gap detection (U > lastUpdateId+1 → resync) ──────────────────
 
   it('Binance: U > lastUpdateId+1 triggers resync', async () => {
     let depthCalls = 0
@@ -202,10 +229,9 @@ describe('orderBookFeed', () => {
     expect(books.at(-1)?.lastUpdateId).toBe(100)
 
     const rws = lastRws()
-    // Gap: U jumps past lastUpdateId+1
     rws.emitMessage({
       e: 'depthUpdate',
-      U: 150, // 150 > 100+1
+      U: 150,
       u: 151,
       b: [['50000.0', '9']],
       a: [],
@@ -214,14 +240,12 @@ describe('orderBookFeed', () => {
     await waitResyncDelay()
     await flush()
 
-    expect(depthCalls).toBe(2) // second snapshot
+    expect(depthCalls).toBe(2)
     expect(books.at(-1)?.lastUpdateId).toBe(200)
     expect(books.at(-1)?.ready).toBe(true)
 
     sub.unsubscribe()
   })
-
-  // ── Binance: discard stale (u <= lastUpdateId) ────────────────────────────
 
   it('Binance: discards stale messages where u <= lastUpdateId', async () => {
     ;(fetch as ReturnType<typeof vi.fn>).mockImplementation(async (url: string) => {
@@ -250,7 +274,6 @@ describe('orderBookFeed', () => {
     expect(books.at(-1)?.lastUpdateId).toBe(100)
 
     const rws = lastRws()
-    // Stale: u <= 100
     rws.emitMessage({
       e: 'depthUpdate',
       U: 90,
@@ -260,11 +283,9 @@ describe('orderBookFeed', () => {
     })
     await flush()
 
-    // No new publish (or same lastUpdateId)
     expect(books.length).toBe(countAfterSync)
-    expect(books.at(-1)?.bids[0].qty).toBe(1) // unchanged
+    expect(books.at(-1)?.bids[0].qty).toBe(1)
 
-    // Valid next message
     rws.emitMessage({
       e: 'depthUpdate',
       U: 101,
@@ -278,6 +299,78 @@ describe('orderBookFeed', () => {
     expect(books.at(-1)?.bids[0].qty).toBe(5)
 
     sub.unsubscribe()
+  })
+
+  // ── Edge: qty=0 removes price level ───────────────────────────────────────
+
+  it('Binance: qty "0" removes bid/ask level from local book', async () => {
+    const { books, sub, rws } = await binanceSynced('BNBUSDT')
+    expect(books.at(-1)?.bids.some((l: any) => l.price === 50000)).toBe(true)
+
+    rws.emitMessage({
+      e: 'depthUpdate',
+      U: 101,
+      u: 101,
+      b: [['50000.0', '0']], // remove
+      a: [['50001.0', '0']],
+    })
+    await flush()
+
+    const snap = books.at(-1)
+    expect(snap?.lastUpdateId).toBe(101)
+    expect(snap?.bids.some((l: any) => l.price === 50000)).toBe(false)
+    expect(snap?.asks.some((l: any) => l.price === 50001)).toBe(false)
+    // other levels remain
+    expect(snap?.bids.some((l: any) => l.price === 49999)).toBe(true)
+
+    sub.unsubscribe()
+  })
+
+  // ── Edge: duplicate / overlapping U already applied ───────────────────────
+
+  it('Binance: duplicate update with same u does not double-apply qty', async () => {
+    const { books, sub, rws } = await binanceSynced('XRPUSDT')
+
+    rws.emitMessage({
+      e: 'depthUpdate',
+      U: 101,
+      u: 101,
+      b: [['50000.0', '8']],
+      a: [],
+    })
+    await flush()
+    expect(books.at(-1)?.bids[0].qty).toBe(8)
+    const count = books.length
+
+    // Same u again (replay / reconnect overlap)
+    rws.emitMessage({
+      e: 'depthUpdate',
+      U: 101,
+      u: 101,
+      b: [['50000.0', '99']],
+      a: [],
+    })
+    await flush()
+
+    // stale discard → no change
+    expect(books.length).toBe(count)
+    expect(books.at(-1)?.bids[0].qty).toBe(8)
+
+    sub.unsubscribe()
+  })
+
+  // ── Edge: unsubscribe cleans active keys ──────────────────────────────────
+
+  it('unsubscribe removes feed from activeOrderBookFeedKeys when last ref', async () => {
+    const { sub } = await binanceSynced('ADAUSDT')
+    const keysBefore = activeOrderBookFeedKeys()
+    expect(keysBefore.some((k) => k.includes('ADAUSDT'))).toBe(true)
+
+    sub.unsubscribe()
+    await flush()
+
+    const keysAfter = activeOrderBookFeedKeys()
+    expect(keysAfter.some((k) => k.includes('ADAUSDT'))).toBe(false)
   })
 
   // ── KuCoin: sequenceStart misaligned → resync ─────────────────────────────
@@ -324,9 +417,7 @@ describe('orderBookFeed', () => {
     })
 
     await flush()
-    // urlFactory runs on connect; mock connects immediately
     await flush()
-    // resync after connected
     await flush()
 
     expect(snapshotCalls).toBe(1)
@@ -334,12 +425,11 @@ describe('orderBookFeed', () => {
     expect(books.at(-1)?.lastUpdateId).toBe(1000)
 
     const rws = lastRws()
-    // Misaligned sequenceStart
     rws.emitMessage({
       type: 'message',
       topic: '/market/level2:BTC-USDT',
       data: {
-        sequenceStart: 1500, // > 1000+1
+        sequenceStart: 1500,
         sequenceEnd: 1501,
         changes: { bids: [['50000.0', '9']], asks: [] },
       },
@@ -354,8 +444,6 @@ describe('orderBookFeed', () => {
 
     sub.unsubscribe()
   })
-
-  // ── KuCoin: buffer applied after snapshot ─────────────────────────────────
 
   it('KuCoin: buffers messages until snapshot then applies those with sequenceEnd > seq', async () => {
     let resolveSnap!: (v: unknown) => void
@@ -405,7 +493,6 @@ describe('orderBookFeed', () => {
     await flush()
 
     const rws = lastRws()
-    // Arrive while !synced (snapshot still pending)
     rws.emitMessage({
       type: 'message',
       topic: '/market/level2:ETH-USDT',
