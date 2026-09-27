@@ -332,7 +332,7 @@ function SidePanel() {
   )
 }
 
-function usePrimarySync() {
+function usePrimarySync(enabled: boolean) {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
   const setSymbol = useMarketStore((s) => s.setSymbol)
@@ -344,13 +344,13 @@ function usePrimarySync() {
   const primary = panels.find((p) => p.id === primaryPanelId)
 
   useEffect(() => {
-    if (!primary) return
+    if (!enabled || !primary) return
     stopLive()
     setSymbol(primary.symbol)
     setIntervalStore(primary.interval)
     setExchange(primary.exchange)
     loadHistorical().then(() => startLive())
-  }, [primary?.symbol, primary?.interval, primary?.exchange, primaryPanelId])
+  }, [enabled, primary?.symbol, primary?.interval, primary?.exchange, primaryPanelId])
 }
 
 function ChartArea() {
@@ -457,7 +457,7 @@ export default function App() {
       })
   }, [detach])
 
-  usePrimarySync()
+  usePrimarySync(!detach)
 
   if (detach) {
     return (
