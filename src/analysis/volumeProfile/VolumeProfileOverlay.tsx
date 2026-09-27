@@ -1,8 +1,6 @@
 /**
- * Volume Profile – developing + optional fixed overlay.
- * Bars: split buy (green, right) / sell (purple, left of midpoint) from real aggressor volume.
- * POC / VAH / VAL / LVN: full-width horizontal lines (anti-pellicola via priceToCoordinate).
- * Enable/disable from Orderflow → Profile toggle.
+ * Volume Profile – developing + optional fixed overlay (STATIC layer L1).
+ * Bars: split buy (green) / sell (purple). Rebuild on range change / 1s, not every tick.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react'
@@ -20,6 +18,7 @@ import {
   PROFILE_WINDOW_LABELS,
   SESSION_NOTE,
 } from './types'
+import { LAYER_Z } from '@/charts/layerStack'
 
 interface VolumeProfileOverlayProps {
   enabled: boolean
@@ -138,10 +137,6 @@ export function VolumeProfileOverlay({
     getVisibleRange,
   ])
 
-  /**
-   * Split bars: sell (purple) grows left from right edge, buy (green) continues outward.
-   * Matches order-flow visual (buy vs sell pressure at each price).
-   */
   const paintProfileBars = (
     ctx: CanvasRenderingContext2D,
     bridge: CoordinateBridge,
@@ -171,18 +166,15 @@ export function VolumeProfileOverlay({
       const sellAlpha = muted ? 0.35 : b.isLvn ? 0.55 : 0.7
       const buyAlpha = muted ? 0.35 : b.isHvn || b.price === model.poc ? 0.85 : 0.65
 
-      // Sell bar (purple) – closer to chart edge
       if (sellW > 0.5) {
         ctx.fillStyle = `rgba(168, 85, 247, ${sellAlpha})`
         ctx.fillRect(xRight - sellW, y - bh / 2, sellW, bh)
       }
-      // Buy bar (green) – extends further left
       if (buyW > 0.5) {
         ctx.fillStyle = `rgba(14, 203, 129, ${buyAlpha})`
         ctx.fillRect(xRight - sellW - buyW, y - bh / 2, buyW, bh)
       }
 
-      // POC highlight outline
       if (b.price === model.poc && !muted) {
         ctx.strokeStyle = 'rgba(240, 185, 11, 0.9)'
         ctx.lineWidth = 1
@@ -318,7 +310,6 @@ export function VolumeProfileOverlay({
       ctx.fillText(hint || 'Profile: no trades in window', w - 12, 20)
     }
 
-    // Legend + live buy% / sell%
     ctx.font = '10px sans-serif'
     ctx.textAlign = 'right'
     ctx.fillStyle = 'rgba(234, 236, 239, 0.9)'
@@ -368,6 +359,7 @@ export function VolumeProfileOverlay({
       ro = new ResizeObserver(() => paint())
       ro.observe(parent)
     }
+    // Static layer: 1s rebuild is enough (not per-tick)
     const id = window.setInterval(() => {
       rebuild()
       paint()
@@ -383,6 +375,10 @@ export function VolumeProfileOverlay({
   if (!enabled) return null
 
   return (
-    <canvas ref={canvasRef} className="absolute inset-0 z-[4] pointer-events-none" aria-hidden />
+    <canvas
+      ref={canvasRef}
+      className={`absolute inset-0 ${LAYER_Z.profile} pointer-events-none`}
+      aria-hidden
+    />
   )
 }
