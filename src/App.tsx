@@ -10,6 +10,7 @@ import type { Interval } from '@/types'
 import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 import { ArchiveMenu } from '@/ui/ArchiveMenu'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
+import { FeedHealthHud } from '@/ui/FeedHealthHud'
 import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 
 function StatusBadge() {
@@ -94,13 +95,10 @@ function Controls() {
         value={symbolDraft}
         list="top-symbol-presets"
         placeholder="BTCUSDT"
-        title="Symbol (type or pick from list) – synced with primary chart ★"
         onChange={(e) => setSymbolDraft(normalizeSymbol(e.target.value))}
         onBlur={() => applySymbol(symbolDraft)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.currentTarget.blur()
-          }
+          if (e.key === 'Enter') e.currentTarget.blur()
         }}
       />
       <datalist id="top-symbol-presets">
@@ -113,7 +111,6 @@ function Controls() {
 
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm max-w-[7rem]"
-        title="Quick symbol"
         value={SYMBOL_PRESETS.some((p) => p.symbol === symbol) ? symbol : ''}
         onChange={(e) => {
           if (e.target.value) applySymbol(e.target.value)
@@ -134,7 +131,6 @@ function Controls() {
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
         value={interval}
-        title="Timeframe – synced with primary chart ★"
         onChange={(e) => applyInterval(e.target.value as Interval)}
       >
         {ALL_INTERVALS.map((i) => (
@@ -166,9 +162,6 @@ function Controls() {
         </button>
       )}
       <StatusBadge />
-      <span className="text-xxs text-terminal-muted ml-1">
-        Side panels ← primary chart (★)
-      </span>
     </div>
   )
 }
@@ -212,9 +205,7 @@ function TradesTape() {
         </tbody>
       </table>
       {trades.length === 0 && (
-        <div className="p-4 text-terminal-muted text-sm">
-          No live trades yet. Click "Start Live".
-        </div>
+        <div className="p-4 text-terminal-muted text-sm">No live trades yet.</div>
       )}
     </div>
   )
@@ -223,11 +214,7 @@ function TradesTape() {
 function OrderBookView() {
   const book = useMarketStore((s) => s.orderBook)
   if (!book) {
-    return (
-      <div className="p-4 text-terminal-muted text-sm">
-        No order book. Load History or Start Live.
-      </div>
-    )
+    return <div className="p-4 text-terminal-muted text-sm">No order book.</div>
   }
   const maxQty = Math.max(
     ...book.bids.slice(0, 10).map((l) => l.qty),
@@ -239,35 +226,29 @@ function OrderBookView() {
       <div className="grid grid-cols-2 gap-1 px-2">
         <div>
           <div className="text-terminal-muted mb-1">Bids</div>
-          {book.bids.slice(0, 12).map((l) => {
-            const barWidth = (l.qty / maxQty) * 100 + '%'
-            return (
-              <div key={'b-' + l.price} className="relative flex justify-between py-0.5">
-                <div
-                  className="absolute inset-y-0 right-0 bg-terminal-green/10"
-                  style={{ width: barWidth }}
-                />
-                <span className="text-terminal-green relative">{l.price.toFixed(2)}</span>
-                <span className="relative">{l.qty.toFixed(4)}</span>
-              </div>
-            )
-          })}
+          {book.bids.slice(0, 12).map((l) => (
+            <div key={'b-' + l.price} className="relative flex justify-between py-0.5">
+              <div
+                className="absolute inset-y-0 right-0 bg-terminal-green/10"
+                style={{ width: (l.qty / maxQty) * 100 + '%' }}
+              />
+              <span className="text-terminal-green relative">{l.price.toFixed(2)}</span>
+              <span className="relative">{l.qty.toFixed(4)}</span>
+            </div>
+          ))}
         </div>
         <div>
           <div className="text-terminal-muted mb-1">Asks</div>
-          {book.asks.slice(0, 12).map((l) => {
-            const barWidth = (l.qty / maxQty) * 100 + '%'
-            return (
-              <div key={'a-' + l.price} className="relative flex justify-between py-0.5">
-                <div
-                  className="absolute inset-y-0 left-0 bg-terminal-red/10"
-                  style={{ width: barWidth }}
-                />
-                <span className="text-terminal-red relative">{l.price.toFixed(2)}</span>
-                <span className="relative">{l.qty.toFixed(4)}</span>
-              </div>
-            )
-          })}
+          {book.asks.slice(0, 12).map((l) => (
+            <div key={'a-' + l.price} className="relative flex justify-between py-0.5">
+              <div
+                className="absolute inset-y-0 left-0 bg-terminal-red/10"
+                style={{ width: (l.qty / maxQty) * 100 + '%' }}
+              />
+              <span className="text-terminal-red relative">{l.price.toFixed(2)}</span>
+              <span className="relative">{l.qty.toFixed(4)}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -289,8 +270,6 @@ function TickerBar() {
         {ticker.priceChangePercent.toFixed(2)}%
       </span>
       <span className="text-terminal-muted">24h Vol: {ticker.volume.toFixed(0)}</span>
-      <span className="text-terminal-muted">H: {ticker.highPrice.toFixed(2)}</span>
-      <span className="text-terminal-muted">L: {ticker.lowPrice.toFixed(2)}</span>
     </div>
   )
 }
@@ -303,14 +282,8 @@ function PrimaryLargeTrades() {
   const interval = primary?.interval ?? '1m'
   const exchange = primary?.exchange ?? 'binance'
   const { candles } = usePanelMarket(symbol, interval, exchange)
-
   return (
-    <LargeTradesPanel
-      exchange={exchange}
-      symbol={symbol}
-      interval={interval}
-      candles={candles}
-    />
+    <LargeTradesPanel exchange={exchange} symbol={symbol} interval={interval} candles={candles} />
   )
 }
 
@@ -351,11 +324,6 @@ function SidePanel() {
         {tab === 'futures' && <FuturesMetricsPanel />}
         {tab === 'paper' && <PaperTradingPanel />}
       </div>
-      {tab === 'large' && (
-        <div className="px-2 py-1 text-[9px] text-[#5e6673] border-t border-terminal-border shrink-0">
-          Click row → center primary chart on that print
-        </div>
-      )}
     </section>
   )
 }
@@ -369,7 +337,6 @@ function usePrimarySync() {
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
   const stopLive = useMarketStore((s) => s.stopLive)
-
   const primary = panels.find((p) => p.id === primaryPanelId)
 
   useEffect(() => {
@@ -385,7 +352,6 @@ function usePrimarySync() {
 function ChartArea() {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
-
   useEffect(() => {
     if (!ref.current) return
     const ro = new ResizeObserver((entries) => {
@@ -395,7 +361,6 @@ function ChartArea() {
     ro.observe(ref.current)
     return () => ro.disconnect()
   }, [])
-
   return (
     <div ref={ref} className="flex-1 min-h-0 min-w-0 relative">
       <PanelGrid width={size.width} height={size.height} />
@@ -420,14 +385,14 @@ export default function App() {
   usePrimarySync()
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col pb-7">
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
         <div className="flex items-center gap-3">
           <ArchiveMenu />
           <WorkspaceMenu />
           <span className="text-xxs text-terminal-muted">
-            Spot · Futures · KuCoin · Paper · Real-time · No mocks
+            Binance · Futures · Bybit · OKX · KuCoin · Free public
           </span>
         </div>
       </header>
@@ -440,12 +405,12 @@ export default function App() {
         <section className="col-span-2 bg-terminal-bg flex flex-col min-h-0 min-w-0">
           <ChartArea />
         </section>
-
         <SidePanel />
       </div>
+
+      <FeedHealthHud />
     </div>
   )
 }
 
-// keep labels referenced for tree-shake safety in case ChartPanel uses ids only
 void EXCHANGE_LABELS

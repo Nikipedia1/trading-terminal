@@ -1,14 +1,16 @@
 /**
- * Shared L2 order book with local reconstruction.
+ * Shared L2 order book with local reconstruction + feed health.
  *
- * Binance: depth@100ms + REST snapshot limit=1000 (official sync).
- * KuCoin: level2 sequence + REST level2_100 (max ~100 levels public).
+ * Binance Spot / Futures: depth@100ms + REST snapshot (gap → resync).
+ * KuCoin: level2 sequence + REST level2_100.
+ * Bybit/OKX: client depth stream published as snapshot (no seq desk yet).
  *
- * One connection per (exchange, symbol), refcounted. Never fabricates levels.
+ * Never fabricates levels. Free public APIs only.
  */
 
 import type { ExchangeId, MarketError, ConnectionStatus } from '@/types'
 import { ReconnectingWebSocket } from '@/data/ws/reconnecting-ws'
+import { getExchangeClient } from '@/data/exchanges/registry'
 import { EventBus } from './eventBus'
 import {
   type LocalOrderBook,
@@ -18,12 +20,19 @@ import {
   type BookLevel,
   feedKey,
 } from './types'
+import {
+  recordBookUpdate,
+  recordGap,
+  recordResync,
+  recordFeedStatus,
+} from './feedHealth'
 
 const BINANCE_REST = 'https://api.binance.com'
 const BINANCE_WS = 'wss://stream.binance.com:9443'
+const FAPI_REST = 'https://fapi.binance.com'
+const FAPI_WS = 'wss://fstream.binance.com'
 const KUCOIN_REST = 'https://api.kucoin.com'
 
-/** Levels published per side – enough for DeepDom band around mid */
 const SNAPSHOT_TOP_N = 200
 
 interface BookFeedEvents {
@@ -78,12 +87,22 @@ function applySide(map: Map<number, number>, levels: [string, string][]) {
   }
 }
 
-function startBinanceBook(symbol: string, slot: Slot): () => void {
+function startBinanceFamilyBook(
+  exchange: 'binance' | 'binance_futures',
+  symbol: string,
+  slot: Slot
+): () => void {
   const sym = symbol.toUpperCase()
+  const restBase = exchange === 'binance_futures' ? FAPI_REST : BINANCE_REST
+  const wsBase = exchange === 'binance_futures' ? FAPI_WS : BINANCE_WS
+  const depthPath =
+    exchange === 'binance_futures'
+      ? `/fapi/v1/depth?symbol=${sym}&limit=1000`
+      : `/api/v3/depth?symbol=${sym}&limit=1000`
   const stream = `${sym.toLowerCase()}@depth@100ms`
 
   let book: LocalOrderBook = {
-    exchange: 'binance',
+    exchange,
     symbol: sym,
     lastUpdateId: 0,
     bids: new Map(),
@@ -101,15 +120,16 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
     const snap = mapsToSnapshot(book)
     slot.lastSnapshot = snap
     slot.bus.emit('book', snap)
+    recordBookUpdate(exchange, sym)
   }
 
   const setStatus = (status: ConnectionStatus, detail?: string) => {
     slot.lastStatus = { status, detail }
     slot.bus.emit('status', slot.lastStatus)
+    recordFeedStatus(exchange, sym, status)
   }
 
   const resync = async () => {
-    // Cancel any in-flight snapshot so a late response cannot overwrite newer state
     resyncAbort?.abort()
     resyncAbort = new AbortController()
     const signal = resyncAbort.signal
@@ -118,6 +138,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
     synced = false
     book.ready = false
     buffer = []
+    recordResync(exchange, sym)
     setStatus('connecting', 'depth snapshot')
 
     try {
@@ -127,14 +148,13 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
         return
       }
 
-      const url = `${BINANCE_REST}/api/v3/depth?symbol=${sym}&limit=1000`
-      const res = await fetch(url, { signal })
+      const res = await fetch(`${restBase}${depthPath}`, { signal })
       if (!res.ok) {
         const body = await res.text()
         const err =
           res.status === 429
-            ? createError('binance', 'RATE_LIMIT', `Depth snapshot 429: ${body}`)
-            : createError('binance', 'REST_DEPTH', `HTTP ${res.status}: ${body}`)
+            ? createError(exchange, 'RATE_LIMIT', `Depth snapshot 429: ${body}`)
+            : createError(exchange, 'REST_DEPTH', `HTTP ${res.status}: ${body}`)
         slot.bus.emit('error', { error: err })
         setStatus('error', err.message)
         syncing = false
@@ -147,7 +167,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
       }
       const lastUpdateId = raw.lastUpdateId as number
       book = {
-        exchange: 'binance',
+        exchange,
         symbol: sym,
         lastUpdateId,
         bids: new Map(),
@@ -168,6 +188,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
 
       const first = buffer[0]
       if (first && (first.U > lastUpdateId + 1 || first.u < lastUpdateId + 1)) {
+        recordGap(exchange, sym)
         syncing = false
         void resync()
         return
@@ -191,7 +212,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
         return
       }
       syncing = false
-      const err = createError('binance', 'REST_DEPTH', e.message || 'Snapshot failed')
+      const err = createError(exchange, 'REST_DEPTH', e.message || 'Snapshot failed')
       slot.bus.emit('error', { error: err })
       setStatus('error', err.message)
     }
@@ -205,6 +226,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
       return
     }
     if (data.U > book.lastUpdateId + 1) {
+      recordGap(exchange, sym)
       void resync()
       return
     }
@@ -218,7 +240,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
     publish()
   }
 
-  const rws = new ReconnectingWebSocket(`${BINANCE_WS}/ws/${stream}`, {
+  const rws = new ReconnectingWebSocket(`${wsBase}/ws/${stream}`, {
     minBackoffMs: 1000,
     maxBackoffMs: 30_000,
     onStatus: (s, detail) => {
@@ -231,7 +253,7 @@ function startBinanceBook(symbol: string, slot: Slot): () => void {
     },
     onMessage: (data) => onDiff(data),
     onError: (msg) => {
-      slot.bus.emit('error', { error: createError('binance', 'WS_DEPTH', msg) })
+      slot.bus.emit('error', { error: createError(exchange, 'WS_DEPTH', msg) })
     },
   })
   void rws.connect()
@@ -267,9 +289,10 @@ function toKucoinSymbol(symbol: string): string {
 function startKucoinBook(symbol: string, slot: Slot): () => void {
   const sym = toKucoinSymbol(symbol)
   const topic = `/market/level2:${sym}`
+  const exchange: ExchangeId = 'kucoin'
 
   let book: LocalOrderBook = {
-    exchange: 'kucoin',
+    exchange,
     symbol: sym,
     lastUpdateId: 0,
     bids: new Map(),
@@ -279,7 +302,6 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
   }
   let buffer: any[] = []
   let synced = false
-  let syncing = false
   let pingTimer: ReturnType<typeof setInterval> | null = null
   let rws: ReconnectingWebSocket | null = null
   let resyncAbort: AbortController | null = null
@@ -288,11 +310,13 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
     const snap = mapsToSnapshot(book)
     slot.lastSnapshot = snap
     slot.bus.emit('book', snap)
+    recordBookUpdate(exchange, symbol)
   }
 
   const setStatus = (status: ConnectionStatus, detail?: string) => {
     slot.lastStatus = { status, detail }
     slot.bus.emit('status', slot.lastStatus)
+    recordFeedStatus(exchange, symbol, status)
   }
 
   const applyKucoinChanges = (b: LocalOrderBook, data: any) => {
@@ -317,38 +341,31 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
     resyncAbort?.abort()
     resyncAbort = new AbortController()
     const signal = resyncAbort.signal
-
-    syncing = true
     synced = false
     book.ready = false
     buffer = []
+    recordResync(exchange, symbol)
     setStatus('connecting', 'kucoin depth snapshot')
     try {
-      // Public API: max 100 levels – DeepDom band is limited vs Binance 1000
       const url = `${KUCOIN_REST}/api/v1/market/orderbook/level2_100?symbol=${encodeURIComponent(sym)}`
       const res = await fetch(url, { signal })
       if (!res.ok) {
         const err = createError('kucoin', 'REST_DEPTH', `HTTP ${res.status}`)
         slot.bus.emit('error', { error: err })
         setStatus('error', err.message)
-        syncing = false
         return
       }
       const json = await res.json()
-      if (signal.aborted) {
-        syncing = false
-        return
-      }
+      if (signal.aborted) return
       if (json.code !== '200000' || !json.data) {
         const err = createError('kucoin', 'REST_DEPTH', json.msg || 'snapshot failed')
         slot.bus.emit('error', { error: err })
         setStatus('error', err.message)
-        syncing = false
         return
       }
       const seq = parseInt(json.data.sequence, 10)
       book = {
-        exchange: 'kucoin',
+        exchange,
         symbol: sym,
         lastUpdateId: seq,
         bids: new Map(),
@@ -370,15 +387,10 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
       buffer = []
       book.ready = true
       synced = true
-      syncing = false
       setStatus('connected', 'depth synced (≤100 lvl)')
       publish()
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
-        syncing = false
-        return
-      }
-      syncing = false
+      if (e?.name === 'AbortError') return
       const err = createError('kucoin', 'REST_DEPTH', e.message || 'Snapshot failed')
       slot.bus.emit('error', { error: err })
       setStatus('error', err.message)
@@ -429,6 +441,7 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
       }
       const start = data.sequenceStart
       if (start != null && start > book.lastUpdateId + 1) {
+        recordGap(exchange, symbol)
         void resync()
         return
       }
@@ -449,6 +462,44 @@ function startKucoinBook(symbol: string, slot: Slot): () => void {
   }
 }
 
+/** Bybit / OKX: publish client depth snapshots (no full seq desk in free tier). */
+function startClientDepthBook(exchange: ExchangeId, symbol: string, slot: Slot): () => void {
+  const client = getExchangeClient(exchange)
+  const sym = symbol.toUpperCase()
+
+  const setStatus = (status: ConnectionStatus, detail?: string) => {
+    slot.lastStatus = { status, detail }
+    slot.bus.emit('status', slot.lastStatus)
+    recordFeedStatus(exchange, sym, status)
+  }
+
+  setStatus('connecting', 'depth stream')
+  const unsub = client.subscribeDepth(
+    sym,
+    (book) => {
+      const snap: OrderBookSnapshot = {
+        exchange,
+        symbol: sym,
+        lastUpdateId: book.lastUpdateId,
+        bids: book.bids.slice(0, SNAPSHOT_TOP_N),
+        asks: book.asks.slice(0, SNAPSHOT_TOP_N),
+        updatedAt: Date.now(),
+        ready: true,
+      }
+      slot.lastSnapshot = snap
+      slot.bus.emit('book', snap)
+      recordBookUpdate(exchange, sym)
+      setStatus('connected', 'depth (client stream)')
+    },
+    (err) => {
+      slot.bus.emit('error', { error: err })
+      setStatus('error', err.message)
+    },
+    (s, d) => setStatus(s, d)
+  )
+  return unsub
+}
+
 function getOrCreateSlot(exchange: ExchangeId, symbol: string): Slot {
   const key = feedKey(exchange, symbol)
   let slot = slots.get(key)
@@ -466,10 +517,12 @@ function getOrCreateSlot(exchange: ExchangeId, symbol: string): Slot {
 
 function ensureConnected(exchange: ExchangeId, symbol: string, slot: Slot) {
   if (slot.stop) return
-  if (exchange === 'binance') {
-    slot.stop = startBinanceBook(symbol, slot)
+  if (exchange === 'binance' || exchange === 'binance_futures') {
+    slot.stop = startBinanceFamilyBook(exchange, symbol, slot)
   } else if (exchange === 'kucoin') {
     slot.stop = startKucoinBook(symbol, slot)
+  } else if (exchange === 'bybit' || exchange === 'okx') {
+    slot.stop = startClientDepthBook(exchange, symbol, slot)
   } else {
     const err = createError(exchange, 'UNSUPPORTED', `No L2 engine for ${exchange}`)
     slot.bus.emit('error', { error: err })
