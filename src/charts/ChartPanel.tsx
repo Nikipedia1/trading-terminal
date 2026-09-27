@@ -3,6 +3,7 @@
  * Orderflow state lives in orderflowStore (persisted via Workspace).
  */
 
+import { useEffect } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu, type OrderflowState } from './OrderflowMenu'
@@ -32,21 +33,23 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
 
-  const of = useOrderflowStore((s) => s.get(id))
+  const of = useOrderflowStore((s) => s.byPanel[id] ?? s.get(id))
   const patchOfStore = useOrderflowStore((s) => s.patch)
-  const setOfStore = useOrderflowStore((s) => s.set)
+
+  useEffect(() => {
+    const st = useOrderflowStore.getState()
+    if (!st.byPanel[id]) {
+      st.set(id, st.get(id))
+    }
+  }, [id])
 
   const patchOf = (patch: Partial<OrderflowState>) => patchOfStore(id, patch)
 
   const togglePrint = () => {
-    const next = !of.print
+    const cur = useOrderflowStore.getState().get(id)
+    const next = !cur.print
     if (next) setActiveTool('pan')
     patchOfStore(id, { print: next })
-  }
-
-  // Ensure panel has an entry so export includes defaults once touched
-  if (!useOrderflowStore.getState().byPanel[id]) {
-    setOfStore(id, of)
   }
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
