@@ -8,6 +8,8 @@ export {
 } from './api'
 export { buildSnapshot, applyWorkspace } from './snapshot'
 export { getOrCreateWorkspaceId, generateWorkspaceId } from './id'
+export { WORKSPACE_TEMPLATES, applyTemplate } from './templates'
+export type { WorkspaceTemplate } from './templates'
 export type {
   WorkspaceDocument,
   WorkspaceSaveResult,
