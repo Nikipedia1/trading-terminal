@@ -10,6 +10,14 @@ import { feedKey } from './types'
 
 const LATENCY_WINDOW = 200
 const STALE_BOOK_MS = 3000
+const STALE_TICK_MS = 5000
+const ERROR_QUEUE_MAX = 30
+
+export interface FeedErrorEntry {
+  ts: number
+  code: string
+  message: string
+}
 
 export interface FeedHealthSnapshot {
   key: string
@@ -24,8 +32,16 @@ export interface FeedHealthSnapshot {
   resyncs: number
   lastEventAt: number | null
   lastBookAt: number | null
+  lastTickAt: number | null
+  /** ms since last trade/tick event; null if never */
+  tickAgeMs: number | null
+  /** ms since last book update; null if never */
+  bookAgeMs: number | null
   bookStale: boolean
+  tickStale: boolean
   status: string
+  /** Recent errors (newest first), capped */
+  errorQueue: FeedErrorEntry[]
 }
 
 interface Internal {
@@ -37,7 +53,9 @@ interface Internal {
   resyncs: number
   lastEventAt: number | null
   lastBookAt: number | null
+  lastTickAt: number | null
   status: string
+  errors: FeedErrorEntry[]
 }
 
 const state = new Map<string, Internal>()
@@ -65,7 +83,9 @@ function ensure(exchange: ExchangeId, symbol: string): Internal {
       resyncs: 0,
       lastEventAt: null,
       lastBookAt: null,
+      lastTickAt: null,
       status: 'disconnected',
+      errors: [],
     }
     state.set(key, s)
   }
@@ -75,6 +95,8 @@ function ensure(exchange: ExchangeId, symbol: string): Internal {
 function toSnap(s: Internal): FeedHealthSnapshot {
   const sorted = [...s.latency].sort((a, b) => a - b)
   const now = Date.now()
+  const tickAgeMs = s.lastTickAt != null ? now - s.lastTickAt : null
+  const bookAgeMs = s.lastBookAt != null ? now - s.lastBookAt : null
   return {
     key: feedKey(s.exchange, s.symbol),
     exchange: s.exchange,
@@ -87,9 +109,13 @@ function toSnap(s: Internal): FeedHealthSnapshot {
     resyncs: s.resyncs,
     lastEventAt: s.lastEventAt,
     lastBookAt: s.lastBookAt,
-    bookStale:
-      s.lastBookAt != null ? now - s.lastBookAt > STALE_BOOK_MS : false,
+    lastTickAt: s.lastTickAt,
+    tickAgeMs,
+    bookAgeMs,
+    bookStale: bookAgeMs != null ? bookAgeMs > STALE_BOOK_MS : false,
+    tickStale: tickAgeMs != null ? tickAgeMs > STALE_TICK_MS : false,
     status: s.status,
+    errorQueue: s.errors.slice(0, ERROR_QUEUE_MAX),
   }
 }
 
@@ -111,6 +137,15 @@ export function recordEventLatency(
   s.latency.push(Math.max(0, lag))
   if (s.latency.length > LATENCY_WINDOW) s.latency.shift()
   s.lastEventAt = Date.now()
+  emit(s)
+}
+
+/** Mark a trade/tick arrival (for tick age) */
+export function recordTick(exchange: ExchangeId, symbol: string) {
+  const s = ensure(exchange, symbol)
+  const now = Date.now()
+  s.lastTickAt = now
+  s.lastEventAt = now
   emit(s)
 }
 
@@ -152,6 +187,28 @@ export function recordFeedStatus(
   emit(s)
 }
 
+export function recordFeedError(
+  exchange: ExchangeId,
+  symbol: string,
+  code: string,
+  message: string
+) {
+  const s = ensure(exchange, symbol)
+  s.errors.unshift({
+    ts: Date.now(),
+    code: code || 'ERR',
+    message: (message || '').slice(0, 200),
+  })
+  if (s.errors.length > ERROR_QUEUE_MAX) s.errors.length = ERROR_QUEUE_MAX
+  emit(s)
+}
+
+export function clearFeedErrors(exchange: ExchangeId, symbol: string) {
+  const s = ensure(exchange, symbol)
+  s.errors = []
+  emit(s)
+}
+
 export function getFeedHealth(
   exchange: ExchangeId,
   symbol: string
@@ -175,4 +232,5 @@ export const FEED_HEALTH_NOTES = {
   history:
     'Tick history is local IndexedDB only (free). No 24/7 cloud recorder in free tier.',
   book: 'Public L2 is aggregated depth, not MBO/full market-by-order.',
+  stale: `Book stale >${STALE_BOOK_MS}ms · Tick stale >${STALE_TICK_MS}ms`,
 } as const
