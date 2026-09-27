@@ -1,0 +1,23 @@
+# Cloudflare Pages + Functions – free tier
+# Docs: https://developers.cloudflare.com/pages/
+#
+# Setup (once):
+#   1. npm i -D wrangler
+#   2. npx wrangler login
+#   3. npx wrangler kv namespace create WORKSPACE_KV
+#   4. npx wrangler kv namespace create WORKSPACE_KV --preview
+#   5. Paste the ids below
+#   6. npm run build && npx wrangler pages deploy dist
+#
+# Local Functions + KV:
+#   npx wrangler pages dev dist --kv WORKSPACE_KV
+
+name = "trading-terminal"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "dist"
+
+# Replace with ids from `wrangler kv namespace create`
+[[kv_namespaces]]
+binding = "WORKSPACE_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_KV_PREVIEW_ID"
