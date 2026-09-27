@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { PanelGrid } from '@/layout/PanelGrid'
@@ -7,13 +7,14 @@ import { PaperTradingPanel } from '@/trading/paper'
 import { ExecutionBar, useExecutionHotkeys } from '@/trading'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
-import type { Interval } from '@/types'
+import type { Interval, ExchangeId } from '@/types'
 import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 import { ArchiveMenu } from '@/ui/ArchiveMenu'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { FeedHealthHud } from '@/ui/FeedHealthHud'
 import { AlertPanel, startAlertEngine } from '@/alerts'
 import { JournalPanel } from '@/journal'
+import { ChartPanel } from '@/charts/ChartPanel'
 import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 
 function StatusBadge() {
@@ -365,13 +366,76 @@ function ChartArea() {
     return () => ro.disconnect()
   }, [])
   return (
-    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative" data-chart-root>
+    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative">
       <PanelGrid width={size.width} height={size.height} />
     </div>
   )
 }
 
+/** Parse detach mode from URL once */
+function useDetachParams() {
+  return useMemo(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('detach') !== '1') return null
+    const symbol = normalizeSymbol(q.get('symbol') || 'BTCUSDT') || 'BTCUSDT'
+    const interval = (q.get('interval') || '1m') as Interval
+    const exchange = (q.get('exchange') || 'binance') as ExchangeId
+    return { symbol, interval, exchange }
+  }, [])
+}
+
+/** Minimal single-chart shell for second-monitor pop-out */
+function DetachedApp({
+  symbol,
+  interval,
+  exchange,
+}: {
+  symbol: string
+  interval: Interval
+  exchange: ExchangeId
+}) {
+  const setSymbol = useMarketStore((s) => s.setSymbol)
+  const setIntervalStore = useMarketStore((s) => s.setInterval)
+  const setExchange = useMarketStore((s) => s.setExchange)
+  const loadHistorical = useMarketStore((s) => s.loadHistorical)
+  const startLive = useMarketStore((s) => s.startLive)
+
+  useEffect(() => {
+    setSymbol(symbol)
+    setIntervalStore(interval)
+    setExchange(exchange)
+    void loadHistorical().then(() => startLive())
+  }, [symbol, interval, exchange])
+
+  const config = useMemo(
+    () => ({
+      id: 'detached',
+      symbol,
+      interval,
+      exchange,
+      syncGroup: null as string | null,
+    }),
+    [symbol, interval, exchange]
+  )
+
+  return (
+    <div className="h-full flex flex-col bg-terminal-bg">
+      <header className="flex items-center gap-3 px-3 py-1.5 border-b border-terminal-border bg-terminal-panel shrink-0">
+        <span className="text-xxs font-semibold tracking-wide text-[#f0b90b]">DETACHED</span>
+        <span className="text-xs font-mono-nums text-terminal-text">
+          {symbol} · {interval} · {EXCHANGE_LABELS[exchange] ?? exchange}
+        </span>
+        <StatusBadge />
+      </header>
+      <div className="flex-1 min-h-0">
+        <ChartPanel config={config} />
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
+  const detach = useDetachParams()
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
 
@@ -381,7 +445,9 @@ export default function App() {
     startAlertEngine()
   }, [])
 
+  // Full desk boot only when not detached
   useEffect(() => {
+    if (detach) return
     void loadWorkspace()
       .then((res) => {
         if (res.ok) applyWorkspace(res.doc)
@@ -389,9 +455,19 @@ export default function App() {
       .finally(() => {
         loadHistorical().then(() => startLive())
       })
-  }, [])
+  }, [detach])
 
   usePrimarySync()
+
+  if (detach) {
+    return (
+      <DetachedApp
+        symbol={detach.symbol}
+        interval={detach.interval}
+        exchange={detach.exchange}
+      />
+    )
+  }
 
   return (
     <div className="h-full flex flex-col pb-7">
