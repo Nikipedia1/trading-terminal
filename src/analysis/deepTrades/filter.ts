@@ -1,4 +1,4 @@
-/** Filter + cluster aggressor trades by size threshold. */
+/** Filter + cluster aggressor trades by size threshold – real ticks only. */
 
 import type { AggressorTrade } from '@/data/shared'
 import type { DeepTradeBubble, DeepTradesConfig } from './types'
@@ -32,6 +32,7 @@ interface ClusterAcc {
   timeMs: number
   price: number
   baseQty: number
+  quoteQty: number
   size: number
   aggressor: 'buy' | 'sell'
   count: number
@@ -39,7 +40,7 @@ interface ClusterAcc {
 
 /**
  * Merge consecutive trades within clusterMs at same rounded tick + side.
- * Reduces noise from burst fills.
+ * Anchor time = first fill (earliest) – real event time.
  */
 function clusterTrades(
   trades: AggressorTrade[],
@@ -55,6 +56,7 @@ function clusterTrades(
   for (const t of sorted) {
     const px = roundToTick(t.price, tick)
     const size = tradeSize(t, unit)
+    const quote = t.qty * t.price
     const last = out[out.length - 1]
     if (
       last &&
@@ -63,16 +65,16 @@ function clusterTrades(
       t.time - last.timeMs <= clusterMs
     ) {
       last.baseQty += t.qty
+      last.quoteQty += quote
       last.size += size
       last.count += 1
-      // keep earliest time as bubble anchor; update price to volume-weighted-ish last
-      last.price = px
     } else {
       out.push({
         id: t.id,
         timeMs: t.time,
         price: px,
         baseQty: t.qty,
+        quoteQty: quote,
         size,
         aggressor: t.aggressor,
         count: 1,
@@ -103,6 +105,7 @@ export function filterDeepTrades(
       price: c.price,
       qty: c.size,
       baseQty: c.baseQty,
+      quoteQty: c.quoteQty,
       aggressor: c.aggressor,
       outcome: 'pending',
       clusterCount: c.count,
