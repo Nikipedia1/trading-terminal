@@ -15,6 +15,7 @@ import {
   generateWorkspaceId,
 } from './id'
 import type { WorkspaceDocument } from './types'
+import { WORKSPACE_TEMPLATES, applyTemplate } from './templates'
 
 export function WorkspaceMenu() {
   const [open, setOpen] = useState(false)
@@ -39,6 +40,11 @@ export function WorkspaceMenu() {
   const flash = (msg: string) => {
     setStatus(msg)
     window.setTimeout(() => setStatus(''), 4500)
+  }
+
+  const onTemplate = (tid: string) => {
+    const r = applyTemplate(tid)
+    flash(r.ok ? 'Template applied' : r.error)
   }
 
   const onSave = async () => {
@@ -146,7 +152,7 @@ export function WorkspaceMenu() {
           </label>
 
           <label className="block text-[11px] text-[#848e9c]">
-            Id (token segreto)
+            Id (secret token)
             <input
               className="mt-0.5 w-full bg-[#12161c] border border-[#2b3139] rounded px-2 py-1 text-[11px] font-mono text-[#eaecef]"
               value={id}
@@ -213,13 +219,30 @@ export function WorkspaceMenu() {
             }}
           />
 
+          <div className="px-0 py-1 border-t border-[#2b3139] mt-1">
+            <div className="text-[10px] text-[#5e6673] uppercase mb-1">Templates</div>
+            <div className="flex flex-wrap gap-1">
+              {WORKSPACE_TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  className="px-1.5 py-0.5 rounded border border-[#2b3139] text-[10px] text-[#eaecef] hover:border-[#f0b90b]/40"
+                  title={tpl.description}
+                  onClick={() => onTemplate(tpl.id)}
+                >
+                  {tpl.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {status && (
             <p className="text-[10px] text-[#f0b90b] leading-snug">{status}</p>
           )}
 
           <p className="text-[9px] text-[#5e6673] leading-snug">
-            Salva: griglia, simboli, orderflow, drawings, indicatori, stile. Id =
-            token: non condividerlo.
+            Saves: grid, symbols, orderflow, drawings, indicators, style. Drawings also
+            persist per symbol in localStorage and reload with workspace.
           </p>
         </div>
       )}
