@@ -3,17 +3,29 @@
  */
 
 import { create } from 'zustand'
-import type { Drawing, DrawingTool, DrawingsExport } from './types'
+import type {
+  Drawing,
+  DrawingTool,
+  DrawingsExport,
+  LineStyleKind,
+  LineEndKind,
+} from './types'
 import { drawingsStorageKey } from './types'
 
 interface DrawingState {
   activeTool: DrawingTool
   activeColor: string
+  activeLineWidth: number
+  activeLineStyle: LineStyleKind
+  activeLineEnd: LineEndKind
   byPanelSymbol: Record<string, Record<string, Drawing[]>>
   selectedId: string | null
 
   setActiveTool: (tool: DrawingTool) => void
   setActiveColor: (color: string) => void
+  setActiveLineWidth: (w: number) => void
+  setActiveLineStyle: (s: LineStyleKind) => void
+  setActiveLineEnd: (e: LineEndKind) => void
   setSelectedId: (id: string | null) => void
 
   getDrawings: (panelId: string, symbol: string) => Drawing[]
@@ -48,19 +60,23 @@ function load(panelId: string, symbol: string): Drawing[] {
 }
 
 export const useDrawingStore = create<DrawingState>((set, get) => ({
-  // Default: pan so user can move the chart without switching tools
   activeTool: 'pan',
   activeColor: '#1e90ff',
+  activeLineWidth: 1.5,
+  activeLineStyle: 'solid',
+  activeLineEnd: 'none',
   byPanelSymbol: {},
   selectedId: null,
 
   setActiveTool: (tool) =>
     set({
       activeTool: tool,
-      // leaving select mode clears selection highlight noise when panning
       selectedId: tool === 'cursor' ? get().selectedId : null,
     }),
   setActiveColor: (color) => set({ activeColor: color }),
+  setActiveLineWidth: (w) => set({ activeLineWidth: w }),
+  setActiveLineStyle: (s) => set({ activeLineStyle: s }),
+  setActiveLineEnd: (e) => set({ activeLineEnd: e }),
   setSelectedId: (id) => set({ selectedId: id }),
 
   getDrawings: (panelId, symbol) => {
