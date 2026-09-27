@@ -5,7 +5,7 @@ export type Interval =
   | '1h' | '2h' | '4h' | '6h' | '8h' | '12h'
   | '1d' | '3d' | '1w' | '1M'
 
-export type ExchangeId = 'binance' | 'kucoin'
+export type ExchangeId = 'binance' | 'binance_futures' | 'kucoin'
 
 export interface Candle {
   time: number          // unix seconds (Lightweight Charts expects this)
@@ -80,4 +80,42 @@ export interface GridLayoutItem {
   h: number
   minW?: number
   minH?: number
+}
+
+/** Binance USDT-M liquidation (forceOrder) – public stream */
+export interface LiquidationEvent {
+  exchange: ExchangeId
+  symbol: string
+  /** sell = long liquidated, buy = short liquidated */
+  side: 'buy' | 'sell'
+  price: number
+  qty: number
+  /** Average fill price if provided */
+  averagePrice: number
+  time: number
+  orderStatus?: string
+}
+
+export interface MarkPriceTick {
+  exchange: ExchangeId
+  symbol: string
+  markPrice: number
+  indexPrice: number
+  fundingRate: number
+  nextFundingTime: number
+  time: number
+}
+
+export interface OpenInterestSnapshot {
+  exchange: ExchangeId
+  symbol: string
+  openInterest: number
+  time: number
+}
+
+export interface FundingRateRow {
+  symbol: string
+  fundingRate: number
+  fundingTime: number
+  markPrice?: number
 }

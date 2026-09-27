@@ -59,11 +59,22 @@ export const PUBLIC_API_LIMITS = {
     restWeightPerMinute: 1200,
     klinesMaxLimit: 1000,
     wsMaxStreamsPerConnection: 1024,
-    wsMaxIncomingMsgPerSecond: 5,
     notes: [
       'REST weight budget shared per IP (~1200/min). Heavy multi-panel = risk of 429.',
       'Invalid symbol → HTTP 400; do not invent candles.',
       'WS disconnects are normal; client reconnects with backoff.',
+    ],
+  },
+  binance_futures: {
+    restWeightPerMinute: 2400,
+    klinesMaxLimit: 1500,
+    wsCombinedRecommended: true,
+    notes: [
+      'USDT-M: fapi.binance.com + fstream.binance.com – public, no key.',
+      'forceOrder = liquidations; markPrice includes funding.',
+      'openInterest / fundingRate are REST – poll gently (e.g. 15–60s).',
+      'Many symbols in one browser share IP weight → 429 possible; surface error, no mocks.',
+      'Not institutional proprietary data – public market microstructure only.',
     ],
   },
   kucoin: {
