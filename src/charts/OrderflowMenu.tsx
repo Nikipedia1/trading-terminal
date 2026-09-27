@@ -165,7 +165,7 @@ export function OrderflowMenu({
 
           <Row label="Deep Print" on={state.print} onToggle={onPrintToggle}>
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Footprint SELL|PX|BUY|Δ · imbalance + stacked (≥3)
+              SELL|PX|BUY|Δ · buy% + sell% live · imbalance + stacked (≥3)
             </p>
           </Row>
 
@@ -261,7 +261,7 @@ export function OrderflowMenu({
               </select>
             </div>
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              POC / VAH / VAL / LVN full-width · {SESSION_NOTE}
+              Barre split buy (verde) / sell (viola) · buy%+sell% live · POC/VAH/VAL/LVN · {SESSION_NOTE}
             </p>
           </Row>
 
