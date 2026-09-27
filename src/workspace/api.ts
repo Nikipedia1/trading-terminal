@@ -1,8 +1,8 @@
 /**
  * Workspace persistence:
  *  1. Always write/read localStorage (works offline, €0)
- *  2. If VITE_WORKSPACE_API is set (or same-origin /api after Pages deploy),
- *     also sync to Cloudflare KV via Pages Function
+ *  2. Same-origin /api/workspace/:id → Cloudflare KV (Pages Function)
+ * Auth: workspace id is the capability token (stored in localStorage).
  */
 
 import type {
@@ -23,7 +23,6 @@ const LOCAL_PREFIX = 'tt_workspace_doc:'
 function apiBase(): string {
   const env = import.meta.env.VITE_WORKSPACE_API as string | undefined
   if (env && env.trim()) return env.replace(/\/$/, '')
-  // Same origin after Pages deploy (Functions live under /api)
   return ''
 }
 
@@ -55,7 +54,11 @@ async function cloudGet(id: string): Promise<WorkspaceDocument | null> {
   const base = apiBase()
   const url = `${base}/api/workspace/${encodeURIComponent(id)}`
   try {
-    const res = await fetch(url, { method: 'GET', credentials: 'omit' })
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'omit',
+      headers: { 'X-Workspace-Token': id },
+    })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`cloud GET ${res.status}`)
     const doc = (await res.json()) as WorkspaceDocument
@@ -73,7 +76,10 @@ async function cloudPut(doc: WorkspaceDocument): Promise<boolean> {
   try {
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Workspace-Token': doc.id,
+      },
       body: JSON.stringify(doc),
       credentials: 'omit',
     })
@@ -88,14 +94,11 @@ async function cloudPut(doc: WorkspaceDocument): Promise<boolean> {
   }
 }
 
-/** Whether cloud endpoint is expected (Pages deploy or explicit env). */
 export function cloudEnabled(): boolean {
   if (import.meta.env.VITE_WORKSPACE_API) return true
-  // On pages.dev / custom domain, same-origin /api works after deploy
   if (typeof window !== 'undefined') {
     const h = window.location.hostname
     if (h.endsWith('.pages.dev') || h === 'localhost' || h === '127.0.0.1') {
-      // localhost only if pages dev proxy is up – still try, fall back local
       return true
     }
   }
@@ -120,6 +123,7 @@ export async function saveWorkspace(
     layout: partial.layout,
     indicators: partial.indicators,
     chartStyle: partial.chartStyle,
+    orderflow: partial.orderflow,
     drawings: partial.drawings,
   }
 
@@ -142,7 +146,7 @@ export async function loadWorkspace(
   if (cloudEnabled()) {
     const cloud = await cloudGet(wid)
     if (cloud) {
-      saveLocal(cloud) // mirror
+      saveLocal(cloud)
       if (cloud.name) setWorkspaceName(cloud.name)
       return { ok: true, source: 'cloud', doc: cloud }
     }
@@ -154,7 +158,6 @@ export async function loadWorkspace(
   return { ok: false, error: 'no workspace found (local or cloud)' }
 }
 
-/** Download JSON file to disk (always free, no cloud). */
 export function exportWorkspaceFile(doc: WorkspaceDocument): void {
   const blob = new Blob([JSON.stringify(doc, null, 2)], {
     type: 'application/json',
