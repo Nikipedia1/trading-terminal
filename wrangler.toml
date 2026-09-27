@@ -1,19 +1,10 @@
-# Cloudflare Pages
-# Deploy via Git integration (dashboard) or: npm run deploy:cf
-#
-# KV binding: do NOT put fake ids here.
-# After first successful deploy, bind KV from the dashboard:
-#   Workers & Pages → trading-terminal → Settings → Functions → Bindings
-#   Add binding: Variable name WORKSPACE_KV → your KV namespace
-#
-# Optional later (CLI only): uncomment and paste real hex ids from
-#   npx wrangler kv namespace create WORKSPACE_KV
-#
-# [[kv_namespaces]]
-# binding = "WORKSPACE_KV"
-# id = "your_real_hex_id"
-# preview_id = "your_real_preview_hex_id"
+# Cloudflare Pages + KV workspace
+# Namespace: WORKSPACE_KV
 
 name = "trading-terminal"
 compatibility_date = "2024-11-01"
 pages_build_output_dir = "dist"
+
+[[kv_namespaces]]
+binding = "WORKSPACE_KV"
+id = "cb0bf5a156e541f3a771578c0c117678"
