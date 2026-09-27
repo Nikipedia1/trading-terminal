@@ -21,19 +21,28 @@ export interface DeepTradesConfig {
   showLabels?: boolean
   /** Bars ahead used to confirm effective/trapped (1–5) */
   confirmBars?: number
+  /**
+   * Keep at most N largest bubbles per candle bar (0 = no per-candle cap).
+   * Ensures coverage across the chart instead of only a few mega-prints.
+   */
+  maxPerCandle?: number
 }
 
-/** Defaults tuned for BTC-like pairs: notional (USDT) + top 5% prints */
+/**
+ * Defaults: show prints across many candles (p70 USDT),
+ * keep top 2 clusters per bar so history is populated.
+ */
 export const DEFAULT_DEEP_TRADES_CONFIG: DeepTradesConfig = {
   mode: 'percentile',
-  fixedMin: 50_000, // USDT notional if sizeUnit=quote
-  percentile: 95,
-  lookback: 800,
+  fixedMin: 5_000,
+  percentile: 70,
+  lookback: 1500,
   sizeUnit: 'quote',
-  clusterMs: 350,
+  clusterMs: 250,
   onlyEffective: false,
   showLabels: true,
-  confirmBars: 2,
+  confirmBars: 1,
+  maxPerCandle: 2,
 }
 
 export interface DeepTradeBubble {
