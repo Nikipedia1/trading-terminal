@@ -303,7 +303,8 @@ function SidePanel() {
           <button
             key={t.id}
             type="button"
-            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider ${\n              tab === t.id
+            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider ${
+              tab === t.id
                 ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]'
                 : 'text-terminal-muted hover:text-terminal-text'
             }`}
