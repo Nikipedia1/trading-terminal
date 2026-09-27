@@ -1,23 +1,33 @@
 /**
- * Drawing toolbar – Pan | Sel | draw tools | edit actions.
+ * Drawing toolbar – Pan | Sel | all draw tools | style (color, width, dash, ends) | edit.
  */
 
 import { useRef } from 'react'
 import { useDrawingStore } from './drawingStore'
-import type { DrawingTool } from './types'
+import type { DrawingTool, LineStyleKind, LineEndKind } from './types'
 
 const DRAW_TOOLS: { id: DrawingTool; label: string; title: string }[] = [
-  { id: 'trendline', label: '／', title: 'Trendline (2 clicks)' },
-  { id: 'horizontal', label: '─', title: 'Horizontal line' },
-  { id: 'vertical', label: '│', title: 'Vertical line' },
-  { id: 'rectangle', label: '▭', title: 'Rectangle (2 clicks)' },
-  { id: 'channel', label: '≡', title: 'Parallel channel (3 clicks)' },
-  { id: 'fib_retracement', label: 'Fib', title: 'Fibonacci retracement (2 clicks)' },
-  { id: 'fib_extension', label: 'Ext', title: 'Fibonacci extension (3 clicks)' },
-  { id: 'text', label: 'T', title: 'Text annotation' },
+  { id: 'trendline', label: '／', title: 'Trendline (2 click)' },
+  { id: 'ray', label: '↗', title: 'Ray – estende a destra (2 click)' },
+  { id: 'arrow', label: '→', title: 'Freccia (2 click)' },
+  { id: 'horizontal', label: '─', title: 'Orizzontale' },
+  { id: 'vertical', label: '│', title: 'Verticale' },
+  { id: 'crossline', label: '+', title: 'Croce H+V' },
+  { id: 'rectangle', label: '▭', title: 'Rettangolo (2 click)' },
+  { id: 'triangle', label: '△', title: 'Triangolo (3 click)' },
+  { id: 'ellipse', label: '◯', title: 'Ellisse (2 click)' },
+  { id: 'channel', label: '≡', title: 'Canale parallelo (3 click)' },
+  { id: 'fib_retracement', label: 'Fib', title: 'Fibonacci retracement' },
+  { id: 'fib_extension', label: 'Ext', title: 'Fibonacci extension' },
+  { id: 'measure', label: '📐', title: 'Misura Δprice / % / tempo' },
+  { id: 'long_position', label: 'L↑', title: 'Long: entry → stop → target' },
+  { id: 'short_position', label: 'S↓', title: 'Short: entry → stop → target' },
+  { id: 'polyline', label: '∠', title: 'Polyline – doppio click o Enter per chiudere' },
+  { id: 'text', label: 'T', title: 'Testo' },
 ]
 
-const COLORS = ['#1e90ff', '#0ecb81', '#f6465d', '#f0b90b', '#eaecef', '#a855f7']
+const COLORS = ['#1e90ff', '#0ecb81', '#f6465d', '#f0b90b', '#eaecef', '#a855f7', '#ff6b35']
+const WIDTHS = [1, 1.5, 2, 3, 4]
 
 interface DrawingToolbarProps {
   panelId: string
@@ -27,8 +37,14 @@ interface DrawingToolbarProps {
 export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
   const activeTool = useDrawingStore((s) => s.activeTool)
   const activeColor = useDrawingStore((s) => s.activeColor)
+  const activeLineWidth = useDrawingStore((s) => s.activeLineWidth)
+  const activeLineStyle = useDrawingStore((s) => s.activeLineStyle)
+  const activeLineEnd = useDrawingStore((s) => s.activeLineEnd)
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
   const setActiveColor = useDrawingStore((s) => s.setActiveColor)
+  const setActiveLineWidth = useDrawingStore((s) => s.setActiveLineWidth)
+  const setActiveLineStyle = useDrawingStore((s) => s.setActiveLineStyle)
+  const setActiveLineEnd = useDrawingStore((s) => s.setActiveLineEnd)
   const clearDrawings = useDrawingStore((s) => s.clearDrawings)
   const exportJson = useDrawingStore((s) => s.exportJson)
   const importJson = useDrawingStore((s) => s.importJson)
@@ -47,13 +63,38 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
   })
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const applyColor = (color: string) => {
-    setActiveColor(color)
+  const patchStyle = (partial: Record<string, unknown>) => {
     if (selectedId && selectedDrawing) {
       updateDrawing(panelId, symbol, selectedId, {
-        style: { ...selectedDrawing.style, color },
+        style: { ...selectedDrawing.style, ...partial },
       })
     }
+  }
+
+  const applyColor = (color: string) => {
+    setActiveColor(color)
+    patchStyle({ color })
+  }
+
+  const applyWidth = (w: number) => {
+    setActiveLineWidth(w)
+    patchStyle({ lineWidth: w })
+  }
+
+  const applyLineStyle = (s: LineStyleKind) => {
+    setActiveLineStyle(s)
+    patchStyle({ lineStyle: s, lineDash: undefined })
+  }
+
+  const applyLineEnd = (e: LineEndKind) => {
+    setActiveLineEnd(e)
+    patchStyle({ lineEnd: e })
+  }
+
+  const toggleExtend = (side: 'extendLeft' | 'extendRight') => {
+    if (!selectedDrawing) return
+    const cur = !!(selectedDrawing.style as any)[side]
+    patchStyle({ [side]: !cur })
   }
 
   const onExport = () => {
@@ -93,6 +134,13 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       ? 'bg-terminal-blue text-white border-terminal-blue'
       : 'text-terminal-text border-terminal-border hover:bg-terminal-hover'
 
+  const canExtend =
+    selectedDrawing &&
+    (selectedDrawing.tool === 'trendline' ||
+      selectedDrawing.tool === 'ray' ||
+      selectedDrawing.tool === 'arrow' ||
+      selectedDrawing.tool === 'horizontal')
+
   return (
     <div
       className="flex items-center gap-1 px-2 py-1 h-full flex-wrap"
@@ -101,7 +149,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
     >
       <button
         type="button"
-        title="Pan – trascina libero (orizzontale + verticale). Doppio clic = reset auto-scale. Zoom rotella. Scorciatoia: H"
+        title="Pan (H)"
         onClick={() => setActiveTool('pan')}
         className={`px-2 py-0.5 text-xs rounded border font-medium ${modeBtn(activeTool === 'pan')}`}
       >
@@ -110,7 +158,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
 
       <button
         type="button"
-        title="Selezione disegni – clicca per selezionare/modificare (scorciatoia: V)"
+        title="Selezione (V)"
         onClick={() => setActiveTool('cursor')}
         className={`px-2 py-0.5 text-xs rounded border font-medium ${modeBtn(activeTool === 'cursor')}`}
       >
@@ -137,11 +185,12 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
 
       <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
 
+      {/* Color */}
       {COLORS.map((c) => (
         <button
           key={c}
           type="button"
-          title={selectedId ? `Ricolora selezionato → ${c}` : c}
+          title={c}
           onClick={() => applyColor(c)}
           className={`w-4 h-4 rounded-sm border-2 shrink-0 ${
             activeColor === c ? 'border-white' : 'border-terminal-border'
@@ -150,17 +199,84 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
         />
       ))}
 
+      {/* Line width */}
+      <select
+        className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
+        title="Spessore linea"
+        value={activeLineWidth}
+        onChange={(e) => applyWidth(Number(e.target.value))}
+      >
+        {WIDTHS.map((w) => (
+          <option key={w} value={w}>
+            {w}px
+          </option>
+        ))}
+      </select>
+
+      {/* Line style */}
+      <select
+        className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
+        title="Tipo linea"
+        value={activeLineStyle}
+        onChange={(e) => applyLineStyle(e.target.value as LineStyleKind)}
+      >
+        <option value="solid">Solid</option>
+        <option value="dashed">Dashed</option>
+        <option value="dotted">Dotted</option>
+      </select>
+
+      {/* Line end */}
+      <select
+        className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
+        title="Estremità linea"
+        value={activeLineEnd}
+        onChange={(e) => applyLineEnd(e.target.value as LineEndKind)}
+      >
+        <option value="none">End: none</option>
+        <option value="arrow">End: arrow</option>
+        <option value="circle">End: circle</option>
+      </select>
+
+      {canExtend && (
+        <>
+          <button
+            type="button"
+            title="Estendi a sinistra"
+            onClick={() => toggleExtend('extendLeft')}
+            className={`px-1.5 py-0.5 text-xxs rounded border ${
+              selectedDrawing?.style.extendLeft
+                ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
+                : 'border-terminal-border text-terminal-muted'
+            }`}
+          >
+            ←ext
+          </button>
+          <button
+            type="button"
+            title="Estendi a destra"
+            onClick={() => toggleExtend('extendRight')}
+            className={`px-1.5 py-0.5 text-xxs rounded border ${
+              selectedDrawing?.style.extendRight
+                ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
+                : 'border-terminal-border text-terminal-muted'
+            }`}
+          >
+            ext→
+          </button>
+        </>
+      )}
+
       <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
 
       {selectedId && (
         <>
-          <span className="text-xxs text-terminal-blue shrink-0">selezionato</span>
+          <span className="text-xxs text-terminal-blue shrink-0">sel</span>
           {selectedDrawing?.tool === 'text' && (
             <button
               type="button"
               title="Modifica testo"
               onClick={onEditText}
-              className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
+              className="px-1.5 py-0.5 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
             >
               Edit text
             </button>
@@ -179,7 +295,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
             onClick={() => setSelectedId(null)}
             className="px-1.5 py-0.5 text-xxs text-terminal-muted border border-terminal-border rounded hover:bg-terminal-hover"
           >
-            Deselect
+            ×
           </button>
           <span className="w-px h-4 bg-terminal-border mx-0.5 shrink-0" />
         </>
@@ -189,7 +305,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
         type="button"
         title="Export JSON"
         onClick={onExport}
-        className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
+        className="px-1.5 py-0.5 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
       >
         Export
       </button>
@@ -197,7 +313,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
         type="button"
         title="Import JSON"
         onClick={() => fileRef.current?.click()}
-        className="px-1.5 py-0.5 text-xxs text-terminal-text border border-terminal-border rounded hover:bg-terminal-hover"
+        className="px-1.5 py-0.5 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
       >
         Import
       </button>
@@ -211,7 +327,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
 
       <button
         type="button"
-        title="Cancella tutti i disegni"
+        title="Cancella tutti"
         onClick={() => {
           if (drawingCount && confirm(`Clear ${drawingCount} drawing(s)?`)) {
             clearDrawings(panelId, symbol)
@@ -223,9 +339,7 @@ export function DrawingToolbar({ panelId, symbol }: DrawingToolbarProps) {
       </button>
 
       {drawingCount > 0 && (
-        <span className="text-xxs text-terminal-muted ml-auto pr-1">
-          {drawingCount} obj
-        </span>
+        <span className="text-xxs text-terminal-muted ml-auto pr-1">{drawingCount} obj</span>
       )}
     </div>
   )
