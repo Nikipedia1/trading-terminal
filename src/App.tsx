@@ -7,6 +7,7 @@ import { PaperTradingPanel } from '@/trading/paper'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import type { Interval } from '@/types'
+import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -40,7 +41,6 @@ function ErrorBanner() {
   )
 }
 
-/** Normalize free-typed symbol to exchange-style pair (A-Z0-9 only, upper). */
 function normalizeSymbol(raw: string): string {
   return raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
@@ -60,7 +60,6 @@ function Controls() {
   const updatePanel = useLayoutStore((s) => s.updatePanel)
 
   const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
-  // Primary panel is source of truth for top-bar display (synced with chart header)
   const symbol = primary?.symbol ?? marketSymbol
   const interval = primary?.interval ?? marketInterval
 
@@ -87,7 +86,6 @@ function Controls() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel">
-      {/* Instrument – same presets as ChartPanel */}
       <input
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm w-28 font-mono-nums"
         value={symbolDraft}
@@ -130,7 +128,6 @@ function Controls() {
         ))}
       </select>
 
-      {/* Timeframe – full list, same as ChartPanel */}
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
         value={interval}
@@ -295,7 +292,6 @@ function TickerBar() {
   )
 }
 
-/** Large trades for primary panel symbol/interval */
 function PrimaryLargeTrades() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
@@ -359,7 +355,6 @@ function SidePanel() {
   )
 }
 
-/** Keep marketStore aligned with primary chart panel */
 function usePrimarySync() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
@@ -408,7 +403,12 @@ export default function App() {
   const startLive = useMarketStore((s) => s.startLive)
 
   useEffect(() => {
-    loadHistorical().then(() => startLive())
+    // Restore last workspace (local or cloud) before live feeds
+    void loadWorkspace().then((res) => {
+      if (res.ok) applyWorkspace(res.doc)
+    }).finally(() => {
+      loadHistorical().then(() => startLive())
+    })
   }, [])
 
   usePrimarySync()
@@ -417,7 +417,12 @@ export default function App() {
     <div className="h-full flex flex-col">
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
-        <span className="text-xxs text-terminal-muted">Binance · KuCoin · Paper · Real-time · No mocks</span>
+        <div className="flex items-center gap-3">
+          <WorkspaceMenu />
+          <span className="text-xxs text-terminal-muted">
+            Binance · KuCoin · Paper · Real-time · No mocks
+          </span>
+        </div>
       </header>
 
       <ErrorBanner />
