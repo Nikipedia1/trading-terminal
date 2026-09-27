@@ -103,12 +103,22 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 }))
 
-/** Sync bus for optional cross-panel crosshair + time range */
+/** Sync bus for optional cross-panel crosshair + time range + orderflow highlight */
 type SyncListener = (sourceId: string, payload: SyncPayload) => void
 
 export type SyncPayload =
   | { type: 'timeRange'; from: number; to: number }
-  | { type: 'crosshair'; time: number | null; price: number | null }
+  | {
+      type: 'crosshair'
+      time: number | null
+      price: number | null
+      /** Optional orderflow bubble under cursor (mirrored to synced panels) */
+      highlight?: {
+        timeSec: number
+        price: number
+        aggressor?: 'buy' | 'sell'
+      } | null
+    }
 
 const syncListeners = new Map<string, Set<SyncListener>>()
 
@@ -130,4 +140,21 @@ export function publishSync(groupId: string, sourceId: string, payload: SyncPayl
       /* ignore listener errors */
     }
   }
+}
+
+/** Last crosshair highlight per sync group (for overlays that paint on demand) */
+const lastHighlight = new Map<
+  string,
+  { timeSec: number; price: number; aggressor?: 'buy' | 'sell' } | null
+>()
+
+export function setSyncHighlight(
+  groupId: string,
+  h: { timeSec: number; price: number; aggressor?: 'buy' | 'sell' } | null
+) {
+  lastHighlight.set(groupId, h)
+}
+
+export function getSyncHighlight(groupId: string) {
+  return lastHighlight.get(groupId) ?? null
 }
