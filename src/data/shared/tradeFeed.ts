@@ -14,7 +14,9 @@ import {
 } from './types'
 import {
   recordEventLatency,
+  recordTick,
   recordFeedStatus,
+  recordFeedError,
 } from './feedHealth'
 
 interface TradeFeedEvents {
@@ -60,6 +62,7 @@ function ensureConnected(exchange: ExchangeId, symbol: string, slot: Slot) {
     sym,
     (trade) => {
       recordEventLatency(exchange, sym, trade.time)
+      recordTick(exchange, sym)
       const payload: AggressorTrade = {
         id: trade.id,
         exchange,
@@ -77,6 +80,7 @@ function ensureConnected(exchange: ExchangeId, symbol: string, slot: Slot) {
       slot.lastStatus = { status: 'error', detail: err.message }
       slot.bus.emit('status', slot.lastStatus)
       recordFeedStatus(exchange, sym, 'error')
+      recordFeedError(exchange, sym, err.code || 'TRADE', err.message)
     },
     (status, detail) => {
       slot.lastStatus = { status, detail }
