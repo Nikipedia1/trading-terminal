@@ -1,6 +1,6 @@
 /**
  * Deep Trades – real aggTrade bubbles, anti-pellicola.
- * Dense coverage · robust coordinate mapping (fixes 0/N drawn bug).
+ * Dense coverage · robust coordinates · no edge-clipped monsters.
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -30,7 +30,7 @@ interface DeepTradesOverlayProps {
 }
 
 const R_MIN = 5
-const R_MAX = 18
+const R_MAX = 16
 
 function radiusForQty(qty: number, maxQty: number): number {
   if (maxQty <= 0) return R_MIN
@@ -51,10 +51,6 @@ function formatSize(b: DeepTradeBubble, unit: 'base' | 'quote'): string {
   return q.toFixed(3)
 }
 
-/**
- * Map trade time → x pixel. Tries exact time, then bar open, then nearest candle.
- * Always uses integer seconds for LWC native API.
- */
 function tradeToX(
   bridge: CoordinateBridge,
   timeSec: number,
@@ -66,12 +62,10 @@ function tradeToX(
   let x = bridge.timeToCoordinate(t as any)
   if (x !== null && Number.isFinite(x)) return x
 
-  // Snap to bar open of the trade's candle
   const barOpen = Math.floor(t / intervalSec) * intervalSec
   x = bridge.timeToCoordinate(barOpen as any)
   if (x !== null && Number.isFinite(x)) return x
 
-  // Nearest candle open by time
   if (candles.length > 0) {
     let best = candles[0]
     let bestDist = Math.abs(candles[0].time - t)
@@ -111,7 +105,6 @@ export function DeepTradesOverlay({
     return retainTradeBuffer(exchange, symbol)
   }, [enabled, exchange, symbol])
 
-  // Keep bridge dataTimes in sync so extrapolation always works
   useEffect(() => {
     if (!bridge || candles.length === 0) return
     bridge.setDataTimes(
@@ -163,7 +156,6 @@ export function DeepTradesOverlay({
       return
     }
 
-    // Seed dataTimes every rebuild (defensive)
     if (bridge && candles.length > 0) {
       bridge.setDataTimes(
         candles.map((c) => c.time),
@@ -244,6 +236,12 @@ export function DeepTradesOverlay({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
 
+    // Hard clip: nothing can paint outside the chart pane
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, 0, w, h)
+    ctx.clip()
+
     const list = bubblesRef.current
     const maxQty = maxQtyRef.current
     const showLabels = config.showLabels !== false
@@ -253,6 +251,7 @@ export function DeepTradesOverlay({
     let nTrap = 0
     let nPend = 0
     let skippedCoord = 0
+    let skippedEdge = 0
 
     const ordered = [...list].sort((a, b) => a.qty - b.qty)
 
@@ -265,9 +264,12 @@ export function DeepTradesOverlay({
       }
 
       const r = radiusForQty(b.qty, maxQty)
-
-      // Soft cull: allow slight edge overflow, skip only far off-screen
-      if (x < -r || x > w + r || y < -r || y > h + r) continue
+      // Glow extends to ~1.8r – require room so nothing clips on left/right
+      const pad = r * 1.85 + 2
+      if (x < pad || x > w - pad || y < r + 2 || y > h - r - 2) {
+        skippedEdge += 1
+        continue
+      }
 
       const buy = b.aggressor === 'buy'
       const outcome = b.outcome
@@ -281,7 +283,7 @@ export function DeepTradesOverlay({
       if (outcome === 'effective') {
         fillA = 0.8
         strokeA = 1
-        glowA = 0.2
+        glowA = 0.18
         lineW = 1.75
         nEff += 1
       } else if (outcome === 'trapped') {
@@ -291,7 +293,6 @@ export function DeepTradesOverlay({
         lineW = 1.2
         nTrap += 1
       } else {
-        // pending – still clearly visible
         fillA = 0.55
         strokeA = 0.85
         glowA = 0.1
@@ -363,7 +364,7 @@ export function DeepTradesOverlay({
         ctx.textBaseline = 'middle'
         const tw = ctx.measureText(label).width
         const ly = y + r + 8
-        if (ly + 6 < h && ly > 0) {
+        if (ly + 6 < h && ly > 0 && x - tw / 2 > 4 && x + tw / 2 < w - 4) {
           ctx.fillStyle = 'rgba(11,14,17,0.6)'
           ctx.fillRect(x - tw / 2 - 3, ly - 6, tw + 6, 12)
           ctx.fillStyle = `rgba(${baseRgb},0.95)`
@@ -376,7 +377,8 @@ export function DeepTradesOverlay({
       drawn += 1
     }
 
-    // HUD always visible when tool is on
+    ctx.restore()
+
     {
       const unit = config.sizeUnit === 'quote' ? 'USDT' : 'base'
       const thr = thresholdRef.current
@@ -394,8 +396,7 @@ export function DeepTradesOverlay({
       const hud =
         buf === 0 && list.length === 0
           ? `Deep Trades · buffer 0 tick – attendi stream live…`
-          : `Trades ${drawn}/${list.length} · buf ${buf} · eff ${nEff} · trap ${nTrap} · pend ${nPend} · ${thrLabel} · ${unit}` +
-            (skippedCoord > 0 ? ` · skipCoord ${skippedCoord}` : '')
+          : `Trades ${drawn}/${list.length} · buf ${buf} · eff ${nEff} · trap ${nTrap} · pend ${nPend} · ${thrLabel} · ${unit}`
       const hw = ctx.measureText(hud).width
       ctx.fillRect(6, 4, hw + 10, 16)
       ctx.fillStyle =
