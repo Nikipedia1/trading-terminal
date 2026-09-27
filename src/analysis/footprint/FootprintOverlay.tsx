@@ -1,6 +1,6 @@
 /**
  * Footprint overlay – cells + bar delta/POC/unfinished auction.
- * Real aggressor trades only. See FORMULAS.md.
+ * Real aggressor trades only. LOD when zoomed out. Layer L2.
  */
 
 import { useEffect, useRef, useCallback } from 'react'
@@ -11,6 +11,8 @@ import { intervalToSeconds } from '@/analysis/deepPrint/interval'
 import { buildFootprintCells, buildFootprintBars } from './compute'
 import type { FootprintConfig } from './types'
 import { DEFAULT_FOOTPRINT_CONFIG, FOOTPRINT_NOTE } from './types'
+import { lodFromVisibleBars, lodStride } from '@/analysis/lod'
+import { LAYER_Z } from '@/charts/layerStack'
 
 interface FootprintOverlayProps {
   enabled: boolean
@@ -21,6 +23,18 @@ interface FootprintOverlayProps {
   interval: Interval
   candles: Candle[]
   config?: FootprintConfig
+}
+
+function visibleBarCount(bridge: CoordinateBridge, intervalSec: number): number {
+  try {
+    const chart = bridge.getChart()
+    if (!chart) return 80
+    const range = chart.timeScale().getVisibleRange()
+    if (!range || typeof range.from !== 'number' || typeof range.to !== 'number') return 80
+    return Math.max(1, Math.ceil((range.to - range.from) / intervalSec))
+  } catch {
+    return 80
+  }
 }
 
 export function FootprintOverlay({
@@ -62,15 +76,20 @@ export function FootprintOverlay({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, w, h)
 
-    const slice = candles.slice(-config.maxCandles)
+    const sec = intervalToSeconds(interval)
+    const vis = visibleBarCount(bridge, sec)
+    const lod = lodFromVisibleBars(vis)
+
+    // Fewer candles when zoomed out
+    const maxCandles = lod.level === 0 ? config.maxCandles : Math.min(config.maxCandles, lod.level === 1 ? 60 : 30)
+    const slice = lodStride(candles.slice(-maxCandles), lod.barStride)
     if (slice.length === 0) return
 
-    const sec = intervalToSeconds(interval)
     const fromSec = slice[0].time
     const toSec = slice[slice.length - 1].time + sec
     const trades = queryTradesInRange(exchange, symbol, fromSec, toSec)
     const times = slice.map((c) => c.time)
-    const cells = buildFootprintCells(trades, times, interval)
+    let cells = buildFootprintCells(trades, times, interval)
     const bars = buildFootprintBars(cells)
 
     if (cells.length === 0) {
@@ -80,8 +99,17 @@ export function FootprintOverlay({
       return
     }
 
+    // Skip tiny cells more aggressively when LOD high
     const maxCell = Math.max(...cells.map((c) => c.buyQty + c.sellQty), 0.0001)
-    const minQty = maxCell * (config.minCellPct / 100)
+    const minQty =
+      maxCell * (config.minCellPct / 100) * (lod.level === 0 ? 1 : lod.level === 1 ? 1.5 : 2.5)
+
+    // Cap cell paint count
+    if (cells.length > lod.maxItems) {
+      cells = [...cells]
+        .sort((a, b) => b.buyQty + b.sellQty - (a.buyQty + a.sellQty))
+        .slice(0, lod.maxItems)
+    }
 
     for (const cell of cells) {
       const tot = cell.buyQty + cell.sellQty
@@ -90,7 +118,9 @@ export function FootprintOverlay({
       const x0 = bridge.timeToCoordinate(cell.timeSec as any)
       const x1 = bridge.timeToCoordinate((cell.timeSec + sec) as any)
       if (x0 == null) continue
-      const colW = x1 != null ? Math.max(4, Math.abs(x1 - x0) * 0.85) : 8
+      const colW = x1 != null ? Math.max(lod.minCellPx, Math.abs(x1 - x0) * 0.85) : 8
+      if (colW < lod.minCellPx) continue
+
       const y = bridge.priceToCoordinate(cell.price)
       if (y == null || y < -4 || y > h + 4) continue
       const y2 = bridge.priceToCoordinate(cell.price * 1.00008)
@@ -109,8 +139,8 @@ export function FootprintOverlay({
       }
     }
 
-    // Bar metrics: POC mark + unfinished auction flags + delta sign
-    if (config.showBarMetrics) {
+    // Bar metrics only at LOD 0–1
+    if (config.showBarMetrics && lod.level < 2) {
       for (const bar of bars) {
         const x0 = bridge.timeToCoordinate(bar.timeSec as any)
         if (x0 == null) continue
@@ -119,7 +149,7 @@ export function FootprintOverlay({
           ctx.fillStyle = 'rgba(240, 185, 11, 0.9)'
           ctx.fillRect(x0 - 2, yp - 2, 4, 4)
         }
-        if (bar.unfinishedHigh) {
+        if (lod.level === 0 && bar.unfinishedHigh) {
           const y = bridge.priceToCoordinate(
             Math.max(...cells.filter((c) => c.timeSec === bar.timeSec).map((c) => c.price))
           )
@@ -135,7 +165,7 @@ export function FootprintOverlay({
             ctx.fillText('UA↑', x0 + 10, y + 3)
           }
         }
-        if (bar.unfinishedLow) {
+        if (lod.level === 0 && bar.unfinishedLow) {
           const y = bridge.priceToCoordinate(
             Math.min(...cells.filter((c) => c.timeSec === bar.timeSec).map((c) => c.price))
           )
@@ -157,7 +187,7 @@ export function FootprintOverlay({
     ctx.font = '9px sans-serif'
     ctx.fillStyle = 'rgba(132, 142, 156, 0.9)'
     ctx.fillText(
-      `Footprint · ${cells.length} cells · ${bars.length} bars · ${trades.length} ticks`,
+      `Footprint · ${cells.length} cells · LOD${lod.level} · ${bars.length} bars · ${trades.length} ticks`,
       8,
       h - 12
     )
@@ -187,6 +217,10 @@ export function FootprintOverlay({
 
   if (!enabled) return null
   return (
-    <canvas ref={canvasRef} className="absolute inset-0 z-[5] pointer-events-none" aria-hidden />
+    <canvas
+      ref={canvasRef}
+      className={`absolute inset-0 ${LAYER_Z.footprint} pointer-events-none`}
+      aria-hidden
+    />
   )
 }
