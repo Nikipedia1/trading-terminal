@@ -1,9 +1,8 @@
 /**
  * ChartPanel – chart unit with compact Orderflow menu.
- * Full interval list + symbol presets (still accepts free-typed pairs).
+ * Orderflow state lives in orderflowStore (persisted via Workspace).
  */
 
-import { useState } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu, type OrderflowState } from './OrderflowMenu'
@@ -11,14 +10,11 @@ import { IndicatorsMenu } from './IndicatorsMenu'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
+import { useOrderflowStore } from '@/stores/orderflowStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES } from '@/data/exchanges/registry'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
-import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
-import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
-import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
-import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 interface ChartPanelProps {
@@ -36,19 +32,22 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
 
-  const [of, setOf] = useState<OrderflowState>({
-    print: false,
-    delta: false,
-    deltaCfg: DEFAULT_DELTA_CONFIG,
-    profile: false,
-    profileCfg: DEFAULT_PROFILE_CONFIG,
-    trades: false,
-    tradesCfg: DEFAULT_DEEP_TRADES_CONFIG,
-    dom: false,
-    domCfg: DEFAULT_DEEP_DOM_CONFIG,
-    footprint: false,
-    replay: false,
-  })
+  const of = useOrderflowStore((s) => s.get(id))
+  const patchOfStore = useOrderflowStore((s) => s.patch)
+  const setOfStore = useOrderflowStore((s) => s.set)
+
+  const patchOf = (patch: Partial<OrderflowState>) => patchOfStore(id, patch)
+
+  const togglePrint = () => {
+    const next = !of.print
+    if (next) setActiveTool('pan')
+    patchOfStore(id, { print: next })
+  }
+
+  // Ensure panel has an entry so export includes defaults once touched
+  if (!useOrderflowStore.getState().byPanel[id]) {
+    setOfStore(id, of)
+  }
 
   const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
     symbol,
@@ -59,28 +58,20 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const isPrimary = primaryPanelId === id
   const symbolListId = `sym-list-${id}`
 
-  const patchOf = (patch: Partial<OrderflowState>) =>
-    setOf((s) => ({ ...s, ...patch }))
-
-  const togglePrint = () => {
-    setOf((s) => {
-      const next = !s.print
-      if (next) setActiveTool('pan')
-      return { ...s, print: next }
-    })
-  }
-
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
       <div className="panel-drag-handle flex flex-wrap items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
-        {/* Symbol: free type + datalist presets */}
         <input
           className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-[7.5rem] font-mono-nums"
           value={symbol}
           list={symbolListId}
           placeholder="BTCUSDT"
           title="Symbol (type or pick from list)"
-          onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+          onChange={(e) =>
+            updatePanel(id, {
+              symbol: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+            })
+          }
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         />
@@ -92,7 +83,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
           ))}
         </datalist>
 
-        {/* Quick pick popular */}
         <select
           className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs max-w-[5.5rem]"
           title="Quick symbol"
