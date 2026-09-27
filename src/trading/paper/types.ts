@@ -1,33 +1,31 @@
 /**
  * Paper trading types – simulated account only.
  * Prices always come from real market data (never synthetic).
+ * Strictly separate from live execution ledger.
  */
 
 export type PaperSide = 'long' | 'short'
 export type PaperOrderType = 'market' | 'limit'
 export type PaperOrderStatus = 'open' | 'filled' | 'cancelled'
-/** Cross = shared free balance; Isolated = margin locked per position, liquidates alone */
 export type PaperMarginMode = 'cross' | 'isolated'
 
 export interface PaperPosition {
   id: string
   symbol: string
   side: PaperSide
-  /** Position size in base asset */
   qty: number
-  /** Average entry price */
   entryPrice: number
   leverage: number
-  /** Margin locked in USDT */
   margin: number
   marginMode: PaperMarginMode
   openedAt: number
-  /** Last mark used for unrealized PnL */
   markPrice: number
-  /** Optional take-profit price (absolute) */
   takeProfit: number | null
-  /** Optional stop-loss price (absolute) */
   stopLoss: number | null
+  /** Trailing stop distance in % of price (e.g. 0.5 = 0.5%). null = off */
+  trailingPct: number | null
+  /** Peak (long) / trough (short) price since trail armed */
+  trailExtreme: number | null
 }
 
 export interface PaperOrder {
@@ -35,9 +33,7 @@ export interface PaperOrder {
   symbol: string
   side: PaperSide
   type: PaperOrderType
-  /** Limit price (ignored for market) */
   price: number | null
-  /** Size in base asset */
   qty: number
   leverage: number
   marginMode: PaperMarginMode
@@ -47,8 +43,11 @@ export interface PaperOrder {
   fillPrice?: number
   takeProfit: number | null
   stopLoss: number | null
-  /** Advanced Limit: only fill as maker (price passive vs last) */
+  trailingPct?: number | null
   postOnly?: boolean
+  reduceOnly?: boolean
+  /** OCO group id – when one exit fills, cancel siblings */
+  ocoGroupId?: string | null
 }
 
 export interface PaperFill {
@@ -61,13 +60,10 @@ export interface PaperFill {
   leverage: number
   realizedPnl: number
   time: number
-  /** open | close | tp | sl | liquidate */
-  action: 'open' | 'close' | 'tp' | 'sl' | 'liquidate'
+  action: 'open' | 'close' | 'tp' | 'sl' | 'trail' | 'liquidate'
 }
 
 export interface PaperAccount {
-  /** Free USDT balance */
   balance: number
-  /** Starting equity (for ROI display) */
   initialBalance: number
 }

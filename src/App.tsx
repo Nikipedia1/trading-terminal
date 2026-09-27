@@ -4,6 +4,7 @@ import { useLayoutStore } from '@/stores/layoutStore'
 import { PanelGrid } from '@/layout/PanelGrid'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
 import { PaperTradingPanel } from '@/trading/paper'
+import { ExecutionBar, useExecutionHotkeys } from '@/trading'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import type { Interval } from '@/types'
@@ -204,9 +205,6 @@ function TradesTape() {
           ))}
         </tbody>
       </table>
-      {trades.length === 0 && (
-        <div className="p-4 text-terminal-muted text-sm">No live trades yet.</div>
-      )}
     </div>
   )
 }
@@ -269,7 +267,6 @@ function TickerBar() {
         {up ? '+' : ''}
         {ticker.priceChangePercent.toFixed(2)}%
       </span>
-      <span className="text-terminal-muted">24h Vol: {ticker.volume.toFixed(0)}</span>
     </div>
   )
 }
@@ -290,13 +287,13 @@ function PrimaryLargeTrades() {
 type SideTab = 'live' | 'large' | 'book' | 'futures' | 'paper'
 
 function SidePanel() {
-  const [tab, setTab] = useState<SideTab>('live')
+  const [tab, setTab] = useState<SideTab>('paper')
   const tabs: { id: SideTab; label: string }[] = [
-    { id: 'live', label: 'Live' },
+    { id: 'paper', label: 'Trade' },
+    { id: 'live', label: 'Tape' },
     { id: 'large', label: 'Large' },
     { id: 'book', label: 'Book' },
     { id: 'futures', label: 'Futures' },
-    { id: 'paper', label: 'Paper' },
   ]
 
   return (
@@ -306,8 +303,7 @@ function SidePanel() {
           <button
             key={t.id}
             type="button"
-            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider ${
-              tab === t.id
+            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider ${\n              tab === t.id
                 ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]'
                 : 'text-terminal-muted hover:text-terminal-text'
             }`}
@@ -318,11 +314,11 @@ function SidePanel() {
         ))}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
+        {tab === 'paper' && <PaperTradingPanel />}
         {tab === 'live' && <TradesTape />}
         {tab === 'large' && <PrimaryLargeTrades />}
         {tab === 'book' && <OrderBookView />}
         {tab === 'futures' && <FuturesMetricsPanel />}
-        {tab === 'paper' && <PaperTradingPanel />}
       </div>
     </section>
   )
@@ -372,6 +368,8 @@ export default function App() {
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
 
+  useExecutionHotkeys()
+
   useEffect(() => {
     void loadWorkspace()
       .then((res) => {
@@ -391,15 +389,14 @@ export default function App() {
         <div className="flex items-center gap-3">
           <ArchiveMenu />
           <WorkspaceMenu />
-          <span className="text-xxs text-terminal-muted">
-            Binance · Futures · Bybit · OKX · KuCoin · Free public
-          </span>
+          <span className="text-xxs text-terminal-muted">Paper default · Live opt-in</span>
         </div>
       </header>
 
       <ErrorBanner />
       <Controls />
       <TickerBar />
+      <ExecutionBar />
 
       <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden min-h-0">
         <section className="col-span-2 bg-terminal-bg flex flex-col min-h-0 min-w-0">

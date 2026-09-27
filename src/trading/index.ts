@@ -7,7 +7,10 @@ export {
   vaultStore,
   vaultUnlock,
   listVaultMeta,
-  LIVE_NOTES,
+  vaultDelete,
+  setSessionCredentials,
+  clearSessionCredentials,
+  getSessionCredentials,
 } from './credentials/vault'
-// re-export live notes path
-export { LIVE_NOTES as BINANCE_LIVE_NOTES, placeLiveOrder } from './live/binanceSigned'
+export type { LiveVenue, StoredCredentialMeta } from './credentials/vault'
+export { placeLiveOrder, cancelAllLiveOrders, LIVE_NOTES } from './live/binanceSigned'
