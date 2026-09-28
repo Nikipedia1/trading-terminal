@@ -96,8 +96,14 @@ export function PanelGrid({ width }: PanelGridProps) {
   const setLayout = useLayoutStore((s) => s.setLayout)
   const addPanel = useLayoutStore((s) => s.addPanel)
   const addWidget = useLayoutStore((s) => s.addWidget)
+  const reconcileLayout = useLayoutStore((s) => s.reconcileLayout)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Fix orphan widgets (in store but not on grid) after workspace load
+  useEffect(() => {
+    reconcileLayout()
+  }, [reconcileLayout])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -127,7 +133,16 @@ export function PanelGrid({ width }: PanelGridProps) {
 
   const chartMap = useMemo(() => new Map(panels.map((p) => [p.id, p])), [panels])
   const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets])
-  const presentKinds = useMemo(() => new Set(widgets.map((w) => w.kind)), [widgets])
+  const layoutIds = useMemo(() => new Set(layout.map((l) => l.i)), [layout])
+
+  /** Kind is "on desk" only if widget exists AND has a grid cell */
+  const onDeskKinds = useMemo(() => {
+    const set = new Set<WidgetKind>()
+    for (const w of widgets) {
+      if (layoutIds.has(w.id)) set.add(w.kind)
+    }
+    return set
+  }, [widgets, layoutIds])
 
   if (width <= 0) return null
 
@@ -151,28 +166,28 @@ export function PanelGrid({ width }: PanelGridProps) {
           + Panel
         </button>
         {menuOpen && (
-          <div className="absolute right-0 top-full mt-1 min-w-[140px] bg-[#12161c] border border-[#2b3139] rounded shadow-xl py-1 text-xs">
+          <div className="absolute right-0 top-full mt-1 min-w-[140px] bg-[#12161c] border border-[#2b3139] rounded shadow-xl py-1 text-xs z-30">
             {ADDABLE.map((k) => {
-              const disabled = presentKinds.has(k)
+              const onDesk = onDeskKinds.has(k)
               return (
                 <button
                   key={k}
                   type="button"
-                  disabled={disabled}
+                  disabled={onDesk}
                   className={`block w-full text-left px-3 py-1.5 ${
-                    disabled
+                    onDesk
                       ? 'text-[#5e6673] cursor-not-allowed'
                       : 'text-[#eaecef] hover:bg-[#1e2329]'
                   }`}
                   onClick={() => {
-                    if (!disabled) {
+                    if (!onDesk) {
                       addWidget(k)
                       setMenuOpen(false)
                     }
                   }}
                 >
                   {WIDGET_META[k].title}
-                  {disabled ? ' ✓' : ''}
+                  {onDesk ? ' ✓' : ''}
                 </button>
               )
             })}
