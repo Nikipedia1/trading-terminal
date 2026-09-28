@@ -1,5 +1,5 @@
 /**
- * AI Desk – modes, SMC tools (FVG/OB/BOS/VP), chat, auto-draw.
+ * AI Desk – modes, SMC, chat, auto-draw, selectable AI API.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -15,10 +15,18 @@ import {
 import {
   AI_MODES,
   DEFAULT_DRAW_OPTS,
-  answerMessage,
   type AiMode,
   type DrawOptions,
 } from '@/analysis/aiDesk/chatEngine'
+import {
+  AI_PROVIDERS,
+  DEFAULT_AI_SETTINGS,
+  callAiChat,
+  loadAiSettings,
+  saveAiSettings,
+  type AiApiSettings,
+  type AiProviderId,
+} from '@/analysis/aiDesk/aiApi'
 import type { Drawing } from '@/drawings/types'
 
 interface ChatMsg {
@@ -38,24 +46,15 @@ function filterClassic(all: Drawing[], opts: DrawOptions): Drawing[] {
     }
     if (d.tool === 'trendline') return opts.trend
     if (d.tool === 'fib_retracement') return opts.fib
-    if (d.tool === 'text' && String(d).includes) {
-      // classic AI label only if label on; SMC texts come from smcToDrawings
+    if (d.tool === 'text') {
       if ('text' in d && /^AI /i.test((d as { text: string }).text)) return opts.label
+      return opts.label
     }
-    if (d.tool === 'text') return opts.label
     return true
   })
 }
 
-const QUICK = [
-  'Bias',
-  'FVG',
-  'Order block',
-  'Volume profile',
-  'BOS',
-  'Disegna',
-  'Help',
-]
+const QUICK = ['Bias', 'FVG', 'Order block', 'Volume profile', 'BOS', 'Disegna', 'Help']
 
 export function AiAnalysisPanel() {
   const candles = useMarketStore((s) => s.candles)
@@ -70,24 +69,31 @@ export function AiAnalysisPanel() {
 
   const [mode, setMode] = useState<AiMode>('smc')
   const [opts, setOpts] = useState<DrawOptions>({ ...DEFAULT_DRAW_OPTS })
-  const [report, setReport] = useState<TaReport | null>(null)
-  const [smc, setSmc] = useState<SmcReport | null>(null)
+  const [api, setApi] = useState<AiApiSettings>(() =>
+    typeof window !== 'undefined' ? loadAiSettings() : { ...DEFAULT_AI_SETTINGS }
+  )
+  const [showApi, setShowApi] = useState(false)
+  const [showOpts, setShowOpts] = useState(true)
   const [chat, setChat] = useState<ChatMsg[]>(() => [
     {
       id: ++msgSeq,
       role: 'sys',
-      text: 'AI Desk · SMC attivo. FVG, Order Block, BOS, Volume Profile + chat.',
+      text: 'AI Desk · scegli API (Local / Grok / OpenAI / …) e mode. Chiave salvata solo in questo browser.',
     },
   ])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
-  const [showOpts, setShowOpts] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [chat])
+
+  const persistApi = useCallback((next: AiApiSettings) => {
+    setApi(next)
+    saveAiSettings(next)
+  }, [])
 
   const push = useCallback((role: ChatMsg['role'], text: string) => {
     setChat((c) => [...c.slice(-80), { id: ++msgSeq, role, text }])
@@ -96,8 +102,6 @@ export function AiAnalysisPanel() {
   const ensure = useCallback(() => {
     const r = analyzeCandles(candles, symbol, interval)
     const s = analyzeSmc(candles)
-    setReport(r)
-    setSmc(s)
     return { r, s }
   }, [candles, symbol, interval])
 
@@ -122,7 +126,7 @@ export function AiAnalysisPanel() {
   const onAutoDraw = useCallback(() => {
     const { r, s } = ensure()
     const n = applyDraw(r, s)
-    push('sys', `Auto-draw: ${n} oggetti (TA + SMC) su ${symbol}`)
+    push('sys', `Auto-draw: ${n} oggetti su ${symbol}`)
   }, [ensure, applyDraw, push, symbol])
 
   const onClear = useCallback(() => {
@@ -134,42 +138,160 @@ export function AiAnalysisPanel() {
     const { r, s } = ensure()
     push(
       'ai',
-      [
-        `**${r.symbol}** ${r.interval} · bias **${r.bias}**`,
-        ...r.summary,
-        '',
-        '— SMC —',
-        ...s.summary,
-      ].join('\n')
+      [`**${r.symbol}** ${r.interval} · bias **${r.bias}**`, ...r.summary, '', '— SMC —', ...s.summary].join(
+        '\n'
+      )
     )
   }, [ensure, push])
 
   const send = useCallback(
-    (raw: string) => {
+    async (raw: string) => {
       const text = raw.trim()
       if (!text) return
       setInput('')
       push('user', text)
       setBusy(true)
-      window.setTimeout(() => {
+      try {
         const { r, s } = ensure()
-        const { text: reply, suggestDraw } = answerMessage(text, r, mode, s)
+        const { text: reply, source } = await callAiChat(text, api, mode, r, s)
         push('ai', reply)
-        if (suggestDraw || /\b(disegn|draw|traccia)\b/i.test(text)) {
+        push('sys', `via ${source}`)
+        if (/\b(disegn|draw|traccia)\b/i.test(text)) {
           const n = applyDraw(r, s)
           push('sys', `Draw: ${n} oggetti`)
         }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'API error'
+        push('sys', `Errore API: ${msg}`)
+        // fallback local
+        try {
+          const { r, s } = ensure()
+          const { text: reply } = await callAiChat(
+            text,
+            { ...api, provider: 'local' },
+            mode,
+            r,
+            s
+          )
+          push('ai', `(fallback local)\n${reply}`)
+        } catch {
+          /* ignore */
+        }
+      } finally {
         setBusy(false)
-      }, 80)
+      }
     },
-    [push, ensure, mode, applyDraw]
+    [push, ensure, api, mode, applyDraw]
   )
 
+  const onProviderChange = (id: AiProviderId) => {
+    const meta = AI_PROVIDERS.find((p) => p.id === id)!
+    const next: AiApiSettings = {
+      ...api,
+      provider: id,
+      model: id === 'local' ? 'rule-engine' : api.model || meta.defaultModel,
+    }
+    if (id !== 'local' && (!api.model || api.model === 'rule-engine')) {
+      next.model = meta.defaultModel
+    }
+    persistApi(next)
+    push('sys', `API → ${meta.label}`)
+  }
+
   const existing = getDrawings(primaryPanelId, symbol).length
+  const meta = AI_PROVIDERS.find((p) => p.id === api.provider) ?? AI_PROVIDERS[0]
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px]">
-      <div className="shrink-0 px-2 pt-2 pb-1 border-b border-[#1e2329]">
+      {/* API selector */}
+      <div className="shrink-0 px-2 pt-2 pb-1 border-b border-[#1e2329] space-y-1">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            className="text-[9px] text-[#848e9c] uppercase tracking-wider hover:text-[#eaecef]"
+            onClick={() => setShowApi((v) => !v)}
+          >
+            AI API {showApi ? '▾' : '▸'} · {meta.label}
+          </button>
+          <span
+            className={`text-[9px] ${
+              api.provider === 'local'
+                ? 'text-[#848e9c]'
+                : api.apiKey
+                  ? 'text-[#0ecb81]'
+                  : 'text-[#f6465d]'
+            }`}
+          >
+            {api.provider === 'local' ? 'no key' : api.apiKey ? 'key set' : 'key missing'}
+          </span>
+        </div>
+        {showApi && (
+          <div className="space-y-1.5 pb-1">
+            <div className="flex flex-wrap gap-1">
+              {AI_PROVIDERS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onProviderChange(p.id)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] border ${
+                    api.provider === p.id
+                      ? 'bg-[#5b8def]/25 text-[#5b8def] border-[#5b8def]/50'
+                      : 'text-[#848e9c] border-[#2b3139] hover:border-[#5e6673]'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {api.provider !== 'local' && (
+              <>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="API key (solo questo browser)"
+                  value={api.apiKey}
+                  onChange={(e) => persistApi({ ...api, apiKey: e.target.value })}
+                  className="w-full bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1 font-mono text-[10px] text-[#eaecef]"
+                />
+                <input
+                  type="text"
+                  placeholder={`Model (default ${meta.defaultModel})`}
+                  value={api.model}
+                  onChange={(e) => persistApi({ ...api, model: e.target.value })}
+                  className="w-full bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1 font-mono text-[10px] text-[#eaecef]"
+                />
+                {api.provider === 'custom' && (
+                  <input
+                    type="url"
+                    placeholder="Base URL es. https://api.example.com/v1"
+                    value={api.customBaseUrl}
+                    onChange={(e) => persistApi({ ...api, customBaseUrl: e.target.value })}
+                    className="w-full bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1 font-mono text-[10px] text-[#eaecef]"
+                  />
+                )}
+                {meta.docs && (
+                  <a
+                    href={meta.docs}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[9px] text-[#5b8def] hover:underline"
+                  >
+                    Get API key →
+                  </a>
+                )}
+              </>
+            )}
+            {api.provider === 'local' && (
+              <p className="text-[9px] text-[#5e6673] leading-snug">
+                Motore locale su candele/SMC. Per Grok/OpenAI incolla la key sopra.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Mode */}
+      <div className="shrink-0 px-2 pt-1.5 pb-1 border-b border-[#1e2329]">
         <div className="text-[9px] text-[#848e9c] uppercase tracking-wider mb-1">Mode</div>
         <div className="flex flex-wrap gap-1">
           {AI_MODES.map((m) => (
@@ -184,7 +306,7 @@ export function AiAnalysisPanel() {
               className={`px-1.5 py-0.5 rounded text-[10px] border ${
                 mode === m.id
                   ? 'bg-[#f0b90b]/20 text-[#f0b90b] border-[#f0b90b]/50'
-                  : 'bg-transparent text-[#848e9c] border-[#2b3139] hover:border-[#5e6673]'
+                  : 'text-[#848e9c] border-[#2b3139] hover:border-[#5e6673]'
               }`}
             >
               {m.label}
@@ -193,6 +315,7 @@ export function AiAnalysisPanel() {
         </div>
       </div>
 
+      {/* Draw options */}
       <div className="shrink-0 px-2 py-1.5 border-b border-[#1e2329] space-y-1.5">
         <div className="flex items-center justify-between">
           <button
@@ -275,8 +398,8 @@ export function AiAnalysisPanel() {
           <button
             key={q}
             type="button"
-            onClick={() => send(q)}
-            className="shrink-0 px-1.5 py-0.5 rounded-full text-[9px] bg-[#12161c] text-[#848e9c] border border-[#2b3139] hover:text-[#eaecef] hover:border-[#5e6673]"
+            onClick={() => void send(q)}
+            className="shrink-0 px-1.5 py-0.5 rounded-full text-[9px] bg-[#12161c] text-[#848e9c] border border-[#2b3139] hover:text-[#eaecef]"
           >
             {q}
           </button>
@@ -301,7 +424,7 @@ export function AiAnalysisPanel() {
           >
             {m.role === 'ai' && (
               <div className="text-[9px] text-[#5b8def] mb-0.5 uppercase tracking-wider">
-                AI · {mode}
+                AI · {mode} · {meta.label}
               </div>
             )}
             {m.text.split('**').map((chunk, i) =>
@@ -315,13 +438,13 @@ export function AiAnalysisPanel() {
             )}
           </div>
         ))}
-        {busy && <div className="text-[9px] text-[#5e6673]">…</div>}
+        {busy && <div className="text-[9px] text-[#5e6673]">calling {meta.label}…</div>}
       </div>
 
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          send(input)
+          void send(input)
         }}
         className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 border-t border-[#1e2329] bg-[#0d1118]"
       >
@@ -331,7 +454,7 @@ export function AiAnalysisPanel() {
           onChange={(e) => setInput(e.target.value)}
           disabled={busy}
           className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-2 py-1.5 text-[#eaecef] outline-none focus:border-[#f0b90b]/50 placeholder:text-[#5e6673]"
-          placeholder={`Messaggio AI (${mode}) — FVG, OB, VP…`}
+          placeholder={`Messaggio → ${meta.label}`}
         />
         <button
           type="submit"
