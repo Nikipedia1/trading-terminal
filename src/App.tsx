@@ -14,6 +14,7 @@ import { ArchiveMenu } from '@/ui/ArchiveMenu'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { FeedHealthHud } from '@/ui/FeedHealthHud'
 import { VirtualizedTape } from '@/ui/VirtualizedTape'
+import { OrderBookWidget } from '@/ui/OrderBookWidget'
 import { useGlobalHotkeys, HotkeyHelpOverlay } from '@/ui/hotkeyMap'
 import { AlertPanel, startAlertEngine } from '@/alerts'
 import { JournalPanel } from '@/journal'
@@ -178,50 +179,6 @@ function TradesTape() {
   return <VirtualizedTape trades={trades} />
 }
 
-function OrderBookView() {
-  const book = useMarketStore((s) => s.orderBook)
-  if (!book) {
-    return <div className="p-4 text-terminal-muted text-sm">No order book.</div>
-  }
-  const maxQty = Math.max(
-    ...book.bids.slice(0, 10).map((l) => l.qty),
-    ...book.asks.slice(0, 10).map((l) => l.qty),
-    0.0001
-  )
-  return (
-    <div className="overflow-auto h-full text-xxs font-mono-nums">
-      <div className="grid grid-cols-2 gap-1 px-2">
-        <div>
-          <div className="text-terminal-muted mb-1">Bids</div>
-          {book.bids.slice(0, 12).map((l) => (
-            <div key={'b-' + l.price} className="relative flex justify-between py-0.5">
-              <div
-                className="absolute inset-y-0 right-0 bg-terminal-green/10"
-                style={{ width: (l.qty / maxQty) * 100 + '%' }}
-              />
-              <span className="text-terminal-green relative">{l.price.toFixed(2)}</span>
-              <span className="relative">{l.qty.toFixed(4)}</span>
-            </div>
-          ))}
-        </div>
-        <div>
-          <div className="text-terminal-muted mb-1">Asks</div>
-          {book.asks.slice(0, 12).map((l) => (
-            <div key={'a-' + l.price} className="relative flex justify-between py-0.5">
-              <div
-                className="absolute inset-y-0 left-0 bg-terminal-red/10"
-                style={{ width: (l.qty / maxQty) * 100 + '%' }}
-              />
-              <span className="text-terminal-red relative">{l.price.toFixed(2)}</span>
-              <span className="relative">{l.qty.toFixed(4)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function TickerBar() {
   const ticker = useMarketStore((s) => s.ticker)
   if (!ticker) return null
@@ -291,7 +248,7 @@ function SidePanel() {
         {tab === 'journal' && <JournalPanel />}
         {tab === 'live' && <TradesTape />}
         {tab === 'large' && <PrimaryLargeTrades />}
-        {tab === 'book' && <OrderBookView />}
+        {tab === 'book' && <OrderBookWidget />}
         {tab === 'futures' && <FuturesMetricsPanel />}
       </div>
     </section>
