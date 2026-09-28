@@ -17,6 +17,7 @@ import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { VirtualizedTape } from '@/ui/VirtualizedTape'
 import { AlertPanel } from '@/alerts'
 import { JournalPanel } from '@/journal'
+import { WalletPanel } from '@/wallet'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import type { WidgetKind } from '@/types'
@@ -71,12 +72,15 @@ function WidgetBody({ kind }: { kind: WidgetKind }) {
       return <WatchlistPanel />
     case 'ai':
       return <AiAnalysisPanel />
+    case 'wallet':
+      return <WalletPanel />
     default:
       return null
   }
 }
 
 const ADDABLE: WidgetKind[] = [
+  'wallet',
   'ai',
   'watchlist',
   'terminal',
@@ -100,7 +104,6 @@ export function PanelGrid({ width }: PanelGridProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Fix orphan widgets (in store but not on grid) after workspace load
   useEffect(() => {
     reconcileLayout()
   }, [reconcileLayout])
@@ -135,7 +138,6 @@ export function PanelGrid({ width }: PanelGridProps) {
   const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets])
   const layoutIds = useMemo(() => new Set(layout.map((l) => l.i)), [layout])
 
-  /** Kind is "on desk" only if widget exists AND has a grid cell */
   const onDeskKinds = useMemo(() => {
     const set = new Set<WidgetKind>()
     for (const w of widgets) {
