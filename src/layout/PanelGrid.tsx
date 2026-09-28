@@ -9,6 +9,7 @@ import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
 import { ChartPanel } from '@/charts/ChartPanel'
 import { WidgetShell } from './WidgetShell'
 import { OrderBookWidget } from '@/ui/OrderBookWidget'
+import { BloombergTerminal } from '@/ui/BloombergTerminal'
 import { PaperTradingPanel } from '@/trading/paper'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
@@ -63,12 +64,23 @@ function WidgetBody({ kind }: { kind: WidgetKind }) {
       return <AlertPanel />
     case 'journal':
       return <JournalPanel />
+    case 'terminal':
+      return <BloombergTerminal />
     default:
       return null
   }
 }
 
-const ADDABLE: WidgetKind[] = ['paper', 'book', 'tape', 'large', 'futures', 'alerts', 'journal']
+const ADDABLE: WidgetKind[] = [
+  'terminal',
+  'paper',
+  'book',
+  'tape',
+  'large',
+  'futures',
+  'alerts',
+  'journal',
+]
 
 export function PanelGrid({ width }: PanelGridProps) {
   const panels = useLayoutStore((s) => s.panels)
