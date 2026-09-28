@@ -29,6 +29,7 @@ export const WIDGET_META: Record<
   alerts: { title: 'Alerts', minW: 3, minH: 4, defaultW: 3, defaultH: 8 },
   journal: { title: 'Journal', minW: 3, minH: 4, defaultW: 3, defaultH: 8 },
   terminal: { title: 'Terminal', minW: 4, minH: 6, defaultW: 5, defaultH: 10 },
+  watchlist: { title: 'Watchlist', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -51,7 +52,6 @@ const DEFAULT_BOOK: WidgetPanelConfig = {
   title: 'Order Book',
 }
 
-/** Default desk: chart left, paper + book right column */
 const DEFAULT_LAYOUT: GridLayoutItem[] = [
   { i: 'panel-main', x: 0, y: 0, w: 8, h: 16, minW: 4, minH: 4 },
   { i: 'widget-paper', x: 8, y: 0, w: 4, h: 10, minW: 3, minH: 8 },
