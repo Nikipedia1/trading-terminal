@@ -29,6 +29,7 @@ export const WIDGET_META: Record<
   terminal: { title: 'Terminal', minW: 4, minH: 6, defaultW: 5, defaultH: 10 },
   watchlist: { title: 'Watchlist', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
   ai: { title: 'AI Analysis', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  wallet: { title: 'Wallet', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -74,7 +75,6 @@ interface LayoutState {
   ) => void
   setLayout: (layout: GridLayoutItem[]) => void
   setPrimaryPanel: (id: string) => void
-  /** Ensure every widget has a grid cell; drop orphan layout ids */
   reconcileLayout: () => void
   deskPanels: () => DeskPanel[]
 }
@@ -154,7 +154,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   addWidget: (kind) => {
     const existing = get().widgets.find((w) => w.kind === kind)
     if (existing) {
-      // Already registered but maybe missing from grid (workspace bug) → put it back
       const hasSlot = get().layout.some((l) => l.i === existing.id)
       if (hasSlot) return
       const meta = WIDGET_META[kind]
