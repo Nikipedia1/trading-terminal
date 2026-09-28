@@ -8,8 +8,6 @@ import { create } from 'zustand'
 import type {
   ChartPanelConfig,
   GridLayoutItem,
-  Interval,
-  ExchangeId,
   WidgetKind,
   WidgetPanelConfig,
   DeskPanel,
@@ -30,6 +28,7 @@ export const WIDGET_META: Record<
   futures: { title: 'Futures', minW: 3, minH: 4, defaultW: 3, defaultH: 8 },
   alerts: { title: 'Alerts', minW: 3, minH: 4, defaultW: 3, defaultH: 8 },
   journal: { title: 'Journal', minW: 3, minH: 4, defaultW: 3, defaultH: 8 },
+  terminal: { title: 'Terminal', minW: 4, minH: 6, defaultW: 5, defaultH: 10 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -60,19 +59,15 @@ const DEFAULT_LAYOUT: GridLayoutItem[] = [
 ]
 
 interface LayoutState {
-  /** Chart panels only (symbol/interval/exchange) */
   panels: ChartPanelConfig[]
-  /** Movable widgets (paper, book, tape, …) */
   widgets: WidgetPanelConfig[]
   layout: GridLayoutItem[]
-  /** Panel whose symbol feeds the global ticker / trades / order book */
   primaryPanelId: string
 
   addPanel: () => void
   addWidget: (kind: WidgetKind) => void
   removePanel: (id: string) => void
   removeWidget: (id: string) => void
-  /** Remove any desk item (chart or widget) by layout id */
   removeDeskItem: (id: string) => void
   updatePanel: (
     id: string,
@@ -123,7 +118,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   addWidget: (kind) => {
-    // Only one instance per kind to keep desk clean
     if (get().widgets.some((w) => w.kind === kind)) return
     const meta = WIDGET_META[kind]
     const id = uid(`widget-${kind}`)
@@ -190,7 +184,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 }))
 
-/** Sync bus for optional cross-panel crosshair + time range + orderflow highlight */
 type SyncListener = (sourceId: string, payload: SyncPayload) => void
 
 export type SyncPayload =
@@ -223,7 +216,7 @@ export function publishSync(groupId: string, sourceId: string, payload: SyncPayl
     try {
       fn(sourceId, payload)
     } catch {
-      /* ignore listener errors */
+      /* ignore */
     }
   }
 }
