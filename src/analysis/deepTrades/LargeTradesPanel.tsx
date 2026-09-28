@@ -1,10 +1,10 @@
 /**
  * Large trades tape – notional filter, time decay, sound, click-to-chart.
- * Outcomes from classifyBubbles (FORMULAS.md).
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import type { Candle, ExchangeId, Interval } from '@/types'
+import { SymbolBadge } from '@/ui/SymbolBadge'
 import { retainTradeBuffer, queryTradesInRange } from '@/analysis/deepPrint/tradeBuffer'
 import { intervalToSeconds } from '@/analysis/deepPrint/interval'
 import { filterDeepTrades } from './filter'
@@ -26,11 +26,6 @@ function fmtQty(n: number): string {
   if (n >= 1000) return n.toFixed(2)
   if (n >= 1) return n.toFixed(4)
   return n.toFixed(6)
-}
-
-function notional(b: DeepTradeBubble): number {
-  // qty is already in configured unit when quote mode; approx price*base otherwise
-  return b.qty * (b.price > 0 && b.qty < b.price ? b.price : 1)
 }
 
 export function LargeTradesPanel({
@@ -59,7 +54,7 @@ export function LargeTradesPanel({
       o.start()
       o.stop(ctx.currentTime + 0.08)
     } catch {
-      /* autoplay blocked */
+      /* autoplay */
     }
   }
 
@@ -106,6 +101,7 @@ export function LargeTradesPanel({
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="shrink-0 px-2 py-1 flex flex-wrap gap-2 items-center border-b border-terminal-border text-[10px] text-[#848e9c]">
+        <SymbolBadge symbol={symbol} size="sm" showName={false} />
         <label className="flex items-center gap-1">
           min $
           <input
@@ -126,7 +122,7 @@ export function LargeTradesPanel({
           />
           sound
         </label>
-        <span className="text-[#5e6673]">click → chart · EFF/TRP = FORMULAS.md</span>
+        <span className="text-[#5e6673]">click → chart · EFF/TRP</span>
       </div>
       <div className="overflow-auto flex-1 min-h-0">
         <table className="w-full text-xxs font-mono-nums">
@@ -143,7 +139,7 @@ export function LargeTradesPanel({
             {rows.map((b) => {
               const buy = b.aggressor === 'buy'
               const age = nowSec - b.timeSec
-              const opacity = Math.max(0.35, 1 - age / 3600) // decay over ~1h
+              const opacity = Math.max(0.35, 1 - age / 3600)
               const out =
                 b.outcome === 'effective'
                   ? 'EFF'

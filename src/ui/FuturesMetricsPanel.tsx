@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { subscribeFuturesMetrics } from '@/data/shared'
 import { PUBLIC_API_LIMITS } from '@/data/exchanges/types'
+import { SymbolBadge } from '@/ui/SymbolBadge'
 import type {
   LiquidationEvent,
   MarkPriceTick,
@@ -49,13 +50,11 @@ export function FuturesMetricsPanel() {
       onMark: setMark,
       onOpenInterest: setOi,
       onFunding: setFunding,
-      onLiquidation: (e) =>
-        setLiqs((prev) => [e, ...prev].slice(0, 80)),
+      onLiquidation: (e) => setLiqs((prev) => [e, ...prev].slice(0, 80)),
       onStatus: (s) => setStatus(s.status),
       onError: (e) => setErr(e.error.message),
     })
 
-    // seed buffer
     setLiqs(sub.getRecentLiquidations().slice().reverse())
 
     return () => sub.unsubscribe()
@@ -85,8 +84,11 @@ export function FuturesMetricsPanel() {
   return (
     <div className="flex flex-col h-full min-h-0 text-[11px]">
       <div className="px-2 py-1.5 border-b border-terminal-border shrink-0 space-y-1">
-        <div className="flex justify-between items-center">
-          <span className="text-[#eaecef] font-semibold">{symbol} · USDT-M</span>
+        <div className="flex justify-between items-center gap-2">
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <SymbolBadge symbol={symbol} size="sm" showName={false} />
+            <span className="text-[#848e9c] text-[10px] shrink-0">USDT-M</span>
+          </span>
           <span
             className={
               status === 'connected'
@@ -123,9 +125,7 @@ export function FuturesMetricsPanel() {
             {oi ? fmt(oi.openInterest, 3) : '—'}
           </span>
         </div>
-        {err && (
-          <p className="text-[10px] text-[#f6465d] leading-snug">{err}</p>
-        )}
+        {err && <p className="text-[10px] text-[#f6465d] leading-snug">{err}</p>}
       </div>
 
       {funding.length > 0 && (
@@ -165,9 +165,7 @@ export function FuturesMetricsPanel() {
           <tbody>
             {liqs.map((e, i) => (
               <tr key={`${e.time}-${e.qty}-${i}`} className="border-t border-terminal-border/40">
-                <td className="px-2 py-0.5">
-                  {new Date(e.time).toLocaleTimeString()}
-                </td>
+                <td className="px-2 py-0.5">{new Date(e.time).toLocaleTimeString()}</td>
                 <td
                   className={`text-right px-2 py-0.5 ${
                     e.side === 'sell' ? 'text-[#f6465d]' : 'text-[#0ecb81]'
