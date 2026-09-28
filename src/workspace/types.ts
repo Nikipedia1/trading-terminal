@@ -1,11 +1,13 @@
 /** Workspace document – serializable snapshot of terminal UI state. */
 
-import type { ChartPanelConfig, GridLayoutItem } from '@/types'
+import type { ChartPanelConfig, GridLayoutItem, WidgetPanelConfig } from '@/types'
 
 export const WORKSPACE_VERSION = 1 as const
 
 export interface WorkspaceLayoutSlice {
   panels: ChartPanelConfig[]
+  /** Desk side panels (Trade, Order Book, Tape, …) */
+  widgets?: WidgetPanelConfig[]
   layout: GridLayoutItem[]
   primaryPanelId: string
 }
@@ -20,13 +22,9 @@ export interface WorkspaceDocument {
   name: string
   updatedAt: number
   layout: WorkspaceLayoutSlice
-  /** indicatorStore serializable fields */
   indicators?: unknown
-  /** chartStyleStore serializable fields */
   chartStyle?: unknown
-  /** useOrderflowStore.byPanel */
   orderflow?: unknown
-  /** useDrawingStore.byPanelSymbol */
   drawings?: unknown
 }
 
