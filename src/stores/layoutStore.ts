@@ -74,6 +74,8 @@ interface LayoutState {
   ) => void
   setLayout: (layout: GridLayoutItem[]) => void
   setPrimaryPanel: (id: string) => void
+  /** Ensure every widget has a grid cell; drop orphan layout ids */
+  reconcileLayout: () => void
   deskPanels: () => DeskPanel[]
 }
 
@@ -88,6 +90,48 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const charts: DeskPanel[] = panels.map((p) => ({ type: 'chart', ...p }))
     const ws: DeskPanel[] = widgets.map((w) => ({ type: 'widget', ...w }))
     return [...charts, ...ws]
+  },
+
+  reconcileLayout: () => {
+    const { panels, widgets, layout } = get()
+    const validIds = new Set([
+      ...panels.map((p) => p.id),
+      ...widgets.map((w) => w.id),
+    ])
+    let nextLayout = layout.filter((l) => validIds.has(l.i))
+    const inLayout = new Set(nextLayout.map((l) => l.i))
+    let maxY = nextLayout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+
+    for (const w of widgets) {
+      if (inLayout.has(w.id)) continue
+      const meta = WIDGET_META[w.kind]
+      nextLayout = [
+        ...nextLayout,
+        {
+          i: w.id,
+          x: 0,
+          y: maxY,
+          w: meta.defaultW,
+          h: meta.defaultH,
+          minW: meta.minW,
+          minH: meta.minH,
+        },
+      ]
+      maxY += meta.defaultH
+      inLayout.add(w.id)
+    }
+
+    for (const p of panels) {
+      if (inLayout.has(p.id)) continue
+      nextLayout = [
+        ...nextLayout,
+        { i: p.id, x: 0, y: maxY, w: 6, h: 8, minW: 4, minH: 4 },
+      ]
+      maxY += 8
+      inLayout.add(p.id)
+    }
+
+    set({ layout: nextLayout })
   },
 
   addPanel: () => {
@@ -108,7 +152,29 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   addWidget: (kind) => {
-    if (get().widgets.some((w) => w.kind === kind)) return
+    const existing = get().widgets.find((w) => w.kind === kind)
+    if (existing) {
+      // Already registered but maybe missing from grid (workspace bug) → put it back
+      const hasSlot = get().layout.some((l) => l.i === existing.id)
+      if (hasSlot) return
+      const meta = WIDGET_META[kind]
+      const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+      set((s) => ({
+        layout: [
+          ...s.layout,
+          {
+            i: existing.id,
+            x: 0,
+            y: maxY,
+            w: meta.defaultW,
+            h: meta.defaultH,
+            minW: meta.minW,
+            minH: meta.minH,
+          },
+        ],
+      }))
+      return
+    }
     const meta = WIDGET_META[kind]
     const id = uid(`widget-${kind}`)
     const widget: WidgetPanelConfig = { id, kind, title: meta.title }
