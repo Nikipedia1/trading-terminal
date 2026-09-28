@@ -3,21 +3,14 @@ import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useUiDensityStore } from '@/stores/uiDensityStore'
 import { PanelGrid } from '@/layout/PanelGrid'
-import { LargeTradesPanel } from '@/analysis/deepTrades'
-import { PaperTradingPanel } from '@/trading/paper'
 import { ExecutionBar, useExecutionHotkeys } from '@/trading'
-import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
 import type { Interval, ExchangeId } from '@/types'
 import { WorkspaceMenu, loadWorkspace, applyWorkspace } from '@/workspace'
 import { ArchiveMenu } from '@/ui/ArchiveMenu'
-import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { FeedHealthHud } from '@/ui/FeedHealthHud'
-import { VirtualizedTape } from '@/ui/VirtualizedTape'
-import { OrderBookWidget } from '@/ui/OrderBookWidget'
 import { useGlobalHotkeys, HotkeyHelpOverlay } from '@/ui/hotkeyMap'
-import { AlertPanel, startAlertEngine } from '@/alerts'
-import { JournalPanel } from '@/journal'
+import { startAlertEngine } from '@/alerts'
 import { ChartPanel } from '@/charts/ChartPanel'
 import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 
@@ -174,11 +167,6 @@ function Controls() {
   )
 }
 
-function TradesTape() {
-  const trades = useMarketStore((s) => s.trades)
-  return <VirtualizedTape trades={trades} />
-}
-
 function TickerBar() {
   const ticker = useMarketStore((s) => s.ticker)
   if (!ticker) return null
@@ -194,64 +182,6 @@ function TickerBar() {
         {ticker.priceChangePercent.toFixed(2)}%
       </span>
     </div>
-  )
-}
-
-function PrimaryLargeTrades() {
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
-  const panels = useLayoutStore((s) => s.panels)
-  const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
-  const symbol = primary?.symbol ?? 'BTCUSDT'
-  const interval = primary?.interval ?? '1m'
-  const exchange = primary?.exchange ?? 'binance'
-  const { candles } = usePanelMarket(symbol, interval, exchange)
-  return (
-    <LargeTradesPanel exchange={exchange} symbol={symbol} interval={interval} candles={candles} />
-  )
-}
-
-type SideTab = 'live' | 'large' | 'book' | 'futures' | 'paper' | 'alerts' | 'journal'
-
-function SidePanel() {
-  const [tab, setTab] = useState<SideTab>('paper')
-  const tabs: { id: SideTab; label: string }[] = [
-    { id: 'paper', label: 'Trade' },
-    { id: 'alerts', label: 'Alerts' },
-    { id: 'journal', label: 'Journal' },
-    { id: 'live', label: 'Tape' },
-    { id: 'large', label: 'Large' },
-    { id: 'book', label: 'Book' },
-    { id: 'futures', label: 'Futures' },
-  ]
-
-  return (
-    <section className="bg-terminal-panel flex flex-col min-h-0">
-      <div className="flex border-b border-terminal-border shrink-0 overflow-x-auto">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`flex-1 px-1 py-1.5 text-xxs uppercase tracking-wider whitespace-nowrap ${
-              tab === t.id
-                ? 'text-[#f0b90b] border-b-2 border-[#f0b90b]'
-                : 'text-terminal-muted hover:text-terminal-text'
-            }`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {tab === 'paper' && <PaperTradingPanel />}
-        {tab === 'alerts' && <AlertPanel />}
-        {tab === 'journal' && <JournalPanel />}
-        {tab === 'live' && <TradesTape />}
-        {tab === 'large' && <PrimaryLargeTrades />}
-        {tab === 'book' && <OrderBookWidget />}
-        {tab === 'futures' && <FuturesMetricsPanel />}
-      </div>
-    </section>
   )
 }
 
@@ -295,7 +225,6 @@ function ChartArea() {
   )
 }
 
-/** Parse detach mode from URL once */
 function useDetachParams() {
   return useMemo(() => {
     const q = new URLSearchParams(window.location.search)
@@ -307,7 +236,6 @@ function useDetachParams() {
   }, [])
 }
 
-/** Minimal single-chart shell for second-monitor pop-out */
 function DetachedApp({
   symbol,
   interval,
@@ -371,7 +299,6 @@ export default function App() {
     startAlertEngine()
   }, [])
 
-  // Full desk boot only when not detached
   useEffect(() => {
     if (detach) return
     void loadWorkspace()
@@ -429,11 +356,9 @@ export default function App() {
         <ExecutionBar />
       </div>
 
-      <div className="flex-1 grid grid-cols-3 gap-px bg-terminal-border overflow-hidden min-h-0">
-        <section className="col-span-2 bg-terminal-bg flex flex-col min-h-0 min-w-0">
-          <ChartArea />
-        </section>
-        <SidePanel />
+      {/* Full-width magnetic desk: charts + Trade / Book / Tape / … */}
+      <div className="flex-1 bg-terminal-bg overflow-hidden min-h-0 flex flex-col">
+        <ChartArea />
       </div>
 
       <FeedHealthHud />
