@@ -76,6 +76,26 @@ export interface ChartPanelConfig {
   syncGroup: string | null
 }
 
+/** Side widgets that live on the same magnetic grid as charts. */
+export type WidgetKind =
+  | 'paper'
+  | 'book'
+  | 'tape'
+  | 'large'
+  | 'futures'
+  | 'alerts'
+  | 'journal'
+
+export interface WidgetPanelConfig {
+  id: string
+  kind: WidgetKind
+  title: string
+}
+
+export type DeskPanel =
+  | ({ type: 'chart' } & ChartPanelConfig)
+  | ({ type: 'widget' } & WidgetPanelConfig)
+
 export interface GridLayoutItem {
   i: string
   x: number
