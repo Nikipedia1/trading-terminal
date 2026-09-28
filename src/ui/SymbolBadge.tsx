@@ -1,40 +1,41 @@
-/** Prominent trading-pair badge used on panels and tools. */
+/** High-contrast trading-pair chip – always readable on dark panels. */
 
 import { resolveSymbolMeta } from '@/data/symbolMeta'
 
 interface SymbolBadgeProps {
   symbol: string
-  /** show base name under pair */
   showName?: boolean
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'lg'
   className?: string
 }
 
 export function SymbolBadge({
   symbol,
-  showName = true,
+  showName = false,
   size = 'md',
   className = '',
 }: SymbolBadgeProps) {
   const m = resolveSymbolMeta(symbol)
-  const pairCls =
-    size === 'md'
-      ? 'text-sm font-bold tracking-wide'
-      : 'text-[11px] font-bold tracking-wide'
-  const subCls = size === 'md' ? 'text-[10px]' : 'text-[9px]'
+  const pair =
+    size === 'lg'
+      ? 'text-base'
+      : size === 'md'
+        ? 'text-sm'
+        : 'text-xs'
 
   return (
     <div
-      className={`inline-flex flex-col leading-tight min-w-0 ${className}`}
-      title={m.name ? `${m.name} · ${m.pair}` : m.pair}
+      className={`inline-flex items-center gap-1.5 shrink-0 max-w-full ${className}`}
+      title={m.name ? `${m.pair} · ${m.name}` : m.pair}
     >
-      <span className={`${pairCls} text-[#f0b90b] font-mono-nums truncate`}>
-        {m.pair}
+      <span
+        className={`${pair} font-bold font-mono tracking-wide px-1.5 py-0.5 rounded bg-[#f0b90b] text-[#0b0e11] leading-none`}
+      >
+        {m.pair || '—'}
       </span>
-      {showName && (
-        <span className={`${subCls} text-[#848e9c] truncate`}>
-          {m.name ? `${m.label} · ${m.name}` : m.label}
-          {m.quote ? ` / ${m.quote}` : ''}
+      {showName && (m.name || m.label) && (
+        <span className="text-[10px] text-[#848e9c] truncate max-w-[7rem]">
+          {m.name ?? m.label}
         </span>
       )}
     </div>
