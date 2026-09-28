@@ -1,7 +1,5 @@
 /**
  * Layout store – multi-panel desk: charts + movable widgets on one grid.
- * Owns panel configs + react-grid-layout positions.
- * Does NOT hold market data (each ChartPanel owns its own via usePanelMarket).
  */
 
 import { create } from 'zustand'
@@ -30,6 +28,7 @@ export const WIDGET_META: Record<
   journal: { title: 'Journal', minW: 3, minH: 4, defaultW: 3, defaultH: 8 },
   terminal: { title: 'Terminal', minW: 4, minH: 6, defaultW: 5, defaultH: 10 },
   watchlist: { title: 'Watchlist', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
+  ai: { title: 'AI Analysis', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -102,18 +101,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       syncGroup: null,
     }
     const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-    const newLayoutItem: GridLayoutItem = {
-      i: id,
-      x: 0,
-      y: maxY,
-      w: 6,
-      h: 8,
-      minW: 4,
-      minH: 4,
-    }
     set((s) => ({
       panels: [...s.panels, newPanel],
-      layout: [...s.layout, newLayoutItem],
+      layout: [...s.layout, { i: id, x: 0, y: maxY, w: 6, h: 8, minW: 4, minH: 4 }],
     }))
   },
 
@@ -123,18 +113,20 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const id = uid(`widget-${kind}`)
     const widget: WidgetPanelConfig = { id, kind, title: meta.title }
     const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-    const item: GridLayoutItem = {
-      i: id,
-      x: 0,
-      y: maxY,
-      w: meta.defaultW,
-      h: meta.defaultH,
-      minW: meta.minW,
-      minH: meta.minH,
-    }
     set((s) => ({
       widgets: [...s.widgets, widget],
-      layout: [...s.layout, item],
+      layout: [
+        ...s.layout,
+        {
+          i: id,
+          x: 0,
+          y: maxY,
+          w: meta.defaultW,
+          h: meta.defaultH,
+          minW: meta.minW,
+          minH: meta.minH,
+        },
+      ],
     }))
   },
 
@@ -142,12 +134,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     const { panels, primaryPanelId } = get()
     if (panels.length <= 1) return
     const nextPanels = panels.filter((p) => p.id !== id)
-    const nextLayout = get().layout.filter((l) => l.i !== id)
-    const nextPrimary = primaryPanelId === id ? nextPanels[0].id : primaryPanelId
     set({
       panels: nextPanels,
-      layout: nextLayout,
-      primaryPanelId: nextPrimary,
+      layout: get().layout.filter((l) => l.i !== id),
+      primaryPanelId: primaryPanelId === id ? nextPanels[0].id : primaryPanelId,
     })
   },
 
@@ -160,13 +150,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   removeDeskItem: (id) => {
     const { panels, widgets } = get()
-    if (panels.some((p) => p.id === id)) {
-      get().removePanel(id)
-      return
-    }
-    if (widgets.some((w) => w.id === id)) {
-      get().removeWidget(id)
-    }
+    if (panels.some((p) => p.id === id)) get().removePanel(id)
+    else if (widgets.some((w) => w.id === id)) get().removeWidget(id)
   },
 
   updatePanel: (id, patch) => {
@@ -178,9 +163,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   setLayout: (layout) => set({ layout }),
 
   setPrimaryPanel: (id) => {
-    if (get().panels.some((p) => p.id === id)) {
-      set({ primaryPanelId: id })
-    }
+    if (get().panels.some((p) => p.id === id)) set({ primaryPanelId: id })
   },
 }))
 
