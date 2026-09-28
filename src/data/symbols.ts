@@ -1,5 +1,5 @@
 /**
- * Liquid crypto instruments – Binance-style symbols (BASEUSDT).
+ * Liquid crypto instruments – Binance-style USDT symbols.
  * KuCoin / OKX / Bybit clients normalize format per exchange.
  * User can still type any valid symbol in the input.
  */
@@ -22,7 +22,6 @@ export interface SymbolPreset {
   symbol: string
   label: string
   group: SymbolGroup
-  /** Optional display name */
   name?: string
 }
 
@@ -41,9 +40,8 @@ export const SYMBOL_GROUPS: SymbolGroup[] = [
   'Other',
 ]
 
-/** Binance-style symbols (no dash). */
 export const SYMBOL_PRESETS: SymbolPreset[] = [
-  // ── Major ──────────────────────────────────────────────
+  // Major
   { symbol: 'BTCUSDT', label: 'BTC', group: 'Major', name: 'Bitcoin' },
   { symbol: 'ETHUSDT', label: 'ETH', group: 'Major', name: 'Ethereum' },
   { symbol: 'BNBUSDT', label: 'BNB', group: 'Major', name: 'BNB' },
@@ -61,7 +59,7 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'ATOMUSDT', label: 'ATOM', group: 'Major', name: 'Cosmos' },
   { symbol: 'NEARUSDT', label: 'NEAR', group: 'Major', name: 'NEAR' },
 
-  // ── L1 ─────────────────────────────────────────────────
+  // L1
   { symbol: 'APTUSDT', label: 'APT', group: 'L1', name: 'Aptos' },
   { symbol: 'SUIUSDT', label: 'SUI', group: 'L1', name: 'Sui' },
   { symbol: 'SEIUSDT', label: 'SEI', group: 'L1', name: 'Sei' },
@@ -82,8 +80,10 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'CKBUSDT', label: 'CKB', group: 'L1', name: 'Nervos' },
   { symbol: 'ZENUSDT', label: 'ZEN', group: 'L1', name: 'Horizen' },
   { symbol: 'ZILUSDT', label: 'ZIL', group: 'L1', name: 'Zilliqa' },
+  { symbol: 'STXUSDT', label: 'STX', group: 'L1', name: 'Stacks' },
+  { symbol: 'MNTUSDT', label: 'MNT', group: 'L1', name: 'Mantle' },
 
-  // ── L2 / scaling ───────────────────────────────────────
+  // L2
   { symbol: 'MATICUSDT', label: 'MATIC', group: 'L2', name: 'Polygon' },
   { symbol: 'POLUSDT', label: 'POL', group: 'L2', name: 'POL' },
   { symbol: 'OPUSDT', label: 'OP', group: 'L2', name: 'Optimism' },
@@ -99,7 +99,7 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'TAIKOUSDT', label: 'TAIKO', group: 'L2', name: 'Taiko' },
   { symbol: 'ALTUSDT', label: 'ALT', group: 'L2', name: 'AltLayer' },
 
-  // ── DeFi ───────────────────────────────────────────────
+  // DeFi
   { symbol: 'UNIUSDT', label: 'UNI', group: 'DeFi', name: 'Uniswap' },
   { symbol: 'AAVEUSDT', label: 'AAVE', group: 'DeFi', name: 'Aave' },
   { symbol: 'MKRUSDT', label: 'MKR', group: 'DeFi', name: 'Maker' },
@@ -119,30 +119,25 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'ENAUSDT', label: 'ENA', group: 'DeFi', name: 'Ethena' },
   { symbol: 'EIGENUSDT', label: 'EIGEN', group: 'DeFi', name: 'EigenLayer' },
   { symbol: 'ETHFIUSDT', label: 'ETHFI', group: 'DeFi', name: 'ether.fi' },
-  { symbol: 'ONDOUSDT', label: 'ONDO', group: 'DeFi', name: 'Ondo' },
   { symbol: 'RSRUSDT', label: 'RSR', group: 'DeFi', name: 'Reserve Rights' },
   { symbol: 'YFIUSDT', label: 'YFI', group: 'DeFi', name: 'yearn' },
   { symbol: 'BALUSDT', label: 'BAL', group: 'DeFi', name: 'Balancer' },
 
-  // ── AI / Data ──────────────────────────────────────────
+  // AI
   { symbol: 'TAOUSDT', label: 'TAO', group: 'AI', name: 'Bittensor' },
   { symbol: 'FETUSDT', label: 'FET', group: 'AI', name: 'Fetch.ai' },
   { symbol: 'RENDERUSDT', label: 'RENDER', group: 'AI', name: 'Render' },
-  { symbol: 'RNDRUSDT', label: 'RNDR', group: 'AI', name: 'Render (legacy)' },
   { symbol: 'WLDUSDT', label: 'WLD', group: 'AI', name: 'Worldcoin' },
   { symbol: 'ARKMUSDT', label: 'ARKM', group: 'AI', name: 'Arkham' },
   { symbol: 'AIUSDT', label: 'AI', group: 'AI', name: 'Sleepless AI' },
-  { symbol: 'AGIXUSDT', label: 'AGIX', group: 'AI', name: 'SingularityNET' },
-  { symbol: 'OCEANUSDT', label: 'OCEAN', group: 'AI', name: 'Ocean Protocol' },
   { symbol: 'NMRUSDT', label: 'NMR', group: 'AI', name: 'Numeraire' },
   { symbol: 'GRTUSDT', label: 'GRT', group: 'AI', name: 'The Graph' },
   { symbol: 'PHBUSDT', label: 'PHB', group: 'AI', name: 'Phoenix' },
   { symbol: 'AIXBTUSDT', label: 'AIXBT', group: 'AI', name: 'aixbt' },
   { symbol: 'VIRTUALUSDT', label: 'VIRTUAL', group: 'AI', name: 'Virtuals' },
   { symbol: 'IOUSDT', label: 'IO', group: 'AI', name: 'io.net' },
-  { symbol: 'NOSUSDT', label: 'NOS', group: 'AI', name: 'Nosana' },
 
-  // ── Meme ───────────────────────────────────────────────
+  // Meme
   { symbol: 'PEPEUSDT', label: 'PEPE', group: 'Meme', name: 'Pepe' },
   { symbol: 'SHIBUSDT', label: 'SHIB', group: 'Meme', name: 'Shiba Inu' },
   { symbol: 'WIFUSDT', label: 'WIF', group: 'Meme', name: 'dogwifhat' },
@@ -162,7 +157,7 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'NOTUSDT', label: 'NOT', group: 'Meme', name: 'Notcoin' },
   { symbol: 'HMSTRUSDT', label: 'HMSTR', group: 'Meme', name: 'Hamster' },
 
-  // ── Gaming / Metaverse ─────────────────────────────────
+  // Gaming
   { symbol: 'AXSUSDT', label: 'AXS', group: 'Gaming', name: 'Axie Infinity' },
   { symbol: 'SANDUSDT', label: 'SAND', group: 'Gaming', name: 'The Sandbox' },
   { symbol: 'MANAUSDT', label: 'MANA', group: 'Gaming', name: 'Decentraland' },
@@ -173,71 +168,54 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'PIXELUSDT', label: 'PIXEL', group: 'Gaming', name: 'Pixels' },
   { symbol: 'PORTALUSDT', label: 'PORTAL', group: 'Gaming', name: 'Portal' },
   { symbol: 'XAIUSDT', label: 'XAI', group: 'Gaming', name: 'Xai' },
-  { symbol: 'PRIMEUSDT', label: 'PRIME', group: 'Gaming', name: 'Echelon Prime' },
   { symbol: 'ILVUSDT', label: 'ILV', group: 'Gaming', name: 'Illuvium' },
   { symbol: 'YGGUSDT', label: 'YGG', group: 'Gaming', name: 'Yield Guild' },
   { symbol: 'BIGTIMEUSDT', label: 'BIGTIME', group: 'Gaming', name: 'Big Time' },
   { symbol: 'SUPERUSDT', label: 'SUPER', group: 'Gaming', name: 'SuperVerse' },
+  { symbol: 'GMTUSDT', label: 'GMT', group: 'Gaming', name: 'STEPN' },
 
-  // ── RWA / TradFi bridge ────────────────────────────────
+  // RWA
   { symbol: 'ONDOUSDT', label: 'ONDO', group: 'RWA', name: 'Ondo' },
   { symbol: 'POLYXUSDT', label: 'POLYX', group: 'RWA', name: 'Polymesh' },
   { symbol: 'OMUSDT', label: 'OM', group: 'RWA', name: 'MANTRA' },
   { symbol: 'TRUUSDT', label: 'TRU', group: 'RWA', name: 'TrueFi' },
   { symbol: 'CFGUSDT', label: 'CFG', group: 'RWA', name: 'Centrifuge' },
-  { symbol: 'TOKENUSDT', label: 'TOKEN', group: 'RWA', name: 'TokenFi' },
-  { symbol: 'RIOUSDT', label: 'RIO', group: 'RWA', name: 'Realio' },
 
-  // ── Exchange tokens ────────────────────────────────────
-  { symbol: 'BNBUSDT', label: 'BNB', group: 'Exchange', name: 'BNB' },
-  { symbol: 'CAKEUSDT', label: 'CAKE', group: 'Exchange', name: 'PancakeSwap' },
-  { symbol: 'GTUSDT', label: 'GT', group: 'Exchange', name: 'GateToken' },
-  { symbol: 'KCSUSDT', label: 'KCS', group: 'Exchange', name: 'KuCoin Token' },
-  { symbol: 'OKBUSDT', label: 'OKB', group: 'Exchange', name: 'OKB' },
+  // Exchange tokens
   { symbol: 'CROUSDT', label: 'CRO', group: 'Exchange', name: 'Cronos' },
-  { symbol: 'MXUSDT', label: 'MX', group: 'Exchange', name: 'MX Token' },
+  { symbol: 'OKBUSDT', label: 'OKB', group: 'Exchange', name: 'OKB' },
+  { symbol: 'KCSUSDT', label: 'KCS', group: 'Exchange', name: 'KuCoin Token' },
   { symbol: 'WOOUSDT', label: 'WOO', group: 'Exchange', name: 'WOO' },
-  { symbol: 'SSRUSDT', label: 'SSR', group: 'Exchange', name: 'SSR' },
 
-  // ── Payments / stablecoin rails ────────────────────────
+  // Payments / stables
   { symbol: 'XLMUSDT', label: 'XLM', group: 'Payments', name: 'Stellar' },
-  { symbol: 'XRPUSDT', label: 'XRP', group: 'Payments', name: 'XRP' },
-  { symbol: 'XLMBTC', label: 'XLM/BTC', group: 'Payments', name: 'XLM-BTC' },
-  { symbol: 'PYUSDUSDT', label: 'PYUSD', group: 'Payments', name: 'PayPal USD' },
+  { symbol: 'USDCUSDT', label: 'USDC', group: 'Payments', name: 'USD Coin' },
   { symbol: 'FDUSDUSDT', label: 'FDUSD', group: 'Payments', name: 'First Digital USD' },
   { symbol: 'TUSDUSDT', label: 'TUSD', group: 'Payments', name: 'TrueUSD' },
   { symbol: 'DAIUSDT', label: 'DAI', group: 'Payments', name: 'Dai' },
-  { symbol: 'USDCUSDT', label: 'USDC', group: 'Payments', name: 'USD Coin' },
 
-  // ── Infra / oracles / storage ──────────────────────────
-  { symbol: 'LINKUSDT', label: 'LINK', group: 'Infra', name: 'Chainlink' },
+  // Infra
   { symbol: 'FILUSDT', label: 'FIL', group: 'Infra', name: 'Filecoin' },
   { symbol: 'ARUSDT', label: 'AR', group: 'Infra', name: 'Arweave' },
   { symbol: 'STORJUSDT', label: 'STORJ', group: 'Infra', name: 'Storj' },
   { symbol: 'THETAUSDT', label: 'THETA', group: 'Infra', name: 'Theta' },
-  { symbol: 'LIVEPEERUSDT', label: 'LPT', group: 'Infra', name: 'Livepeer' },
   { symbol: 'LPTUSDT', label: 'LPT', group: 'Infra', name: 'Livepeer' },
   { symbol: 'ENSUSDT', label: 'ENS', group: 'Infra', name: 'ENS' },
   { symbol: 'SSVUSDT', label: 'SSV', group: 'Infra', name: 'SSV Network' },
   { symbol: 'RPLUSDT', label: 'RPL', group: 'Infra', name: 'Rocket Pool' },
-  { symbol: 'TWTUSDT', label: 'TWT', group: 'Infra', name: 'Trust Wallet' },
   { symbol: 'QNTUSDT', label: 'QNT', group: 'Infra', name: 'Quant' },
   { symbol: 'IOTAUSDT', label: 'IOTA', group: 'Infra', name: 'IOTA' },
   { symbol: 'IOTXUSDT', label: 'IOTX', group: 'Infra', name: 'IoTeX' },
+  { symbol: 'BANDUSDT', label: 'BAND', group: 'Infra', name: 'Band Protocol' },
 
-  // ── Other liquid ───────────────────────────────────────
+  // Other
   { symbol: 'ETCUSDT', label: 'ETC', group: 'Other', name: 'Ethereum Classic' },
   { symbol: 'XMRUSDT', label: 'XMR', group: 'Other', name: 'Monero' },
   { symbol: 'ZECUSDT', label: 'ZEC', group: 'Other', name: 'Zcash' },
   { symbol: 'DASHUSDT', label: 'DASH', group: 'Other', name: 'Dash' },
   { symbol: 'EOSUSDT', label: 'EOS', group: 'Other', name: 'EOS' },
-  { symbol: 'AAVEUSDT', label: 'AAVE', group: 'Other', name: 'Aave' },
-  { symbol: 'MNTUSDT', label: 'MNT', group: 'Other', name: 'Mantle' },
-  { symbol: 'STXUSDT', label: 'STX', group: 'Other', name: 'Stacks' },
-  { symbol: 'RUNEUSDT', label: 'RUNE', group: 'Other', name: 'THORChain' },
   { symbol: 'NEOUSDT', label: 'NEO', group: 'Other', name: 'NEO' },
   { symbol: 'QTUMUSDT', label: 'QTUM', group: 'Other', name: 'Qtum' },
-  { symbol: 'WAVESUSDT', label: 'WAVES', group: 'Other', name: 'Waves' },
   { symbol: 'CHZUSDT', label: 'CHZ', group: 'Other', name: 'Chiliz' },
   { symbol: 'BATUSDT', label: 'BAT', group: 'Other', name: 'Basic Attention' },
   { symbol: 'ANKRUSDT', label: 'ANKR', group: 'Other', name: 'Ankr' },
@@ -245,15 +223,11 @@ export const SYMBOL_PRESETS: SymbolPreset[] = [
   { symbol: 'CELRUSDT', label: 'CELR', group: 'Other', name: 'Celer' },
   { symbol: 'HOTUSDT', label: 'HOT', group: 'Other', name: 'Holo' },
   { symbol: 'ZRXUSDT', label: 'ZRX', group: 'Other', name: '0x' },
-  { symbol: 'BANDUSDT', label: 'BAND', group: 'Other', name: 'Band Protocol' },
   { symbol: 'KAVAUSDT', label: 'KAVA', group: 'Other', name: 'Kava' },
   { symbol: 'CELOUSDT', label: 'CELO', group: 'Other', name: 'Celo' },
   { symbol: 'ONEUSDT', label: 'ONE', group: 'Other', name: 'Harmony' },
-  { symbol: 'GMTUSDT', label: 'GMT', group: 'Other', name: 'STEPN' },
-  { symbol: 'APTUSDT', label: 'APT', group: 'Other', name: 'Aptos' },
 ]
 
-/** Unique symbols preserving first occurrence order */
 export function uniquePresets(): SymbolPreset[] {
   const seen = new Set<string>()
   const out: SymbolPreset[] = []
