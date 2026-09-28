@@ -344,7 +344,7 @@ export function BloombergTerminal() {
         ))}
       </div>
       <div className="shrink-0 flex items-center gap-1 px-2 py-1 border-t border-[#1a2332] bg-[#0d1118]">
-        <span className="text-[#f0b90b]">></span>
+        <span className="text-[#f0b90b]">{'>'}</span>
         <input
           ref={inputRef}
           className="flex-1 bg-transparent outline-none text-[#eaecef]"
