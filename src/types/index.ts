@@ -87,6 +87,7 @@ export type WidgetKind =
   | 'journal'
   | 'terminal'
   | 'watchlist'
+  | 'ai'
 
 export interface WidgetPanelConfig {
   id: string
