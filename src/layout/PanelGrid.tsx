@@ -1,6 +1,5 @@
 /**
  * PanelGrid – magnetic grid for charts + desk widgets.
- * Drag via .panel-drag-handle; resize via borders/corners.
  */
 
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react'
@@ -11,6 +10,7 @@ import { WidgetShell } from './WidgetShell'
 import { OrderBookWidget } from '@/ui/OrderBookWidget'
 import { BloombergTerminal } from '@/ui/BloombergTerminal'
 import { WatchlistPanel } from '@/ui/WatchlistPanel'
+import { AiAnalysisPanel } from '@/ui/AiAnalysisPanel'
 import { PaperTradingPanel } from '@/trading/paper'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
@@ -69,12 +69,15 @@ function WidgetBody({ kind }: { kind: WidgetKind }) {
       return <BloombergTerminal />
     case 'watchlist':
       return <WatchlistPanel />
+    case 'ai':
+      return <AiAnalysisPanel />
     default:
       return null
   }
 }
 
 const ADDABLE: WidgetKind[] = [
+  'ai',
   'watchlist',
   'terminal',
   'paper',
@@ -99,9 +102,7 @@ export function PanelGrid({ width }: PanelGridProps) {
   useEffect(() => {
     if (!menuOpen) return
     const onDoc = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
