@@ -1,5 +1,6 @@
 /**
  * ChartPanel – chart unit with compact Orderflow menu.
+ * Full trading pair (e.g. BTCUSDT) always visible in header.
  */
 
 import { useState, type MouseEvent } from 'react'
@@ -17,6 +18,9 @@ import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
 import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
 import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
 import { detachChartPanel } from '@/layout/detachPanel'
+import { SymbolBadge } from '@/ui/SymbolBadge'
+import { SYMBOL_PRESETS } from '@/data/symbols'
+import { formatSymbolOption } from '@/data/symbolMeta'
 import type { ChartPanelConfig, Interval, ExchangeId } from '@/types'
 
 const INTERVALS: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d']
@@ -29,43 +33,28 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const { id, symbol, interval, exchange, syncGroup } = config
   const updatePanel = useLayoutStore((s) => s.updatePanel)
   const removePanel = useLayoutStore((s) => s.removePanel)
-  const setPrimaryPanel = useLayoutStore((s) => s.setPrimaryPanel)
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
-  const panelCount = useLayoutStore((s) => s.panels.length)
-  const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
-  const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
-  const setActiveTool = useDrawingStore((s) => s.setActiveTool)
-
-  const [of, setOf] = useState<OrderflowState>({
-    print: false,
-    delta: false,
-    deltaCfg: DEFAULT_DELTA_CONFIG,
-    profile: false,
-    profileCfg: DEFAULT_PROFILE_CONFIG,
-    trades: false,
-    tradesCfg: DEFAULT_DEEP_TRADES_CONFIG,
-    dom: false,
-    domCfg: DEFAULT_DEEP_DOM_CONFIG,
-  })
-
-  const { candles, status, lastError, statusDetail, reload } = usePanelMarket(
-    symbol,
-    interval,
-    exchange
-  )
-
+  const setPrimaryPanelId = useLayoutStore((s) => s.setPrimaryPanelId)
   const isPrimary = primaryPanelId === id
 
-  const patchOf = (patch: Partial<OrderflowState>) =>
-    setOf((s) => ({ ...s, ...patch }))
+  const [ofState, setOfState] = useState<OrderflowState>({
+    print: false,
+    delta: false,
+    deltaCfg: { ...DEFAULT_DELTA_CONFIG },
+    profile: false,
+    profileCfg: { ...DEFAULT_PROFILE_CONFIG },
+    trades: false,
+    tradesCfg: { ...DEFAULT_DEEP_TRADES_CONFIG },
+    dom: false,
+    domCfg: { ...DEFAULT_DEEP_DOM_CONFIG },
+    footprint: false,
+    replay: false,
+  })
 
-  const togglePrint = () => {
-    setOf((s) => {
-      const next = !s.print
-      if (next) setActiveTool('pan')
-      return { ...s, print: next }
-    })
-  }
+  const style = useChartStyleStore((s) => s.style)
+  const setActiveTool = useDrawingStore((s) => s.setActiveTool)
+
+  const { candles, status, lastError } = usePanelMarket(symbol, interval, exchange)
 
   const onDetach = (e: MouseEvent) => {
     e.stopPropagation()
@@ -74,14 +63,24 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
-      <div className="panel-drag-handle flex flex-wrap items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[28px]">
+      <div className="panel-drag-handle flex flex-wrap items-center gap-2 px-2 py-1 border-b border-terminal-border bg-terminal-bg shrink-0 cursor-move select-none min-h-[36px]">
+        <SymbolBadge symbol={symbol} size="sm" className="mr-1 shrink-0" />
         <input
-          className="bg-terminal-panel border border-terminal-border rounded px-1.5 py-0.5 text-xxs w-24 font-mono-nums"
+          className="bg-terminal-panel border border-[#f0b90b]/40 rounded px-1.5 py-0.5 text-xs w-28 font-mono-nums font-semibold text-[#eaecef]"
           value={symbol}
+          list={`panel-symbols-${id}`}
           onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase() })}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
+          title="Trading pair (full symbol)"
         />
+        <datalist id={`panel-symbols-${id}`}>
+          {SYMBOL_PRESETS.map((pr) => (
+            <option key={pr.symbol} value={pr.symbol}>
+              {formatSymbolOption(pr.symbol)}
+            </option>
+          ))}
+        </datalist>
         <select
           className="bg-terminal-panel border border-terminal-border rounded px-1 py-0.5 text-xxs"
           value={interval}
@@ -129,108 +128,69 @@ export function ChartPanel({ config }: ChartPanelProps) {
           title="Primary panel"
           onClick={(e) => {
             e.stopPropagation()
-            setPrimaryPanel(id)
+            setPrimaryPanelId(id)
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {isPrimary ? '★' : '☆'}
+          ★
         </button>
 
         <button
-          type="button"
+          className="text-xxs px-1.5 py-0.5 rounded text-terminal-muted hover:text-terminal-text"
           title="Stile"
-          className={`text-xxs px-1.5 py-0.5 rounded border ${
-            stylePanelOpen
-              ? 'bg-terminal-blue/30 text-terminal-blue border-terminal-blue/50'
-              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
-          }`}
           onClick={(e) => {
             e.stopPropagation()
-            toggleStylePanel()
+            setActiveTool('pan')
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          🎨 Stile
+          🎨
         </button>
 
         <button
-          type="button"
+          className="text-xxs px-1.5 py-0.5 rounded text-terminal-muted hover:text-[#f0b90b]"
           title="Open on second monitor"
-          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b] hover:border-[#f0b90b]/50"
           onClick={onDetach}
           onMouseDown={(e) => e.stopPropagation()}
         >
           ⧉
         </button>
 
-        <div className="ml-auto flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
-          <ConnectionBadge status={status} detail={statusDetail} />
-          {(status === 'error' || status === 'disconnected') && (
-            <button
-              type="button"
-              className="text-xxs px-1.5 py-0.5 border border-terminal-border rounded hover:bg-terminal-hover"
-              onClick={(e) => {
-                e.stopPropagation()
-                reload()
-              }}
-            >
-              Retry
-            </button>
-          )}
-        </div>
+        <ConnectionBadge status={status} />
 
-        {panelCount > 1 && (
-          <button
-            className="text-terminal-red/80 hover:text-terminal-red text-xs px-1"
-            onClick={(e) => {
-              e.stopPropagation()
-              removePanel(id)
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            −
-          </button>
-        )}
+        <button
+          className="ml-auto text-xxs px-1.5 py-0.5 rounded text-terminal-red/80 hover:text-terminal-red"
+          title="Remove panel"
+          onClick={(e) => {
+            e.stopPropagation()
+            removePanel(id)
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          −
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0">
+        <DrawingToolbar panelId={id} symbol={symbol} />
+        <OrderflowMenu state={ofState} onChange={setOfState} />
       </div>
 
       {lastError && (
-        <div className="shrink-0 px-2 py-1 text-xxs bg-terminal-red/10 text-terminal-red border-b border-terminal-red/30">
-          <strong>[{lastError.code}]</strong> {lastError.message}
+        <div className="px-2 py-1 text-xxs text-terminal-red bg-terminal-red/10 shrink-0">
+          {lastError.message}
         </div>
       )}
 
-      <div className="shrink-0 min-h-[30px] border-b border-terminal-border bg-terminal-bg z-10 flex items-center">
-        <OrderflowMenu
-          state={of}
-          exchange={exchange}
-          onChange={patchOf}
-          onPrintToggle={togglePrint}
-        />
-        <span className="w-px h-4 bg-terminal-border mx-1.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <DrawingToolbar panelId={id} symbol={symbol} />
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 relative" data-chart-root>
+      <div className="flex-1 min-h-0 relative">
         <ChartContainer
           panelId={id}
           symbol={symbol}
-          exchange={exchange}
           interval={interval}
+          exchange={exchange}
           candles={candles}
-          status={status}
-          lastError={lastError}
-          syncGroup={syncGroup}
-          deepPrintEnabled={of.print}
-          deltaEnabled={of.delta}
-          deltaConfig={of.deltaCfg}
-          profileEnabled={of.profile}
-          profileConfig={of.profileCfg}
-          deepTradesEnabled={of.trades}
-          deepTradesConfig={of.tradesCfg}
-          deepDomEnabled={of.dom}
-          deepDomConfig={of.domCfg}
+          orderflow={ofState}
+          chartStyle={style}
         />
       </div>
     </div>
