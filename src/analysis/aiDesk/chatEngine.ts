@@ -1,9 +1,9 @@
 /**
- * Local AI desk chat – answers from live TA context + mode.
- * No synthetic prices; optional future xAI proxy.
+ * Local AI desk chat – answers from live TA + SMC context + mode.
  */
 
 import type { TaReport } from './taEngine'
+import type { SmcReport } from './smcEngine'
 
 export type AiMode =
   | 'technical'
@@ -12,9 +12,11 @@ export type AiMode =
   | 'swing'
   | 'risk'
   | 'draw'
+  | 'smc'
 
 export const AI_MODES: { id: AiMode; label: string; hint: string }[] = [
   { id: 'technical', label: 'Technical', hint: 'Structure, S/R, fib, bias' },
+  { id: 'smc', label: 'SMC', hint: 'FVG, Order Block, BOS, Volume Profile' },
   { id: 'fundamental', label: 'Fundamental', hint: 'Macro / crypto context' },
   { id: 'scalp', label: 'Scalp', hint: 'Short-term levels & tape focus' },
   { id: 'swing', label: 'Swing', hint: 'Multi-session structure' },
@@ -28,6 +30,10 @@ export interface DrawOptions {
   trend: boolean
   fib: boolean
   label: boolean
+  fvg: boolean
+  orderBlock: boolean
+  bos: boolean
+  volumeProfile: boolean
 }
 
 export const DEFAULT_DRAW_OPTS: DrawOptions = {
@@ -36,6 +42,10 @@ export const DEFAULT_DRAW_OPTS: DrawOptions = {
   trend: true,
   fib: true,
   label: true,
+  fvg: true,
+  orderBlock: true,
+  bos: true,
+  volumeProfile: true,
 }
 
 function fmt(n: number, d = 4) {
@@ -43,26 +53,11 @@ function fmt(n: number, d = 4) {
   return n.toFixed(d)
 }
 
-export function buildContextBlock(report: TaReport | null, mode: AiMode): string {
-  if (!report || !report.last) {
-    return 'No TA report yet. Run analysis or load candles first.'
-  }
-  const lines = [
-    `Symbol ${report.symbol} · TF ${report.interval}`,
-    `Last ${fmt(report.last.close)}  H ${fmt(report.last.high)}  L ${fmt(report.last.low)}`,
-    `Bias ${report.bias} · range pos ${report.rangePos.toFixed(0)}%`,
-    `Supports: ${report.supports.map((p) => fmt(p)).join(', ') || '—'}`,
-    `Resistances: ${report.resistances.map((p) => fmt(p)).join(', ') || '—'}`,
-    `Mode: ${mode}`,
-  ]
-  return lines.join('\n')
-}
-
-/** Rule-based reply from user message + TA + mode */
 export function answerMessage(
   userText: string,
   report: TaReport | null,
-  mode: AiMode
+  mode: AiMode,
+  smc: SmcReport | null = null
 ): { text: string; suggestDraw: boolean } {
   const q = userText.trim().toLowerCase()
   const r = report
@@ -75,7 +70,6 @@ export function answerMessage(
     }
   }
 
-  // Intent detection
   const wantsDraw =
     /\b(draw|disegn|auto-?draw|paint|traccia|livelli sul grafico)\b/.test(q)
   const wantsBias = /\b(bias|direzione|bull|bear|trend|verso)\b/.test(q)
@@ -83,21 +77,25 @@ export function answerMessage(
   const wantsFib = /\b(fib|retracement|ritracci)\b/.test(q)
   const wantsEntry = /\b(entry|ingresso|long|short|buy|sell)\b/.test(q)
   const wantsRisk = /\b(risk|stop|sl|tp|rr|rischio|position)\b/.test(q)
+  const wantsFvg = /\b(fvg|fair value|gap|imbalance)\b/.test(q)
+  const wantsOb = /\b(order\s*block|ob\b|blocco)\b/.test(q)
+  const wantsVp = /\b(volume\s*profile|poc|vah|val|vp\b)\b/.test(q)
+  const wantsBos = /\b(bos|choch|structure|struttura|break)\b/.test(q)
   const wantsHelp = /\b(help|aiuto|comandi|cosa puoi)\b/.test(q)
 
   if (wantsHelp || q === '?' || q === 'help') {
     return {
       text: [
         'Posso rispondere su:',
-        '• bias / trend / struttura',
-        '• supporti e resistenze',
-        '• fib',
-        '• entry idea (solo framing, non consiglio finanziario)',
-        '• risk / stop / RR',
-        '• “disegna” → livelli sul chart',
+        '• bias / trend / S/R / fib',
+        '• **FVG** (fair value gaps)',
+        '• **Order Block**',
+        '• **BOS / CHoCH**',
+        '• **Volume Profile** (POC, VAH, VAL)',
+        '• entry / risk framing',
+        '• “disegna” → applica sul chart',
         '',
-        `Modalità attiva: **${mode}**`,
-        'Cambia mode dal selettore sopra. Opzioni draw: S/R, trend, fib, label.',
+        `Modalità: **${mode}** — attiva le checkbox Draw options.`,
       ].join('\n'),
       suggestDraw: false,
     }
@@ -105,28 +103,26 @@ export function answerMessage(
 
   const parts: string[] = []
 
-  // Mode preamble
   switch (mode) {
     case 'scalp':
       parts.push(
-        `[SCALP] Focus su livelli vicini e range pos ${r.rangePos.toFixed(0)}%. Preferisci reazioni su micro-S/R piuttosto che bias di lungo periodo.`
+        `[SCALP] Range pos ${r.rangePos.toFixed(0)}% · livelli vicini prioritari.`
       )
       break
     case 'swing':
-      parts.push(
-        `[SWING] Guarda struttura multi-sessione. Bias corrente **${r.bias}** su ${r.interval}.`
-      )
+      parts.push(`[SWING] Bias **${r.bias}** su ${r.interval}.`)
       break
     case 'risk':
-      parts.push('[RISK] Framing rischio — non size advice automatico.')
+      parts.push('[RISK] Framing rischio — non size advice.')
       break
     case 'fundamental':
-      parts.push(
-        '[FUND] Contesto: funding, OI, ETF flows, DXY — non ho un feed news live; uso solo struttura prezzo.'
-      )
+      parts.push('[FUND] Contesto macro/crypto; segnale primario = prezzo.')
+      break
+    case 'smc':
+      parts.push('[SMC] FVG · Order Block · BOS/CHoCH · Volume Profile')
       break
     case 'draw':
-      parts.push('[DRAW] Posso tracciare S/R, trendline, fib e label sul chart primario.')
+      parts.push('[DRAW] Opzioni: S/R, trend, fib, FVG, OB, BOS, VP.')
       break
     default:
       parts.push(`[TA] ${r.symbol} ${r.interval}`)
@@ -134,30 +130,19 @@ export function answerMessage(
 
   if (wantsBias || mode === 'technical' || mode === 'swing') {
     parts.push(
-      `Bias struttura: **${r.bias.toUpperCase()}**. Prezzo ${fmt(r.last.close)}, posizione nel range recente ${r.rangePos.toFixed(0)}%.`
+      `Bias **${r.bias.toUpperCase()}** · last ${fmt(r.last.close)} · range ${r.rangePos.toFixed(0)}%.`
     )
-    if (r.trend) {
-      parts.push(
-        `Trendline swing: ${fmt(r.trend.from.price)} → ${fmt(r.trend.to.price)} (${r.trend.slope > 0 ? 'rising' : 'falling'}).`
-      )
-    }
   }
 
   if (wantsSr || mode === 'scalp' || mode === 'technical') {
-    if (r.supports.length) {
-      parts.push(`Supporti: ${r.supports.map((p) => fmt(p)).join(' · ')}`)
-    }
-    if (r.resistances.length) {
+    if (r.supports.length) parts.push(`Supporti: ${r.supports.map((p) => fmt(p)).join(' · ')}`)
+    if (r.resistances.length)
       parts.push(`Resistenze: ${r.resistances.map((p) => fmt(p)).join(' · ')}`)
-    }
-    if (!r.supports.length && !r.resistances.length) {
-      parts.push('Pochi swing chiari per cluster S/R — prova TF più alto o più history.')
-    }
   }
 
   if (wantsFib && r.fib) {
     parts.push(
-      `Fib (ultimo swing): ` +
+      'Fib: ' +
         r.fib.levels
           .filter((l) => [0.382, 0.5, 0.618].includes(l.ratio))
           .map((l) => `${(l.ratio * 100).toFixed(0)}% ${fmt(l.price)}`)
@@ -165,19 +150,60 @@ export function answerMessage(
     )
   }
 
+  if (smc && (wantsFvg || mode === 'smc')) {
+    const open = smc.fvgs.filter((z) => !z.mitigated)
+    if (!open.length) parts.push('Nessun FVG aperto recente.')
+    else {
+      parts.push('FVG aperti:')
+      for (const z of open.slice(-4)) {
+        parts.push(
+          `  · ${z.kind} ${fmt(z.bottom)}–${fmt(z.top)}${z.mitigated ? ' (mit)' : ''}`
+        )
+      }
+    }
+  }
+
+  if (smc && (wantsOb || mode === 'smc')) {
+    if (!smc.orderBlocks.length) parts.push('Nessun order block rilevato nel lookback.')
+    else {
+      parts.push('Order blocks:')
+      for (const ob of smc.orderBlocks.slice(-4)) {
+        parts.push(`  · ${ob.kind} OB ${fmt(ob.bottom)}–${fmt(ob.top)}`)
+      }
+    }
+  }
+
+  if (smc && (wantsBos || mode === 'smc')) {
+    if (!smc.breaks.length) parts.push('Nessun BOS/CHoCH recente.')
+    else {
+      const last = smc.breaks[smc.breaks.length - 1]
+      parts.push(
+        `Ultima struttura: **${last.kind.toUpperCase()}** ${last.direction} @ ${fmt(last.price)}`
+      )
+    }
+  }
+
+  if (smc && (wantsVp || mode === 'smc')) {
+    const vp = smc.volumeProfile
+    if (!vp) parts.push('Volume profile non disponibile (pochi dati).')
+    else {
+      parts.push(
+        `Volume Profile · **POC** ${fmt(vp.poc)} · VAL ${fmt(vp.val)} · VAH ${fmt(vp.vah)}`
+      )
+    }
+  }
+
   if (wantsEntry || mode === 'scalp' || mode === 'swing') {
     if (r.bias === 'bullish' && r.supports[0]) {
       parts.push(
-        `Idea long (framing): retest area ~${fmt(r.supports[0])} con conferma; invalidazione sotto lo swing low.`
+        `Idea long (framing): retest ~${fmt(r.supports[0])}; invalidazione sotto swing low.`
       )
     } else if (r.bias === 'bearish' && r.resistances[0]) {
       parts.push(
-        `Idea short (framing): retest area ~${fmt(r.resistances[0])}; invalidazione sopra lo swing high.`
+        `Idea short (framing): retest ~${fmt(r.resistances[0])}; invalidazione sopra swing high.`
       )
     } else {
-      parts.push(
-        'Struttura mista: meglio aspettare break + retest del livello più vicino prima di size.'
-      )
+      parts.push('Struttura mista: attendi break + retest.')
     }
   }
 
@@ -188,35 +214,27 @@ export function answerMessage(
         : r.bias === 'bearish'
           ? r.resistances[0]
           : null
-    if (ref && r.last) {
-      const dist = Math.abs(r.last.close - ref)
-      const pct = (dist / r.last.close) * 100
+    if (ref) {
+      const pct = (Math.abs(r.last.close - ref) / r.last.close) * 100
       parts.push(
-        `Distanza al livello di riferimento ${fmt(ref)}: ~${pct.toFixed(2)}% dal last. Uno stop strutturale tipicamente oltre quel livello (valuta tu la size).`
+        `Distanza a ref ${fmt(ref)}: ~${pct.toFixed(2)}%. Stop strutturale tipicamente oltre quel livello.`
       )
-    } else {
-      parts.push('Definisci stop oltre lo swing opposto; RR ≥ 1.5 solo se il target ha liquidità/struttura.')
     }
   }
 
-  if (mode === 'fundamental') {
+  if (wantsDraw || mode === 'draw' || mode === 'smc') {
     parts.push(
-      'Fondamentali crypto da monitorare a parte: funding rate, open interest, liquidazioni, dominance BTC, flussi ETF, calendario macro. Qui il segnale primario resta il prezzo.'
+      'Per disegnare: attiva checkbox (FVG, OB, VP, …) e **Auto-draw**, o scrivi “disegna”.'
     )
   }
 
-  if (wantsDraw || mode === 'draw') {
-    parts.push(
-      'Per disegnare sul grafico: attiva le opzioni (S/R, trend, fib, label) e premi **Auto-draw**, oppure scrivi “disegna”.'
-    )
+  if (parts.length <= 1) parts.push(...r.summary)
+  if (smc) parts.push(...smc.summary)
+
+  parts.push('_Non è consulenza finanziaria. Dati dalle candele live._')
+
+  return {
+    text: parts.join('\n\n'),
+    suggestDraw: wantsDraw || mode === 'draw',
   }
-
-  // Generic fallback if few parts
-  if (parts.length <= 1) {
-    parts.push(...r.summary)
-  }
-
-  parts.push('_Non è consulenza finanziaria. Dati dalle tue candele live._')
-
-  return { text: parts.join('\n\n'), suggestDraw: wantsDraw || mode === 'draw' }
 }
