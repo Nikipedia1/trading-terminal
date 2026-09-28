@@ -1,6 +1,6 @@
 /**
  * Order Book widget – Dribbble-inspired movable card UI for the terminal.
- * Layout: animated depth mountain chart + Size | Bid | Ask | Size ladder.
+ * Layout: solid filled depth mountain + Size | Bid | Ask | Size ladder.
  * Real L2 data only (from marketStore / shared orderBookFeed).
  */
 
@@ -10,7 +10,7 @@ import type { OrderBook } from '@/types'
 
 const DEPTH = 8
 const CHART_H = 88
-const LERP_SPEED = 0.18 // higher = snappier mountain morph
+const LERP_SPEED = 0.18
 
 function fmtPrice(n: number): string {
   if (n >= 1000) return n.toFixed(2)
@@ -24,12 +24,10 @@ function fmtSize(n: number): string {
   return n.toFixed(4)
 }
 
-/** Build cumulative depth samples: left bids (outer→mid), right asks (mid→outer). */
 function buildMountain(book: OrderBook): { xs: number[]; ys: number[]; midIdx: number } {
   const bids = book.bids.slice(0, DEPTH)
   const asks = book.asks.slice(0, DEPTH)
 
-  // cumulative from best outward
   const bidCums: number[] = []
   let c = 0
   for (const l of bids) {
@@ -49,44 +47,37 @@ function buildMountain(book: OrderBook): { xs: number[]; ys: number[]; midIdx: n
     0.0001
   )
 
-  // Path: deepest bid (left) → best bid → mid valley (0) → best ask → deepest ask (right)
-  // Normalized x in [0,1], y in [0,1] where 1 = max height (outer edges)
   const xs: number[] = []
   const ys: number[] = []
 
-  // Bids reversed: outer → best (left half)
   for (let i = bidCums.length - 1; i >= 0; i--) {
-    const t = bidCums.length <= 1 ? 0 : (bidCums.length - 1 - i) / (bidCums.length)
-    xs.push(t * 0.48) // 0 .. ~0.48
+    const t = bidCums.length <= 1 ? 0 : (bidCums.length - 1 - i) / bidCums.length
+    xs.push(t * 0.48)
     ys.push(bidCums[i] / maxCum)
   }
-  // Valley at mid
   xs.push(0.5)
-  ys.push(0.02) // slight floor so the valley is visible
+  ys.push(0.02)
   const midIdx = xs.length - 1
 
-  // Asks: best → outer (right half)
   for (let i = 0; i < askCums.length; i++) {
     const t = askCums.length <= 1 ? 1 : (i + 1) / askCums.length
-    xs.push(0.52 + t * 0.48) // ~0.52 .. 1
+    xs.push(0.52 + t * 0.48)
     ys.push(askCums[i] / maxCum)
   }
 
-  // Ensure at least 3 points
   if (xs.length < 3) {
-    return { xs: [0, 0.5, 1], ys: [0.6, 0.02, 0.6], midIdx: 1 }
+    return { xs: [0, 0.5, 1], ys: [0.65, 0.02, 0.65], midIdx: 1 }
   }
   return { xs, ys, midIdx }
 }
 
-/** Animated depth mountain: continuous green→red U-curve, lerps on book updates. */
+/** Solid filled depth mountain – no stroke lines (paper-trading style). */
 function DepthChart({ book }: { book: OrderBook }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const targetRef = useRef(buildMountain(book))
   const currentRef = useRef(buildMountain(book))
   const rafRef = useRef(0)
 
-  // Push new target whenever book changes
   useEffect(() => {
     targetRef.current = buildMountain(book)
   }, [book])
@@ -114,7 +105,6 @@ function DepthChart({ book }: { book: OrderBook }) {
       const target = targetRef.current
       const cur = currentRef.current
 
-      // Align lengths (pad with last value)
       const n = Math.max(cur.xs.length, target.xs.length)
       while (cur.xs.length < n) {
         cur.xs.push(cur.xs[cur.xs.length - 1] ?? 0.5)
@@ -125,30 +115,21 @@ function DepthChart({ book }: { book: OrderBook }) {
         target.ys.push(target.ys[target.ys.length - 1] ?? 0)
       }
 
-      // Lerp toward target
-      let moving = false
       for (let i = 0; i < n; i++) {
-        const dx = target.xs[i] - cur.xs[i]
-        const dy = target.ys[i] - cur.ys[i]
-        if (Math.abs(dx) > 0.0005 || Math.abs(dy) > 0.0005) moving = true
-        cur.xs[i] += dx * LERP_SPEED
-        cur.ys[i] += dy * LERP_SPEED
+        cur.xs[i] += (target.xs[i] - cur.xs[i]) * LERP_SPEED
+        cur.ys[i] += (target.ys[i] - cur.ys[i]) * LERP_SPEED
       }
       cur.midIdx = target.midIdx
 
       const padX = 4
-      const padY = 8
+      const padY = 6
       const plotW = w - padX * 2
       const plotH = h - padY * 2
-
       const toX = (t: number) => padX + t * plotW
-      // y=1 at top of mountain (outer edges), y=0 at valley bottom
       const toY = (v: number) => padY + plotH - v * plotH
-
-      // --- Fill under mountain (split gradient at mid) ---
       const midX = toX(0.5)
 
-      // Left (bid) fill
+      // ---- Left mountain (bids) – solid fill only ----
       ctx.beginPath()
       ctx.moveTo(toX(cur.xs[0]), h - padY)
       for (let i = 0; i < cur.xs.length; i++) {
@@ -157,24 +138,25 @@ function DepthChart({ book }: { book: OrderBook }) {
         const y = toY(cur.ys[i])
         if (i === 0) ctx.lineTo(x, y)
         else {
-          // smooth step
           const px = toX(cur.xs[i - 1])
           const py = toY(cur.ys[i - 1])
-          const cpx = (px + x) / 2
-          ctx.quadraticCurveTo(cpx, py, x, y)
+          ctx.quadraticCurveTo((px + x) / 2, py, x, y)
         }
       }
+      ctx.lineTo(midX, toY(0.02))
       ctx.lineTo(midX, h - padY)
       ctx.closePath()
-      const gL = ctx.createLinearGradient(0, 0, midX, 0)
-      gL.addColorStop(0, 'rgba(14, 203, 129, 0.28)')
+      const gL = ctx.createLinearGradient(0, padY, 0, h - padY)
+      gL.addColorStop(0, 'rgba(14, 203, 129, 0.55)')
+      gL.addColorStop(0.55, 'rgba(14, 203, 129, 0.28)')
       gL.addColorStop(1, 'rgba(14, 203, 129, 0.06)')
       ctx.fillStyle = gL
       ctx.fill()
 
-      // Right (ask) fill
+      // ---- Right mountain (asks) – solid fill only ----
       ctx.beginPath()
       ctx.moveTo(midX, h - padY)
+      ctx.lineTo(midX, toY(0.02))
       let started = false
       for (let i = 0; i < cur.xs.length; i++) {
         if (cur.xs[i] < 0.5) continue
@@ -186,74 +168,17 @@ function DepthChart({ book }: { book: OrderBook }) {
         } else {
           const px = toX(cur.xs[i - 1])
           const py = toY(cur.ys[i - 1])
-          const cpx = (px + x) / 2
-          ctx.quadraticCurveTo(cpx, py, x, y)
+          ctx.quadraticCurveTo((px + x) / 2, py, x, y)
         }
       }
       ctx.lineTo(toX(cur.xs[cur.xs.length - 1]), h - padY)
       ctx.closePath()
-      const gR = ctx.createLinearGradient(midX, 0, w, 0)
-      gR.addColorStop(0, 'rgba(246, 70, 93, 0.06)')
-      gR.addColorStop(1, 'rgba(246, 70, 93, 0.28)')
+      const gR = ctx.createLinearGradient(0, padY, 0, h - padY)
+      gR.addColorStop(0, 'rgba(246, 70, 93, 0.55)')
+      gR.addColorStop(0.55, 'rgba(246, 70, 93, 0.28)')
+      gR.addColorStop(1, 'rgba(246, 70, 93, 0.06)')
       ctx.fillStyle = gR
       ctx.fill()
-
-      // --- Stroke: continuous mountain line, color splits at mid ---
-      // Green half
-      ctx.beginPath()
-      ctx.lineWidth = 2
-      ctx.lineJoin = 'round'
-      ctx.lineCap = 'round'
-      let first = true
-      for (let i = 0; i < cur.xs.length; i++) {
-        if (cur.xs[i] > 0.5) break
-        const x = toX(cur.xs[i])
-        const y = toY(cur.ys[i])
-        if (first) {
-          ctx.moveTo(x, y)
-          first = false
-        } else {
-          const px = toX(cur.xs[i - 1])
-          const py = toY(cur.ys[i - 1])
-          ctx.quadraticCurveTo((px + x) / 2, py, x, y)
-        }
-      }
-      // connect into valley
-      ctx.lineTo(midX, toY(0.02))
-      ctx.strokeStyle = '#0ecb81'
-      ctx.stroke()
-
-      // Red half
-      ctx.beginPath()
-      ctx.moveTo(midX, toY(0.02))
-      first = true
-      for (let i = 0; i < cur.xs.length; i++) {
-        if (cur.xs[i] < 0.5) continue
-        const x = toX(cur.xs[i])
-        const y = toY(cur.ys[i])
-        if (first) {
-          ctx.lineTo(x, y)
-          first = false
-        } else {
-          const px = toX(cur.xs[i - 1])
-          const py = toY(cur.ys[i - 1])
-          ctx.quadraticCurveTo((px + x) / 2, py, x, y)
-        }
-      }
-      ctx.strokeStyle = '#f6465d'
-      ctx.stroke()
-
-      // Soft glow on peak edges
-      ctx.globalCompositeOperation = 'lighter'
-      ctx.beginPath()
-      ctx.arc(toX(cur.xs[0]), toY(cur.ys[0]), 3, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(14, 203, 129, 0.35)'
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(toX(cur.xs[cur.xs.length - 1]), toY(cur.ys[cur.ys.length - 1]), 3, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(246, 70, 93, 0.35)'
-      ctx.fill()
-      ctx.globalCompositeOperation = 'source-over'
 
       rafRef.current = requestAnimationFrame(draw)
     }
@@ -271,11 +196,7 @@ function DepthChart({ book }: { book: OrderBook }) {
 
   return (
     <div className="relative px-3 pt-2 pb-1">
-      <canvas
-        ref={canvasRef}
-        className="w-full block"
-        style={{ height: CHART_H }}
-      />
+      <canvas ref={canvasRef} className="w-full block" style={{ height: CHART_H }} />
       <div className="flex justify-between text-[10px] text-[#848e9c] font-mono-nums mt-0.5 px-0.5">
         <span>{low != null ? fmtPrice(low) : '—'}</span>
         <span className="text-[#eaecef] font-medium">{mid != null ? fmtPrice(mid) : '—'}</span>
@@ -306,7 +227,7 @@ function LevelRow({
               className="absolute inset-y-0.5 right-0 rounded-l-sm transition-[width] duration-150"
               style={{
                 width: `${bidPct}%`,
-                background: 'rgba(14, 203, 129, 0.22)',
+                background: 'rgba(14, 203, 129, 0.28)',
               }}
             />
             <span className="relative text-[#848e9c] tabular-nums">{fmtSize(bid.qty)}</span>
@@ -337,7 +258,7 @@ function LevelRow({
               className="absolute inset-y-0.5 left-0 rounded-r-sm transition-[width] duration-150"
               style={{
                 width: `${askPct}%`,
-                background: 'rgba(246, 70, 93, 0.22)',
+                background: 'rgba(246, 70, 93, 0.28)',
               }}
             />
             <span className="relative text-[#848e9c] tabular-nums">{fmtSize(ask.qty)}</span>
@@ -355,7 +276,10 @@ export function OrderBookWidget() {
   const { rows, maxQty, mid, spread } = useMemo(() => {
     if (!book) {
       return {
-        rows: [] as { bid?: { price: number; qty: number }; ask?: { price: number; qty: number } }[],
+        rows: [] as {
+          bid?: { price: number; qty: number }
+          ask?: { price: number; qty: number }
+        }[],
         maxQty: 1,
         mid: null as number | null,
         spread: null as number | null,
@@ -373,10 +297,8 @@ export function OrderBookWidget() {
       ...asks.map((l) => l.qty),
       0.0001
     )
-    const mid =
-      bids[0] && asks[0] ? (bids[0].price + asks[0].price) / 2 : null
-    const spread =
-      bids[0] && asks[0] ? asks[0].price - bids[0].price : null
+    const mid = bids[0] && asks[0] ? (bids[0].price + asks[0].price) / 2 : null
+    const spread = bids[0] && asks[0] ? asks[0].price - bids[0].price : null
     return { rows, maxQty, mid, spread }
   }, [book])
 
@@ -391,8 +313,7 @@ export function OrderBookWidget() {
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] select-none">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b3139] shrink-0">
-        <span className="text-xs font-semibold text-[#eaecef] tracking-wide">Order Book</span>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#2b3139] shrink-0">
         <div className="flex items-center gap-2 text-[10px] text-[#848e9c]">
           {spread != null && (
             <span className="tabular-nums">
