@@ -10,6 +10,7 @@ import { ChartPanel } from '@/charts/ChartPanel'
 import { WidgetShell } from './WidgetShell'
 import { OrderBookWidget } from '@/ui/OrderBookWidget'
 import { BloombergTerminal } from '@/ui/BloombergTerminal'
+import { WatchlistPanel } from '@/ui/WatchlistPanel'
 import { PaperTradingPanel } from '@/trading/paper'
 import { LargeTradesPanel } from '@/analysis/deepTrades'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
@@ -66,12 +67,15 @@ function WidgetBody({ kind }: { kind: WidgetKind }) {
       return <JournalPanel />
     case 'terminal':
       return <BloombergTerminal />
+    case 'watchlist':
+      return <WatchlistPanel />
     default:
       return null
   }
 }
 
 const ADDABLE: WidgetKind[] = [
+  'watchlist',
   'terminal',
   'paper',
   'book',
