@@ -21,6 +21,7 @@ export function captureLayout(): WorkspaceLayoutSlice {
   const s = useLayoutStore.getState()
   return {
     panels: s.panels.map((p) => ({ ...p })),
+    widgets: s.widgets.map((w) => ({ ...w })),
     layout: s.layout.map((l) => ({ ...l })),
     primaryPanelId: s.primaryPanelId,
   }
@@ -53,7 +54,6 @@ export function captureOrderflow(): unknown {
 export function captureDrawings(): unknown {
   try {
     const s = useDrawingStore.getState()
-    // Deep clone byPanelSymbol only (logical coords – safe to JSON)
     return JSON.parse(JSON.stringify(s.byPanelSymbol))
   } catch {
     return undefined
@@ -61,11 +61,17 @@ export function captureDrawings(): unknown {
 }
 
 export function applyLayout(slice: WorkspaceLayoutSlice): void {
-  useLayoutStore.setState({
+  const patch: Record<string, unknown> = {
     panels: slice.panels,
     layout: slice.layout,
     primaryPanelId: slice.primaryPanelId,
-  })
+  }
+  if (Array.isArray(slice.widgets)) {
+    patch.widgets = slice.widgets
+  }
+  useLayoutStore.setState(patch as any)
+  // Repair: widgets listed but missing grid slots → re-attach
+  useLayoutStore.getState().reconcileLayout?.()
 }
 
 export function applyIndicators(data: unknown): void {
@@ -106,7 +112,6 @@ export function applyDrawings(data: unknown): void {
   try {
     const map = data as Record<string, Record<string, unknown[]>>
     useDrawingStore.setState({ byPanelSymbol: map as any })
-    // Mirror into localStorage per panel/symbol
     for (const [panelId, bySym] of Object.entries(map)) {
       if (!bySym || typeof bySym !== 'object') continue
       for (const [sym, drawings] of Object.entries(bySym)) {
