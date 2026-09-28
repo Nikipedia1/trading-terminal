@@ -1,6 +1,5 @@
 /**
- * AI Desk – modes, draw options, chat input, auto-draw on chart.
- * Local engine on live candles (optional future xAI proxy).
+ * AI Desk – modes, SMC tools (FVG/OB/BOS/VP), chat, auto-draw.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -8,6 +7,11 @@ import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { analyzeCandles, reportToDrawings, type TaReport } from '@/analysis/aiDesk/taEngine'
+import {
+  analyzeSmc,
+  smcToDrawings,
+  type SmcReport,
+} from '@/analysis/aiDesk/smcEngine'
 import {
   AI_MODES,
   DEFAULT_DRAW_OPTS,
@@ -25,27 +29,31 @@ interface ChatMsg {
 
 let msgSeq = 0
 
-function filterDrawings(all: Drawing[], opts: DrawOptions): Drawing[] {
+function filterClassic(all: Drawing[], opts: DrawOptions): Drawing[] {
   return all.filter((d) => {
     if (d.tool === 'horizontal') {
-      // green support / red resistance – both are horizontal; keep if either flag
       if (d.style.color === '#0ecb81') return opts.support
       if (d.style.color === '#f6465d') return opts.resistance
       return opts.support || opts.resistance
     }
     if (d.tool === 'trendline') return opts.trend
     if (d.tool === 'fib_retracement') return opts.fib
+    if (d.tool === 'text' && String(d).includes) {
+      // classic AI label only if label on; SMC texts come from smcToDrawings
+      if ('text' in d && /^AI /i.test((d as { text: string }).text)) return opts.label
+    }
     if (d.tool === 'text') return opts.label
     return true
   })
 }
 
 const QUICK = [
-  'Qual è il bias?',
-  'Supporti e resistenze',
-  'Idea entry',
-  'Risk / stop',
-  'Disegna sul grafico',
+  'Bias',
+  'FVG',
+  'Order block',
+  'Volume profile',
+  'BOS',
+  'Disegna',
   'Help',
 ]
 
@@ -60,14 +68,15 @@ export function AiAnalysisPanel() {
   const getDrawings = useDrawingStore((s) => s.getDrawings)
   const loadFromStorage = useDrawingStore((s) => s.loadFromStorage)
 
-  const [mode, setMode] = useState<AiMode>('technical')
+  const [mode, setMode] = useState<AiMode>('smc')
   const [opts, setOpts] = useState<DrawOptions>({ ...DEFAULT_DRAW_OPTS })
   const [report, setReport] = useState<TaReport | null>(null)
+  const [smc, setSmc] = useState<SmcReport | null>(null)
   const [chat, setChat] = useState<ChatMsg[]>(() => [
     {
       id: ++msgSeq,
       role: 'sys',
-      text: 'AI Desk pronto. Scegli una modalità, poi scrivi un messaggio o usa Auto-draw.',
+      text: 'AI Desk · SMC attivo. FVG, Order Block, BOS, Volume Profile + chat.',
     },
   ])
   const [input, setInput] = useState('')
@@ -84,44 +93,56 @@ export function AiAnalysisPanel() {
     setChat((c) => [...c.slice(-80), { id: ++msgSeq, role, text }])
   }, [])
 
-  const ensureReport = useCallback(() => {
+  const ensure = useCallback(() => {
     const r = analyzeCandles(candles, symbol, interval)
+    const s = analyzeSmc(candles)
     setReport(r)
-    return r
+    setSmc(s)
+    return { r, s }
   }, [candles, symbol, interval])
 
   const applyDraw = useCallback(
-    (r: TaReport) => {
+    (r: TaReport, s: SmcReport) => {
       loadFromStorage(primaryPanelId, symbol)
-      const all = reportToDrawings(r, 'AI')
-      const filtered = filterDrawings(all, opts)
-      for (const d of filtered) addDrawing(primaryPanelId, symbol, d)
-      return filtered.length
+      const classic = filterClassic(reportToDrawings(r, 'AI'), opts)
+      const smcDraws = smcToDrawings(s, {
+        fvg: opts.fvg,
+        orderBlock: opts.orderBlock,
+        bos: opts.bos,
+        volumeProfile: opts.volumeProfile,
+        onlyUnmitigatedFvg: true,
+      })
+      const all = [...classic, ...smcDraws]
+      for (const d of all) addDrawing(primaryPanelId, symbol, d)
+      return all.length
     },
     [opts, primaryPanelId, symbol, addDrawing, loadFromStorage]
   )
 
   const onAutoDraw = useCallback(() => {
-    const r = ensureReport()
-    const n = applyDraw(r)
-    push('sys', `Auto-draw: ${n} oggetti su ${symbol} (${mode})`)
-  }, [ensureReport, applyDraw, push, symbol, mode])
+    const { r, s } = ensure()
+    const n = applyDraw(r, s)
+    push('sys', `Auto-draw: ${n} oggetti (TA + SMC) su ${symbol}`)
+  }, [ensure, applyDraw, push, symbol])
 
   const onClear = useCallback(() => {
     clearDrawings(primaryPanelId, symbol)
-    push('sys', 'Disegni cancellati sul chart primario')
+    push('sys', 'Disegni cancellati')
   }, [clearDrawings, primaryPanelId, symbol, push])
 
   const onAnalyze = useCallback(() => {
-    const r = ensureReport()
+    const { r, s } = ensure()
     push(
       'ai',
       [
-        `**${r.symbol}** ${r.interval} · bias **${r.bias}** · range ${r.rangePos.toFixed(0)}%`,
+        `**${r.symbol}** ${r.interval} · bias **${r.bias}**`,
         ...r.summary,
+        '',
+        '— SMC —',
+        ...s.summary,
       ].join('\n')
     )
-  }, [ensureReport, push])
+  }, [ensure, push])
 
   const send = useCallback(
     (raw: string) => {
@@ -130,31 +151,24 @@ export function AiAnalysisPanel() {
       setInput('')
       push('user', text)
       setBusy(true)
-      // slight async so UI paints user bubble first
       window.setTimeout(() => {
-        const r = ensureReport()
-        const { text: reply, suggestDraw } = answerMessage(text, r, mode)
+        const { r, s } = ensure()
+        const { text: reply, suggestDraw } = answerMessage(text, r, mode, s)
         push('ai', reply)
         if (suggestDraw || /\b(disegn|draw|traccia)\b/i.test(text)) {
-          const n = applyDraw(r)
-          push('sys', `Draw applicato: ${n} oggetti`)
+          const n = applyDraw(r, s)
+          push('sys', `Draw: ${n} oggetti`)
         }
         setBusy(false)
       }, 80)
     },
-    [push, ensureReport, mode, applyDraw]
+    [push, ensure, mode, applyDraw]
   )
-
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    send(input)
-  }
 
   const existing = getDrawings(primaryPanelId, symbol).length
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px]">
-      {/* Mode selector */}
       <div className="shrink-0 px-2 pt-2 pb-1 border-b border-[#1e2329]">
         <div className="text-[9px] text-[#848e9c] uppercase tracking-wider mb-1">Mode</div>
         <div className="flex flex-wrap gap-1">
@@ -179,7 +193,6 @@ export function AiAnalysisPanel() {
         </div>
       </div>
 
-      {/* Draw options + actions */}
       <div className="shrink-0 px-2 py-1.5 border-b border-[#1e2329] space-y-1.5">
         <div className="flex items-center justify-between">
           <button
@@ -190,17 +203,21 @@ export function AiAnalysisPanel() {
             Draw options {showOpts ? '▾' : '▸'}
           </button>
           <span className="text-[9px] text-[#5e6673]">
-            {symbol} · {interval} · {candles.length} bars · draws {existing}
+            {symbol} · {interval} · {candles.length}b · {existing}d
           </span>
         </div>
         {showOpts && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
             {(
               [
                 ['support', 'Support'],
                 ['resistance', 'Resist'],
                 ['trend', 'Trend'],
                 ['fib', 'Fib'],
+                ['fvg', 'FVG'],
+                ['orderBlock', 'Order Block'],
+                ['bos', 'BOS/CHoCH'],
+                ['volumeProfile', 'Vol Profile'],
                 ['label', 'Label'],
               ] as const
             ).map(([key, label]) => (
@@ -253,7 +270,6 @@ export function AiAnalysisPanel() {
         )}
       </div>
 
-      {/* Quick prompts */}
       <div className="shrink-0 px-2 py-1 flex gap-1 overflow-x-auto border-b border-[#1e2329]">
         {QUICK.map((q) => (
           <button
@@ -267,7 +283,6 @@ export function AiAnalysisPanel() {
         ))}
       </div>
 
-      {/* Chat */}
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-2"
@@ -285,7 +300,9 @@ export function AiAnalysisPanel() {
             }
           >
             {m.role === 'ai' && (
-              <div className="text-[9px] text-[#5b8def] mb-0.5 uppercase tracking-wider">AI · {mode}</div>
+              <div className="text-[9px] text-[#5b8def] mb-0.5 uppercase tracking-wider">
+                AI · {mode}
+              </div>
             )}
             {m.text.split('**').map((chunk, i) =>
               i % 2 === 1 ? (
@@ -301,9 +318,11 @@ export function AiAnalysisPanel() {
         {busy && <div className="text-[9px] text-[#5e6673]">…</div>}
       </div>
 
-      {/* Message input */}
       <form
-        onSubmit={onSubmit}
+        onSubmit={(e) => {
+          e.preventDefault()
+          send(input)
+        }}
         className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 border-t border-[#1e2329] bg-[#0d1118]"
       >
         <input
@@ -312,7 +331,7 @@ export function AiAnalysisPanel() {
           onChange={(e) => setInput(e.target.value)}
           disabled={busy}
           className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-2 py-1.5 text-[#eaecef] outline-none focus:border-[#f0b90b]/50 placeholder:text-[#5e6673]"
-          placeholder={`Messaggio all'AI (${mode})…`}
+          placeholder={`Messaggio AI (${mode}) — FVG, OB, VP…`}
         />
         <button
           type="submit"
