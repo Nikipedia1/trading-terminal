@@ -13,6 +13,8 @@ import { useGlobalHotkeys, HotkeyHelpOverlay } from '@/ui/hotkeyMap'
 import { startAlertEngine } from '@/alerts'
 import { ChartPanel } from '@/charts/ChartPanel'
 import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
+import { SymbolBadge } from '@/ui/SymbolBadge'
+import { formatSymbolOption } from '@/data/symbolMeta'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -91,8 +93,9 @@ function Controls() {
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel density-compact">
+      <SymbolBadge symbol={symbolDraft || symbol} size="sm" className="shrink-0" />
       <input
-        className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm w-28 font-mono-nums"
+        className="bg-terminal-bg border border-[#f0b90b]/40 rounded px-2 py-1 text-sm w-32 font-mono-nums font-semibold text-[#eaecef]"
         value={symbolDraft}
         list="top-symbol-presets"
         placeholder="BTCUSDT"
@@ -105,13 +108,13 @@ function Controls() {
       <datalist id="top-symbol-presets">
         {SYMBOL_PRESETS.map((p) => (
           <option key={p.symbol} value={p.symbol}>
-            {p.label} · {p.group}
+            {formatSymbolOption(p.symbol)} · {p.group}
           </option>
         ))}
       </datalist>
 
       <select
-        className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm max-w-[7rem]"
+        className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm max-w-[11rem]"
         value={SYMBOL_PRESETS.some((p) => p.symbol === symbol) ? symbol : ''}
         onChange={(e) => {
           if (e.target.value) applySymbol(e.target.value)
@@ -122,7 +125,7 @@ function Controls() {
           <optgroup key={g} label={g}>
             {SYMBOL_PRESETS.filter((p) => p.group === g).map((p) => (
               <option key={p.symbol} value={p.symbol}>
-                {p.label}
+                {formatSymbolOption(p.symbol)}
               </option>
             ))}
           </optgroup>
@@ -173,7 +176,7 @@ function TickerBar() {
   const up = ticker.priceChangePercent >= 0
   return (
     <div className="flex items-center gap-6 px-4 py-1.5 border-b border-terminal-border text-sm font-mono-nums density-compact">
-      <span className="font-semibold">{ticker.symbol}</span>
+      <SymbolBadge symbol={ticker.symbol} size="md" />
       <span className={up ? 'text-terminal-green' : 'text-terminal-red'}>
         {ticker.lastPrice.toFixed(2)}
       </span>
@@ -273,8 +276,9 @@ function DetachedApp({
     <div className="h-full flex flex-col bg-terminal-bg">
       <header className="flex items-center gap-3 px-3 py-1.5 border-b border-terminal-border bg-terminal-panel shrink-0">
         <span className="text-xxs font-semibold tracking-wide text-[#f0b90b]">DETACHED</span>
+        <SymbolBadge symbol={symbol} size="sm" showName={false} />
         <span className="text-xs font-mono-nums text-terminal-text">
-          {symbol} · {interval} · {EXCHANGE_LABELS[exchange] ?? exchange}
+          {interval} · {EXCHANGE_LABELS[exchange] ?? exchange}
         </span>
         <StatusBadge />
       </header>
@@ -356,7 +360,6 @@ export default function App() {
         <ExecutionBar />
       </div>
 
-      {/* Full-width magnetic desk: charts + Trade / Book / Tape / … */}
       <div className="flex-1 bg-terminal-bg overflow-hidden min-h-0 flex flex-col">
         <ChartArea />
       </div>
