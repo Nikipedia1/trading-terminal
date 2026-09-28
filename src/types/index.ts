@@ -88,6 +88,7 @@ export type WidgetKind =
   | 'terminal'
   | 'watchlist'
   | 'ai'
+  | 'wallet'
 
 export interface WidgetPanelConfig {
   id: string
