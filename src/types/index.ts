@@ -85,6 +85,7 @@ export type WidgetKind =
   | 'futures'
   | 'alerts'
   | 'journal'
+  | 'terminal'
 
 export interface WidgetPanelConfig {
   id: string
