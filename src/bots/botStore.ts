@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import type { BotInstance, BotKind, BotBaseConfig, BotParams } from './types'
-import { defaultConfig, defaultParams } from './types'
+import { defaultConfig, defaultParams, ensureRisk } from './types'
 
 const STORAGE_KEY = 'tt-bots:v1'
 
@@ -22,6 +22,7 @@ function load(): BotInstance[] {
       ...b,
       status: b.enabled ? 'running' : 'paused',
       runtime: b.runtime ?? {},
+      config: ensureRisk(b.config ?? defaultConfig()),
     }))
   } catch {
     return []
@@ -37,6 +38,9 @@ function persist(bots: BotInstance[]) {
         dcaCount: runtime?.dcaCount,
         gridCenter: runtime?.gridCenter,
         lastSide: runtime?.lastSide,
+        dayKey: runtime?.dayKey,
+        dayPnl: runtime?.dayPnl,
+        dayTrades: runtime?.dayTrades,
       },
     }))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(slim))
@@ -141,7 +145,9 @@ export const useBotStore = create<BotState>((set, get) => ({
   patchConfig: (id, cfg) => {
     set((s) => {
       const bots = s.bots.map((b) =>
-        b.id === id ? { ...b, config: { ...b.config, ...cfg } } : b
+        b.id === id
+          ? { ...b, config: ensureRisk({ ...b.config, ...cfg, risk: cfg.risk ?? b.config.risk }) }
+          : b
       )
       persist(bots)
       return { bots }

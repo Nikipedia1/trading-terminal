@@ -1,12 +1,40 @@
 /**
- * Tick enabled bots against live candles/ticker → paper orders.
+ * Tick enabled bots → risk gate + sentiment → paper orders.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
-import { usePaperStore } from '@/trading/paper'
+import { usePaperStore, positionUnrealizedPnl } from '@/trading/paper'
 import { useBotStore } from './botStore'
 import { evaluateBot } from './engine'
+import { evaluateRisk, ensureDayRuntime } from './risk'
+import { computeSentiment, fetchFearGreed, type SentimentSnapshot } from './sentiment'
+import { ensureRisk } from './types'
+
+export function useMarketSentiment(): SentimentSnapshot | null {
+  const candles = useMarketStore((s) => s.candles)
+  const ticker = useMarketStore((s) => s.ticker)
+  const [fg, setFg] = useState<number | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void fetchFearGreed().then((v) => {
+      if (alive) setFg(v)
+    })
+    const t = window.setInterval(() => {
+      void fetchFearGreed().then((v) => {
+        if (alive) setFg(v)
+      })
+    }, 15 * 60_000)
+    return () => {
+      alive = false
+      window.clearInterval(t)
+    }
+  }, [])
+
+  if (!candles.length) return null
+  return computeSentiment(candles, ticker?.priceChangePercent ?? null, fg)
+}
 
 export function useBotRunner() {
   const candles = useMarketStore((s) => s.candles)
@@ -16,10 +44,12 @@ export function useBotRunner() {
   const updateBot = useBotStore((s) => s.updateBot)
   const placeOrder = usePaperStore((s) => s.placeOrder)
   const positions = usePaperStore((s) => s.positions)
+  const account = usePaperStore((s) => s.account)
   const closeSide = usePaperStore((s) => s.closeSide)
   const markToMarket = usePaperStore((s) => s.markToMarket)
   const checkExits = usePaperStore((s) => s.checkExits)
 
+  const sentiment = useMarketSentiment()
   const busy = useRef(false)
 
   useEffect(() => {
@@ -31,7 +61,12 @@ export function useBotRunner() {
     busy.current = true
 
     try {
-      for (const bot of enabled) {
+      const openMargin = positions.reduce((s, p) => s + p.margin, 0)
+      const upnl = positions.reduce((s, p) => s + positionUnrealizedPnl(p), 0)
+      const equity = account.balance + openMargin + upnl
+
+      for (const raw of enabled) {
+        const bot = { ...raw, config: ensureRisk(raw.config) }
         const sym = bot.config.symbol.toUpperCase()
         if (sym !== symbol.toUpperCase()) continue
 
@@ -42,9 +77,14 @@ export function useBotRunner() {
         checkExits(sym, px)
 
         const signal = evaluateBot(bot, candles, px)
+        const sentLabel = sentiment
+          ? ` · sent ${sentiment.label} (${sentiment.score.toFixed(2)})`
+          : ''
         updateBot(bot.id, {
           lastTickAt: Date.now(),
-          lastSignal: signal ? `${signal.side}: ${signal.reason}` : bot.lastSignal,
+          lastSignal: signal
+            ? `${signal.side}: ${signal.reason}${sentLabel}`
+            : bot.lastSignal,
         })
 
         if (!signal || signal.side === 'flat') continue
@@ -55,21 +95,40 @@ export function useBotRunner() {
         )
         if (openSame.length >= bot.config.maxPositions) continue
 
+        const risk = evaluateRisk(
+          bot,
+          {
+            equity,
+            balance: account.balance,
+            openMargin,
+            openPositions: positions.length,
+            dayPnl: bot.runtime?.dayPnl ?? 0,
+            markPrice: px,
+          },
+          signal.side,
+          sentiment
+        )
+
+        if (!risk.ok) {
+          updateBot(bot.id, {
+            lastError: risk.reason ?? 'Risk blocked',
+            lastSignal: `blocked: ${risk.reason}`,
+          })
+          continue
+        }
+
         const opposite = signal.side === 'long' ? 'short' : 'long'
         const hasOpp = positions.some((p) => p.symbol === sym && p.side === opposite)
         if (hasOpp) closeSide(sym, opposite, px)
 
-        const qty = bot.config.qty
-        if (!Number.isFinite(qty) || qty <= 0) continue
-
         let tp: number | null = null
         let sl: number | null = null
-        if (bot.config.takeProfitPct && bot.config.takeProfitPct > 0) {
-          const r = bot.config.takeProfitPct / 100
+        if (risk.takeProfitPct && risk.takeProfitPct > 0) {
+          const r = risk.takeProfitPct / 100
           tp = signal.side === 'long' ? px * (1 + r) : px * (1 - r)
         }
-        if (bot.config.stopLossPct && bot.config.stopLossPct > 0) {
-          const r = bot.config.stopLossPct / 100
+        if (risk.stopLossPct && risk.stopLossPct > 0) {
+          const r = risk.stopLossPct / 100
           sl = signal.side === 'long' ? px * (1 - r) : px * (1 + r)
         }
 
@@ -77,8 +136,8 @@ export function useBotRunner() {
           symbol: sym,
           side: signal.side,
           type: 'market',
-          qty,
-          leverage: bot.config.leverage,
+          qty: risk.qty,
+          leverage: risk.leverage,
           markPrice: px,
           takeProfit: tp,
           stopLoss: sl,
@@ -89,22 +148,22 @@ export function useBotRunner() {
           continue
         }
 
+        const dayRt = ensureDayRuntime(bot)
         const runtime = {
-          ...bot.runtime,
+          ...dayRt,
           lastOrderAt: Date.now(),
           lastSide: signal.side,
           dcaCount:
-            bot.kind === 'dca' ? (bot.runtime?.dcaCount ?? 0) + 1 : bot.runtime?.dcaCount,
+            bot.kind === 'dca' ? (dayRt.dcaCount ?? 0) + 1 : dayRt.dcaCount,
           gridCenter:
-            bot.kind === 'grid'
-              ? bot.runtime?.gridCenter ?? px
-              : bot.runtime?.gridCenter,
+            bot.kind === 'grid' ? dayRt.gridCenter ?? px : dayRt.gridCenter,
+          dayTrades: (dayRt.dayTrades ?? 0) + 1,
         }
 
         updateBot(bot.id, {
           lastError: null,
           status: 'running',
-          lastSignal: `${signal.side}: ${signal.reason}`,
+          lastSignal: `${signal.side}: ${signal.reason} qty=${risk.qty}${sentLabel}`,
           runtime,
           stats: {
             ...bot.stats,
@@ -121,10 +180,14 @@ export function useBotRunner() {
     symbol,
     bots,
     positions,
+    account.balance,
+    sentiment,
     updateBot,
     placeOrder,
     closeSide,
     markToMarket,
     checkExits,
   ])
+
+  return sentiment
 }
