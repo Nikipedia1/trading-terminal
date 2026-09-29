@@ -19,6 +19,7 @@ import { AlertPanel } from '@/alerts'
 import { JournalPanel } from '@/journal'
 import { WalletPanel } from '@/wallet'
 import { BotsPanel } from '@/bots'
+import { AdminPanel } from '@/auth'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import type { WidgetKind } from '@/types'
@@ -77,12 +78,15 @@ function WidgetBody({ kind }: { kind: WidgetKind }) {
       return <WalletPanel />
     case 'bots':
       return <BotsPanel />
+    case 'admin':
+      return <AdminPanel />
     default:
       return null
   }
 }
 
 const ADDABLE: WidgetKind[] = [
+  'admin',
   'bots',
   'wallet',
   'ai',
@@ -154,10 +158,7 @@ export function PanelGrid({ width }: PanelGridProps) {
 
   return (
     <div className="relative h-full w-full overflow-auto bg-[#0b0e11]">
-      <div
-        ref={menuRef}
-        className="absolute top-1 right-2 z-20 flex gap-1"
-      >
+      <div ref={menuRef} className="absolute top-1 right-2 z-20 flex gap-1">
         <button
           type="button"
           onClick={() => addPanel()}
