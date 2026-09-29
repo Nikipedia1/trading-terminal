@@ -52,10 +52,17 @@ const DEFAULT_BOOK: WidgetPanelConfig = {
   title: 'Order Book',
 }
 
+const DEFAULT_WALLET: WidgetPanelConfig = {
+  id: 'widget-wallet',
+  kind: 'wallet',
+  title: 'Wallet',
+}
+
 const DEFAULT_LAYOUT: GridLayoutItem[] = [
   { i: 'panel-main', x: 0, y: 0, w: 8, h: 16, minW: 4, minH: 4 },
-  { i: 'widget-paper', x: 8, y: 0, w: 4, h: 10, minW: 3, minH: 8 },
-  { i: 'widget-book', x: 8, y: 10, w: 4, h: 6, minW: 3, minH: 6 },
+  { i: 'widget-paper', x: 8, y: 0, w: 4, h: 8, minW: 3, minH: 8 },
+  { i: 'widget-wallet', x: 8, y: 8, w: 4, h: 8, minW: 3, minH: 8 },
+  { i: 'widget-book', x: 8, y: 16, w: 4, h: 6, minW: 3, minH: 6 },
 ]
 
 interface LayoutState {
@@ -81,7 +88,7 @@ interface LayoutState {
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   panels: [DEFAULT_CHART],
-  widgets: [DEFAULT_PAPER, DEFAULT_BOOK],
+  widgets: [DEFAULT_PAPER, DEFAULT_WALLET, DEFAULT_BOOK],
   layout: DEFAULT_LAYOUT,
   primaryPanelId: 'panel-main',
 
@@ -93,7 +100,15 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 
   reconcileLayout: () => {
-    const { panels, widgets, layout } = get()
+    let { panels, widgets, layout } = get()
+    // Ensure Wallet is always available as a desk panel (visible by default)
+    if (!widgets.some((w) => w.kind === 'wallet')) {
+      widgets = [
+        ...widgets,
+        { id: 'widget-wallet', kind: 'wallet', title: 'Wallet' },
+      ]
+      set({ widgets })
+    }
     const validIds = new Set([
       ...panels.map((p) => p.id),
       ...widgets.map((w) => w.id),
