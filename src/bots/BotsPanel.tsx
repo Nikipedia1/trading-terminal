@@ -1,5 +1,5 @@
 /**
- * Trading Bots desk – create, configure, start/stop paper bots.
+ * Trading Bots desk – strategies + risk + market sentiment.
  */
 
 import { useMemo, useState } from 'react'
@@ -8,11 +8,16 @@ import { useBotStore } from './botStore'
 import { useBotRunner } from './useBotRunner'
 import {
   BOT_KIND_META,
+  ensureRisk,
   type BotInstance,
   type BotKind,
   type BotParams,
+  type BotRiskConfig,
+  type SentimentMode,
+  type SizingMode,
 } from './types'
 import { botKindList } from './engine'
+import type { SentimentSnapshot } from './sentiment'
 
 function fmt(n: number, d = 2) {
   if (!Number.isFinite(n)) return '—'
@@ -22,9 +27,14 @@ function fmt(n: number, d = 2) {
   })
 }
 
-export function BotsPanel() {
-  useBotRunner()
+function sentimentColor(label: string) {
+  if (label.includes('extreme_fear') || label === 'fear') return 'text-[#f6465d]'
+  if (label.includes('extreme_greed') || label === 'greed') return 'text-[#0ecb81]'
+  return 'text-[#848e9c]'
+}
 
+export function BotsPanel() {
+  const sentiment = useBotRunner()
   const bots = useBotStore((s) => s.bots)
   const addBot = useBotStore((s) => s.addBot)
   const removeBot = useBotStore((s) => s.removeBot)
@@ -33,23 +43,24 @@ export function BotsPanel() {
   const patchParams = useBotStore((s) => s.patchParams)
   const resetStats = useBotStore((s) => s.resetStats)
   const updateBot = useBotStore((s) => s.updateBot)
-
   const symbol = useMarketStore((s) => s.symbol)
   const ticker = useMarketStore((s) => s.ticker)
-
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newKind, setNewKind] = useState<BotKind>('rsi')
-
+  const [tab, setTab] = useState<'setup' | 'risk'>('setup')
   const selected = useMemo(
     () => bots.find((b) => b.id === selectedId) ?? bots[0] ?? null,
     [bots, selectedId]
   )
-
   const running = bots.filter((b) => b.enabled).length
-
   const onCreate = () => {
     const id = addBot(newKind, undefined, symbol)
     setSelectedId(id)
+  }
+  const patchRisk = (partial: Partial<BotRiskConfig>) => {
+    if (!selected) return
+    const cfg = ensureRisk(selected.config)
+    patchConfig(selected.id, { risk: { ...cfg.risk, ...partial } })
   }
 
   return (
@@ -60,10 +71,11 @@ export function BotsPanel() {
           {running} running · {bots.length} total
         </span>
         {ticker && (
-          <span className="ml-auto text-[10px] font-mono text-[#848e9c]">
+          <span className="text-[10px] font-mono text-[#848e9c]">
             {symbol} {fmt(ticker.lastPrice, 2)}
           </span>
         )}
+        {sentiment && <SentimentBadge s={sentiment} />}
       </div>
 
       <div className="shrink-0 px-2 py-1.5 border-b border-[#1e2329] flex gap-1.5 flex-wrap items-center">
@@ -89,10 +101,10 @@ export function BotsPanel() {
       </div>
 
       <div className="flex-1 min-h-0 flex">
-        <div className="w-[40%] min-w-[8rem] border-r border-[#1e2329] overflow-y-auto">
+        <div className="w-[38%] min-w-[7.5rem] border-r border-[#1e2329] overflow-y-auto">
           {bots.length === 0 ? (
             <p className="p-3 text-[10px] text-[#5e6673]">
-              No bots yet. Create RSI, Grid, DCA, EMA Cross, Breakout or Bollinger.
+              Create a bot, set risk + sentiment, then Start with live chart data.
             </p>
           ) : (
             bots.map((b) => (
@@ -125,19 +137,54 @@ export function BotsPanel() {
           {!selected ? (
             <p className="text-[10px] text-[#5e6673]">Select or create a bot</p>
           ) : (
-            <BotEditor
-              bot={selected}
-              onEnable={(v) => setEnabled(selected.id, v)}
-              onRemove={() => {
-                removeBot(selected.id)
-                setSelectedId(null)
-              }}
-              onPatchConfig={(c) => patchConfig(selected.id, c)}
-              onPatchParams={(p) => patchParams(selected.id, p)}
-              onRename={(n) => updateBot(selected.id, { name: n })}
-              onResetStats={() => resetStats(selected.id)}
-              chartSymbol={symbol}
-            />
+            <>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setTab('setup')}
+                  className={`px-2 py-0.5 rounded text-[10px] border ${
+                    tab === 'setup'
+                      ? 'border-[#f0b90b]/50 text-[#f0b90b]'
+                      : 'border-[#2b3139] text-[#848e9c]'
+                  }`}
+                >
+                  Setup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab('risk')}
+                  className={`px-2 py-0.5 rounded text-[10px] border ${
+                    tab === 'risk'
+                      ? 'border-[#f0b90b]/50 text-[#f0b90b]'
+                      : 'border-[#2b3139] text-[#848e9c]'
+                  }`}
+                >
+                  Risk & Sentiment
+                </button>
+              </div>
+              {tab === 'setup' ? (
+                <BotSetup
+                  bot={selected}
+                  onEnable={(v) => setEnabled(selected.id, v)}
+                  onRemove={() => {
+                    removeBot(selected.id)
+                    setSelectedId(null)
+                  }}
+                  onPatchConfig={(c) => patchConfig(selected.id, c)}
+                  onPatchParams={(p) => patchParams(selected.id, p)}
+                  onRename={(n) => updateBot(selected.id, { name: n })}
+                  onResetStats={() => resetStats(selected.id)}
+                  chartSymbol={symbol}
+                />
+              ) : (
+                <RiskEditor
+                  bot={selected}
+                  sentiment={sentiment}
+                  patchRisk={patchRisk}
+                  onPatchConfig={(c) => patchConfig(selected.id, c)}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
@@ -145,7 +192,19 @@ export function BotsPanel() {
   )
 }
 
-function BotEditor({
+function SentimentBadge({ s }: { s: SentimentSnapshot }) {
+  return (
+    <span
+      className={`ml-auto text-[10px] font-medium ${sentimentColor(s.label)}`}
+      title={`mom ${s.components.momentum.toFixed(2)} · rsi ${s.components.rsi.toFixed(2)} · vol ${s.components.volume.toFixed(2)}`}
+    >
+      {s.label.replace('_', ' ')} {s.score >= 0 ? '+' : ''}
+      {s.score.toFixed(2)}
+    </span>
+  )
+}
+
+function BotSetup({
   bot,
   onEnable,
   onRemove,
@@ -165,8 +224,6 @@ function BotEditor({
   chartSymbol: string
 }) {
   const cfg = bot.config
-  const p = bot.params
-
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5 items-center">
@@ -194,49 +251,147 @@ function BotEditor({
           Delete
         </button>
       </div>
-
-      <div className="text-[9px] text-[#5e6673]">
-        {BOT_KIND_META[bot.kind].hint}
-        {bot.enabled && bot.config.symbol !== chartSymbol && (
-          <span className="text-[#f0b90b]">
-            {' '}· switch chart to {bot.config.symbol} for live signals
-          </span>
-        )}
-      </div>
-
       {bot.lastError && <p className="text-[10px] text-[#f6465d]">{bot.lastError}</p>}
       {bot.lastSignal && <p className="text-[10px] text-[#5b8def]">Last: {bot.lastSignal}</p>}
-
       <div className="grid grid-cols-2 gap-1.5">
         <Field label="Symbol" value={cfg.symbol} onChange={(v) => onPatchConfig({ symbol: v.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
-        <Field label="Qty" value={String(cfg.qty)} onChange={(v) => onPatchConfig({ qty: Number(v) })} />
+        <Field label="Qty (fixed)" value={String(cfg.qty)} onChange={(v) => onPatchConfig({ qty: Number(v) })} />
         <Field label="Leverage" value={String(cfg.leverage)} onChange={(v) => onPatchConfig({ leverage: Number(v) })} />
         <Field label="Cooldown (s)" value={String(cfg.cooldownSec)} onChange={(v) => onPatchConfig({ cooldownSec: Number(v) })} />
-        <Field
-          label="TP %"
-          value={cfg.takeProfitPct == null ? '' : String(cfg.takeProfitPct)}
-          onChange={(v) => onPatchConfig({ takeProfitPct: v === '' ? null : Number(v) })}
-        />
-        <Field
-          label="SL %"
-          value={cfg.stopLossPct == null ? '' : String(cfg.stopLossPct)}
-          onChange={(v) => onPatchConfig({ stopLossPct: v === '' ? null : Number(v) })}
-        />
+        <Field label="TP %" value={cfg.takeProfitPct == null ? '' : String(cfg.takeProfitPct)} onChange={(v) => onPatchConfig({ takeProfitPct: v === '' ? null : Number(v) })} />
+        <Field label="SL %" value={cfg.stopLossPct == null ? '' : String(cfg.stopLossPct)} onChange={(v) => onPatchConfig({ stopLossPct: v === '' ? null : Number(v) })} />
       </div>
-
-      <div className="text-[9px] text-[#848e9c] uppercase tracking-wider pt-1">Strategy params</div>
-      <StrategyFields params={p} onChange={onPatchParams} />
-
+      <div className="text-[9px] text-[#848e9c] uppercase tracking-wider pt-1">Strategy</div>
+      <StrategyFields params={bot.params} onChange={onPatchParams} />
       <div className="flex items-center justify-between text-[10px] text-[#5e6673] pt-1 border-t border-[#1e2329]">
-        <span>Trades {bot.stats.trades} · PnL {fmt(bot.stats.realizedPnl)}</span>
+        <span>
+          Trades {bot.stats.trades} · day {bot.runtime?.dayTrades ?? 0}
+        </span>
         <button type="button" onClick={onResetStats} className="text-[#848e9c] hover:text-[#eaecef]">
           Reset stats
         </button>
       </div>
+      {bot.enabled && bot.config.symbol !== chartSymbol && (
+        <p className="text-[9px] text-[#f0b90b]">Switch chart to {bot.config.symbol}</p>
+      )}
+    </div>
+  )
+}
 
+function RiskEditor({
+  bot,
+  sentiment,
+  patchRisk,
+  onPatchConfig,
+}: {
+  bot: BotInstance
+  sentiment: SentimentSnapshot | null
+  patchRisk: (p: Partial<BotRiskConfig>) => void
+  onPatchConfig: (c: Partial<BotInstance['config']>) => void
+}) {
+  const risk = ensureRisk(bot.config).risk
+  return (
+    <div className="space-y-2">
       <p className="text-[9px] text-[#5e6673] leading-snug">
-        Paper only · signals on primary chart candles · Start Live feed required
+        Risk gates run before every paper order. Sentiment = momentum + RSI + volume (+ Fear&Greed).
       </p>
+      {sentiment && (
+        <div className="rounded border border-[#2b3139] bg-[#12161c] px-2 py-1.5 space-y-1">
+          <div className="flex justify-between">
+            <span className="text-[9px] text-[#848e9c] uppercase">Market sentiment</span>
+            <span className={sentimentColor(sentiment.label)}>
+              {sentiment.label.replace('_', ' ')} ({sentiment.score >= 0 ? '+' : ''}
+              {sentiment.score.toFixed(2)})
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-1 text-[9px] text-[#5e6673]">
+            <span>Mom {sentiment.components.momentum.toFixed(2)}</span>
+            <span>RSI {sentiment.components.rsi.toFixed(2)}</span>
+            <span>Vol {sentiment.components.volume.toFixed(2)}</span>
+            <span>
+              F&G{' '}
+              {sentiment.components.fearGreed != null
+                ? sentiment.components.fearGreed.toFixed(2)
+                : '—'}
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="text-[9px] text-[#848e9c] uppercase">Position sizing</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[#848e9c]">Mode</span>
+          <select
+            className="w-full bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1"
+            value={risk.sizingMode}
+            onChange={(e) => patchRisk({ sizingMode: e.target.value as SizingMode })}
+          >
+            <option value="fixed">Fixed qty</option>
+            <option value="risk_pct">Risk % of equity</option>
+          </select>
+        </label>
+        <Field label="Risk / trade %" value={String(risk.riskPerTradePct)} onChange={(v) => patchRisk({ riskPerTradePct: Number(v) })} />
+        <Field label="Max leverage" value={risk.maxLeverage == null ? '' : String(risk.maxLeverage)} onChange={(v) => patchRisk({ maxLeverage: v === '' ? null : Number(v) })} />
+        <Field label="Max qty" value={risk.maxQty == null ? '' : String(risk.maxQty)} onChange={(v) => patchRisk({ maxQty: v === '' ? null : Number(v) })} />
+      </div>
+      <div className="text-[9px] text-[#848e9c] uppercase pt-1">Limits</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <Field label="Max daily loss %" value={risk.maxDailyLossPct == null ? '' : String(risk.maxDailyLossPct)} onChange={(v) => patchRisk({ maxDailyLossPct: v === '' ? null : Number(v) })} />
+        <Field label="Max exposure %" value={risk.maxExposurePct == null ? '' : String(risk.maxExposurePct)} onChange={(v) => patchRisk({ maxExposurePct: v === '' ? null : Number(v) })} />
+        <Field label="Max open positions" value={risk.maxOpenPositions == null ? '' : String(risk.maxOpenPositions)} onChange={(v) => patchRisk({ maxOpenPositions: v === '' ? null : Number(v) })} />
+        <label className="flex items-center gap-2 pt-4">
+          <input type="checkbox" checked={risk.requireStopLoss} onChange={(e) => patchRisk({ requireStopLoss: e.target.checked })} />
+          <span className="text-[10px] text-[#848e9c]">Require SL</span>
+        </label>
+      </div>
+      <div className="text-[9px] text-[#848e9c] uppercase pt-1">Sentiment filter</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={risk.useSentiment} onChange={(e) => patchRisk({ useSentiment: e.target.checked })} />
+          <span className="text-[10px] text-[#848e9c]">Use sentiment</span>
+        </label>
+        <label className="space-y-0.5">
+          <span className="text-[9px] text-[#848e9c]">Mode</span>
+          <select
+            className="w-full bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1"
+            value={risk.sentimentMode}
+            onChange={(e) => patchRisk({ sentimentMode: e.target.value as SentimentMode })}
+            disabled={!risk.useSentiment}
+          >
+            <option value="filter">Filter (block against)</option>
+            <option value="align">Align</option>
+            <option value="scale">Scale size by score</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+        <Field label="Min score (long)" value={String(risk.sentimentMinScore)} onChange={(v) => patchRisk({ sentimentMinScore: Number(v) })} />
+      </div>
+      <p className="text-[9px] text-[#5e6673] leading-snug">
+        Risk % sizing needs SL % in Setup. Daily loss pauses entries until UTC day reset.
+      </p>
+      <button
+        type="button"
+        className="text-[10px] text-[#848e9c] underline"
+        onClick={() =>
+          onPatchConfig({
+            risk: {
+              sizingMode: 'risk_pct',
+              riskPerTradePct: 1,
+              maxDailyLossPct: 5,
+              maxExposurePct: 50,
+              maxOpenPositions: 3,
+              maxLeverage: 20,
+              maxQty: null,
+              requireStopLoss: true,
+              useSentiment: true,
+              sentimentMode: 'filter',
+              sentimentMinScore: -0.15,
+            },
+          })
+        }
+      >
+        Reset risk defaults
+      </button>
     </div>
   )
 }
