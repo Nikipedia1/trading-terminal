@@ -1,6 +1,7 @@
 /**
  * Spot-style wallet holdings – user balances, persisted locally.
  * Prices come from live Binance public ticker (no mocks).
+ * Default: empty portfolio, cash 0 – user adds assets manually.
  */
 
 import { create } from 'zustand'
@@ -31,10 +32,7 @@ function load(): { holdings: WalletHolding[]; cashUsdt: number } {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) {
       return {
-        holdings: [
-          { asset: 'BTC', qty: 0.05, updatedAt: Date.now() },
-          { asset: 'ETH', qty: 0.8, updatedAt: Date.now() },
-        ],
+        holdings: [],
         cashUsdt: 0,
       }
     }
