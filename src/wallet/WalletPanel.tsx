@@ -1,9 +1,9 @@
 /**
- * Complete wallet panel – spot holdings + paper equity.
- * Logos: CoinIcon (official pack). Prices: live Binance 24h. No mock values.
+ * Wallet panel – multi-account, spot holdings + paper equity.
+ * Logos: CoinIcon. Prices: live Binance 24h.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CoinIcon } from '@/ui/CoinIcon'
 import { useWalletStore } from './walletStore'
 import { useWalletPrices } from './useWalletPrices'
@@ -32,19 +32,40 @@ function fmtPct(n: number): string {
 }
 
 export function WalletPanel() {
+  const accounts = useWalletStore((s) => s.accounts)
+  const activeId = useWalletStore((s) => s.activeId)
   const holdings = useWalletStore((s) => s.holdings)
   const cashUsdt = useWalletStore((s) => s.cashUsdt)
+  const setActive = useWalletStore((s) => s.setActive)
+  const createAccount = useWalletStore((s) => s.createAccount)
+  const renameAccount = useWalletStore((s) => s.renameAccount)
+  const deleteAccount = useWalletStore((s) => s.deleteAccount)
   const addOrUpdate = useWalletStore((s) => s.addOrUpdate)
   const remove = useWalletStore((s) => s.remove)
   const setCashUsdt = useWalletStore((s) => s.setCashUsdt)
+  const resetActive = useWalletStore((s) => s.resetActive)
+  const resetAll = useWalletStore((s) => s.resetAll)
 
   const paperBal = usePaperStore((s) => s.account.balance)
   const positions = usePaperStore((s) => s.positions)
 
+  const active = accounts.find((a) => a.id === activeId) ?? accounts[0]
+
   const [assetIn, setAssetIn] = useState('')
   const [qtyIn, setQtyIn] = useState('')
   const [cashIn, setCashIn] = useState(String(cashUsdt))
+  const [newName, setNewName] = useState('')
+  const [renameIn, setRenameIn] = useState(active?.name ?? '')
   const [err, setErr] = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState<'active' | 'all' | null>(null)
+
+  useEffect(() => {
+    setCashIn(String(cashUsdt))
+  }, [cashUsdt, activeId])
+
+  useEffect(() => {
+    setRenameIn(active?.name ?? '')
+  }, [active?.name, activeId])
 
   const assets = useMemo(() => holdings.map((h) => h.asset), [holdings])
   const prices = useWalletPrices(assets)
@@ -78,8 +99,16 @@ export function WalletPanel() {
     [positions]
   )
   const paperEquity = paperBal + paperMargin + paperUPnl
-
   const grandTotal = spotTotal + paperEquity
+
+  const presets = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of SYMBOL_PRESETS) {
+      const base = p.symbol.replace(/USDT$/, '').replace(/BUSD$/, '')
+      if (base) set.add(base)
+    }
+    return [...set].sort()
+  }, [])
 
   const onAdd = () => {
     setErr(null)
@@ -99,92 +128,185 @@ export function WalletPanel() {
   }
 
   const onCash = () => {
+    setErr(null)
     const n = Number(cashIn)
     if (!Number.isFinite(n) || n < 0) {
-      setErr('Invalid cash USDT')
+      setErr('Invalid cash')
       return
     }
     setCashUsdt(n)
-    setErr(null)
   }
 
-  const presets = useMemo(
-    () =>
-      Array.from(
-        new Set(SYMBOL_PRESETS.map((p) => p.label).filter((x) => x && x !== 'USDT'))
-      ).slice(0, 80),
-    []
-  )
+  const onCreate = () => {
+    setErr(null)
+    const id = createAccount(newName)
+    if (!id) {
+      setErr('Max 12 accounts')
+      return
+    }
+    setNewName('')
+  }
+
+  const onRename = () => {
+    if (!active) return
+    renameAccount(active.id, renameIn)
+  }
+
+  const onDelete = () => {
+    if (!active) return
+    if (accounts.length <= 1) {
+      setErr('Cannot delete last account – use Reset')
+      return
+    }
+    deleteAccount(active.id)
+  }
+
+  const doReset = () => {
+    if (confirmReset === 'all') resetAll()
+    else resetActive()
+    setConfirmReset(null)
+    setCashIn('0')
+  }
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px]">
-      {/* Equity header */}
-      <div className="shrink-0 px-3 py-2.5 border-b border-[#2b3139] space-y-1">
-        <div className="text-[10px] text-[#848e9c] uppercase tracking-wider">Total equity</div>
-        <div className="text-xl font-semibold text-[#eaecef] font-mono-nums tabular-nums">
-          ${fmtUsd(grandTotal)}
-        </div>
-        <div className="flex flex-wrap gap-3 text-[10px] text-[#848e9c]">
-          <span>
-            Spot <span className="text-[#eaecef] font-mono-nums">${fmtUsd(spotTotal)}</span>
+    <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px] text-[#eaecef]">
+      <div className="shrink-0 px-2 pt-2 pb-1.5 border-b border-[#1e2329] space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] text-[#848e9c] uppercase tracking-wider shrink-0">
+            Account
           </span>
-          <span>
-            Paper <span className="text-[#eaecef] font-mono-nums">${fmtUsd(paperEquity)}</span>
-          </span>
+          <select
+            value={activeId}
+            onChange={(e) => setActive(e.target.value)}
+            className="flex-1 min-w-0 bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1 text-[11px] text-[#eaecef] outline-none focus:border-[#f0b90b]/50"
+          >
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            title="Reset this account"
+            onClick={() => setConfirmReset('active')}
+            className="px-1.5 py-1 rounded text-[10px] bg-[#f6465d]/15 text-[#f6465d] border border-[#f6465d]/30 hover:bg-[#f6465d]/25"
+          >
+            Reset
+          </button>
         </div>
+        <div className="flex gap-1 flex-wrap">
+          <input
+            className="flex-1 min-w-[5rem] bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-0.5 text-[10px] text-[#eaecef]"
+            placeholder="New account name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onCreate()}
+          />
+          <button
+            type="button"
+            onClick={onCreate}
+            className="px-1.5 py-0.5 rounded bg-[#0ecb81]/15 text-[#0ecb81] border border-[#0ecb81]/30 text-[10px]"
+          >
+            + New
+          </button>
+          <input
+            className="w-[6rem] bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-0.5 text-[10px] text-[#eaecef]"
+            placeholder="Rename"
+            value={renameIn}
+            onChange={(e) => setRenameIn(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onRename()}
+          />
+          <button
+            type="button"
+            onClick={onRename}
+            className="px-1.5 py-0.5 rounded bg-[#1e2329] text-[#b7bdc6] border border-[#2b3139] text-[10px]"
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="px-1.5 py-0.5 rounded text-[10px] text-[#848e9c] border border-[#2b3139] hover:text-[#f6465d] hover:border-[#f6465d]/40"
+          >
+            Delete
+          </button>
+        </div>
+        {confirmReset && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1 py-1 rounded bg-[#f6465d]/10 border border-[#f6465d]/30">
+            <span className="text-[10px] text-[#f6465d]">
+              {confirmReset === 'all'
+                ? 'Reset ALL accounts to empty Main?'
+                : `Clear “${active?.name}” holdings + cash?`}
+            </span>
+            <button
+              type="button"
+              onClick={doReset}
+              className="px-1.5 py-0.5 rounded bg-[#f6465d]/25 text-[#f6465d] text-[10px] font-semibold"
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmReset(null)}
+              className="px-1.5 py-0.5 rounded text-[10px] text-[#848e9c]"
+            >
+              Cancel
+            </button>
+            {confirmReset === 'active' && (
+              <button
+                type="button"
+                onClick={() => setConfirmReset('all')}
+                className="px-1.5 py-0.5 rounded text-[10px] text-[#f0b90b] border border-[#f0b90b]/30"
+              >
+                Reset all…
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Spot holdings */}
-        <div className="px-2 py-1.5 border-b border-[#2b3139]/50">
-          <div className="text-[10px] text-[#5e6673] uppercase tracking-wider px-1 mb-1">
-            Spot holdings
-          </div>
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 px-1 text-[9px] text-[#5e6673] mb-0.5">
-            <span>Asset</span>
-            <span className="text-right min-w-[4.5rem]">Price</span>
-            <span className="text-right min-w-[4.5rem]">Value</span>
-            <span className="w-5" />
-          </div>
-
-          {/* USDT cash row */}
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-1 py-1.5 rounded hover:bg-[#12161c]">
-            <div className="flex items-center gap-2 min-w-0">
-              <CoinIcon symbol="USDT" size={22} />
-              <div className="min-w-0">
-                <div className="font-semibold text-[#eaecef]">USDT</div>
-                <div className="text-[9px] text-[#5e6673] font-mono-nums">
-                  {fmtQty(cashUsdt)} cash
-                </div>
-              </div>
-            </div>
-            <span className="text-right font-mono-nums text-[#848e9c] min-w-[4.5rem]">1.00</span>
-            <span className="text-right font-mono-nums text-[#eaecef] min-w-[4.5rem]">
-              ${fmtUsd(cashUsdt)}
+        <div className="px-3 py-2 border-b border-[#1e2329] space-y-1">
+          <div className="flex justify-between items-baseline">
+            <span className="text-[9px] text-[#848e9c] uppercase tracking-wider">
+              {active?.name ?? 'Wallet'} total
             </span>
-            <span className="w-5" />
+            <span className="text-[15px] font-semibold font-mono-nums text-[#f0b90b]">
+              ${fmtUsd(spotTotal)}
+            </span>
           </div>
+          <div className="flex justify-between text-[10px] text-[#5e6673]">
+            <span>
+              Spot ${fmtUsd(spotTotal - cashUsdt)} · Cash ${fmtUsd(cashUsdt)}
+            </span>
+            <span>
+              Paper ${fmtUsd(paperEquity)} · Σ ${fmtUsd(grandTotal)}
+            </span>
+          </div>
+        </div>
 
-          {spotRows.length === 0 && (
-            <p className="px-1 py-2 text-[#5e6673] text-[10px]">No spot assets – add below</p>
-          )}
-
-          {spotRows.map((r) => {
-            const up = (r.change ?? 0) >= 0
-            return (
-              <div
-                key={r.asset}
-                className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-1 py-1.5 rounded hover:bg-[#12161c]"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <CoinIcon symbol={r.asset} size={22} />
-                  <div className="min-w-0">
-                    <div className="font-semibold text-[#eaecef] flex items-center gap-1.5">
-                      {r.asset}
+        <div className="px-2 py-1.5 border-b border-[#1e2329]">
+          <div className="text-[9px] text-[#848e9c] uppercase tracking-wider px-1 mb-1">
+            Holdings
+          </div>
+          {spotRows.length === 0 ? (
+            <p className="text-[10px] text-[#5e6673] px-1 py-2">Empty — add assets below</p>
+          ) : (
+            <div className="space-y-0.5">
+              {spotRows.map((r) => (
+                <div
+                  key={r.asset}
+                  className="flex items-center gap-2 px-1 py-1 rounded hover:bg-[#12161c] group"
+                >
+                  <CoinIcon symbol={r.asset} size={18} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">{r.asset}</span>
                       {r.change != null && (
                         <span
                           className={`text-[9px] font-mono-nums ${
-                            up ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                            r.change >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
                           }`}
                         >
                           {fmtPct(r.change)}
@@ -193,66 +315,53 @@ export function WalletPanel() {
                     </div>
                     <div className="text-[9px] text-[#5e6673] font-mono-nums">
                       {fmtQty(r.qty)}
-                      {r.missingPrice && (
-                        <span className="text-[#f0b90b] ml-1">no price</span>
-                      )}
+                      {r.price != null ? ` · $${fmtUsd(r.price)}` : ' · no price'}
                     </div>
                   </div>
+                  <span
+                    className={`font-mono-nums tabular-nums ${
+                      r.missingPrice ? 'text-[#5e6673]' : 'text-[#eaecef]'
+                    }`}
+                  >
+                    {r.value != null ? `$${fmtUsd(r.value)}` : '—'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => remove(r.asset)}
+                    className="opacity-0 group-hover:opacity-100 text-[#f6465d] text-[10px] px-1"
+                    title="Remove"
+                  >
+                    ×
+                  </button>
                 </div>
-                <span className="text-right font-mono-nums text-[#848e9c] min-w-[4.5rem]">
-                  {r.price != null ? fmtUsd(r.price) : '—'}
-                </span>
-                <span className="text-right font-mono-nums text-[#eaecef] min-w-[4.5rem]">
-                  {r.value != null ? `$${fmtUsd(r.value)}` : '—'}
-                </span>
-                <button
-                  type="button"
-                  className="w-5 text-[#5e6673] hover:text-[#f6465d] text-xs"
-                  title="Remove"
-                  onClick={() => remove(r.asset)}
-                >
-                  ×
-                </button>
-              </div>
-            )
-          })}
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Paper positions */}
-        <div className="px-2 py-1.5 border-b border-[#2b3139]/50">
-          <div className="text-[10px] text-[#5e6673] uppercase tracking-wider px-1 mb-1">
-            Paper · cash ${fmtUsd(paperBal)} · uPnL{' '}
-            <span className={paperUPnl >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}>
-              {paperUPnl >= 0 ? '+' : ''}
-              {fmtUsd(paperUPnl)}
-            </span>
+        <div className="px-2 py-1.5 border-b border-[#1e2329]">
+          <div className="text-[9px] text-[#848e9c] uppercase tracking-wider px-1 mb-1">
+            Paper (shared)
           </div>
           {positions.length === 0 ? (
-            <p className="px-1 py-1 text-[#5e6673] text-[10px]">No open paper positions</p>
+            <p className="text-[10px] text-[#5e6673] px-1">No open positions</p>
           ) : (
             positions.map((p) => {
               const pnl = positionUnrealizedPnl(p)
               return (
                 <div
                   key={p.id}
-                  className="flex items-center gap-2 px-1 py-1.5 rounded hover:bg-[#12161c]"
+                  className="flex items-center justify-between px-1 py-0.5"
                 >
-                  <CoinIcon symbol={p.symbol} size={20} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-[#eaecef]">
-                      {p.symbol}{' '}
-                      <span
-                        className={
-                          p.side === 'long' ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-                        }
-                      >
-                        {p.side.toUpperCase()}
-                      </span>{' '}
-                      <span className="text-[#848e9c] font-normal">{p.leverage}x</span>
-                    </div>
-                    <div className="text-[9px] text-[#5e6673] font-mono-nums">
-                      {fmtQty(p.qty)} @ {fmtUsd(p.entryPrice)}
-                    </div>
+                  <div>
+                    <span
+                      className={
+                        p.side === 'long' ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+                      }
+                    >
+                      {p.side.toUpperCase()}
+                    </span>{' '}
+                    <span className="text-[#848e9c]">{p.symbol}</span>
                   </div>
                   <span
                     className={`font-mono-nums ${
@@ -268,9 +377,10 @@ export function WalletPanel() {
           )}
         </div>
 
-        {/* Add form */}
         <div className="px-3 py-2 space-y-2">
-          <div className="text-[10px] text-[#5e6673] uppercase tracking-wider">Add / update asset</div>
+          <div className="text-[10px] text-[#5e6673] uppercase tracking-wider">
+            Add / update asset
+          </div>
           <div className="flex gap-1.5">
             <input
               className="w-[5.5rem] bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1 text-[11px] text-[#eaecef] font-mono"
@@ -317,7 +427,7 @@ export function WalletPanel() {
           </div>
           {err && <p className="text-[10px] text-[#f6465d]">{err}</p>}
           <p className="text-[9px] text-[#5e6673] leading-snug">
-            Prices: Binance public 24h · logos: official icon pack · paper from Trade panel
+            Multi-account · prices Binance 24h · paper from Trade panel
           </p>
         </div>
       </div>
