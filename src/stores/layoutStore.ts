@@ -31,6 +31,7 @@ export const WIDGET_META: Record<
   watchlist: { title: 'Watchlist', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
   ai: { title: 'AI Analysis', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   wallet: { title: 'Wallet', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
+  bots: { title: 'Bots', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -41,25 +42,6 @@ const DEFAULT_CHART: ChartPanelConfig = {
   syncGroup: null,
 }
 
-const DEFAULT_PAPER: WidgetPanelConfig = {
-  id: 'widget-paper',
-  kind: 'paper',
-  title: 'Trade',
-}
-
-const DEFAULT_BOOK: WidgetPanelConfig = {
-  id: 'widget-book',
-  kind: 'book',
-  title: 'Order Book',
-}
-
-const DEFAULT_WALLET: WidgetPanelConfig = {
-  id: 'widget-wallet',
-  kind: 'wallet',
-  title: 'Wallet',
-}
-
-/** Only the main chart on first load – add widgets via + Panel. */
 const DEFAULT_LAYOUT: GridLayoutItem[] = [
   { i: 'panel-main', x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 4 },
 ]
