@@ -15,6 +15,7 @@ import { ChartPanel } from '@/charts/ChartPanel'
 import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 import { SymbolBadge } from '@/ui/SymbolBadge'
 import { formatSymbolOption } from '@/data/symbolMeta'
+import { LoginScreen, useAuthStore } from '@/auth'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -289,7 +290,7 @@ function DetachedApp({
   )
 }
 
-export default function App() {
+function TerminalApp() {
   const detach = useDetachParams()
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
@@ -349,6 +350,7 @@ export default function App() {
           </button>
           <ArchiveMenu />
           <WorkspaceMenu />
+          <UserMenu />
           <span className="text-xxs text-terminal-muted density-chrome">Desk workflow</span>
         </div>
       </header>
@@ -368,6 +370,48 @@ export default function App() {
       <HotkeyHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   )
+}
+
+function UserMenu() {
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  if (!user) return null
+  return (
+    <div className="flex items-center gap-2 text-xxs text-terminal-muted">
+      <span className="truncate max-w-[9rem]" title={user.email}>
+        {user.email}
+        {user.role === 'admin' ? ' · admin' : ''}
+      </span>
+      <button
+        type="button"
+        onClick={() => void logout()}
+        className="px-1.5 py-0.5 rounded border border-terminal-border hover:text-[#eaecef]"
+      >
+        Logout
+      </button>
+    </div>
+  )
+}
+
+export default function App() {
+  const status = useAuthStore((s) => s.status)
+  const refreshMe = useAuthStore((s) => s.refreshMe)
+
+  useEffect(() => {
+    void refreshMe()
+  }, [refreshMe])
+
+  if (status === 'unknown') {
+    return (
+      <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center text-[#848e9c] text-sm">
+        Checking session…
+      </div>
+    )
+  }
+  if (status !== 'authenticated') {
+    return <LoginScreen />
+  }
+  return <TerminalApp />
 }
 
 void EXCHANGE_LABELS
