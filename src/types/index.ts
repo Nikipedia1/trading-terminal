@@ -90,6 +90,7 @@ export type WidgetKind =
   | 'ai'
   | 'wallet'
   | 'bots'
+  | 'admin'
 
 export interface WidgetPanelConfig {
   id: string
