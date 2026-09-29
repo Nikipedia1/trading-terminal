@@ -5,12 +5,13 @@ export type Interval =
   | '1h' | '2h' | '4h' | '6h' | '8h' | '12h'
   | '1d' | '3d' | '1w' | '1M'
 
+/** Free public venues only (no paid data). */
 export type ExchangeId =
   | 'binance'
+  | 'binance_futures'
   | 'kucoin'
   | 'bybit'
   | 'okx'
-  | 'binance_futures'
 
 export interface Candle {
   time: number
@@ -23,21 +24,23 @@ export interface Candle {
 
 export interface Trade {
   id: string
+  time: number
   price: number
   qty: number
-  time: number
   isBuyerMaker: boolean
+  symbol: string
 }
 
-export interface BookLevel {
+export interface OrderBookLevel {
   price: number
   qty: number
 }
 
 export interface OrderBook {
-  bids: BookLevel[]
-  asks: BookLevel[]
-  lastUpdateId?: number
+  symbol: string
+  bids: OrderBookLevel[]
+  asks: OrderBookLevel[]
+  lastUpdateId: number
 }
 
 export interface Ticker {
@@ -51,7 +54,19 @@ export interface Ticker {
   quoteVolume: number
 }
 
-export type FeedStatus = 'idle' | 'connecting' | 'connected' | 'error'
+export type ConnectionStatus =
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'disconnected'
+  | 'error'
+
+export interface MarketError {
+  code: string
+  message: string
+  exchange: string
+  timestamp: number
+}
 
 export interface ChartPanelConfig {
   id: string
@@ -61,6 +76,7 @@ export interface ChartPanelConfig {
   syncGroup: string | null
 }
 
+/** Side widgets that live on the same magnetic grid as charts. */
 export type WidgetKind =
   | 'paper'
   | 'book'
@@ -93,4 +109,39 @@ export interface GridLayoutItem {
   h: number
   minW?: number
   minH?: number
+}
+
+export interface LiquidationEvent {
+  exchange: ExchangeId
+  symbol: string
+  side: 'buy' | 'sell'
+  price: number
+  qty: number
+  averagePrice: number
+  time: number
+  orderStatus?: string
+}
+
+export interface MarkPriceTick {
+  exchange: ExchangeId
+  symbol: string
+  markPrice: number
+  indexPrice: number
+  fundingRate: number
+  nextFundingTime: number
+  time: number
+}
+
+export interface OpenInterestSnapshot {
+  exchange: ExchangeId
+  symbol: string
+  openInterest: number
+  time: number
+}
+
+export interface FundingRateRow {
+  symbol: string
+  fundingRate: number
+  fundingTime: number
+  markPrice?: number
 }
