@@ -10,6 +10,23 @@ export type BotKind =
 
 export type BotStatus = 'idle' | 'running' | 'paused' | 'error'
 
+export type SizingMode = 'fixed' | 'risk_pct'
+export type SentimentMode = 'off' | 'filter' | 'align' | 'scale'
+
+export interface BotRiskConfig {
+  sizingMode: SizingMode
+  riskPerTradePct: number
+  maxDailyLossPct: number | null
+  maxExposurePct: number | null
+  maxOpenPositions: number | null
+  maxLeverage: number | null
+  maxQty: number | null
+  requireStopLoss: boolean
+  useSentiment: boolean
+  sentimentMode: SentimentMode
+  sentimentMinScore: number
+}
+
 export interface BotBaseConfig {
   symbol: string
   qty: number
@@ -18,6 +35,7 @@ export interface BotBaseConfig {
   maxPositions: number
   stopLossPct: number | null
   takeProfitPct: number | null
+  risk: BotRiskConfig
 }
 
 export interface GridParams {
@@ -82,37 +100,19 @@ export interface BotInstance {
     dcaCount?: number
     gridCenter?: number
     lastSide?: 'long' | 'short' | null
+    dayKey?: string
+    dayPnl?: number
+    dayTrades?: number
   }
 }
 
-export const BOT_KIND_META: Record<
-  BotKind,
-  { label: string; hint: string }
-> = {
-  grid: {
-    label: 'Grid',
-    hint: 'Buy low / sell high in a price range',
-  },
-  dca: {
-    label: 'DCA',
-    hint: 'Dollar-cost average buys on a timer',
-  },
-  rsi: {
-    label: 'RSI Reversion',
-    hint: 'Long oversold, short overbought',
-  },
-  ema_cross: {
-    label: 'EMA Cross',
-    hint: 'Trend follow on fast/slow EMA cross',
-  },
-  breakout: {
-    label: 'Breakout',
-    hint: 'Enter on range high/low break',
-  },
-  bollinger: {
-    label: 'Bollinger',
-    hint: 'Mean reversion at band extremes',
-  },
+export const BOT_KIND_META: Record<BotKind, { label: string; hint: string }> = {
+  grid: { label: 'Grid', hint: 'Buy low / sell high in a price range' },
+  dca: { label: 'DCA', hint: 'Dollar-cost average buys on a timer' },
+  rsi: { label: 'RSI Reversion', hint: 'Long oversold, short overbought' },
+  ema_cross: { label: 'EMA Cross', hint: 'Trend follow on fast/slow EMA cross' },
+  breakout: { label: 'Breakout', hint: 'Enter on range high/low break' },
+  bollinger: { label: 'Bollinger', hint: 'Mean reversion at band extremes' },
 }
 
 export function defaultParams(kind: BotKind): BotParams {
@@ -132,6 +132,22 @@ export function defaultParams(kind: BotKind): BotParams {
   }
 }
 
+export function defaultRiskConfig(): BotRiskConfig {
+  return {
+    sizingMode: 'risk_pct',
+    riskPerTradePct: 1,
+    maxDailyLossPct: 5,
+    maxExposurePct: 50,
+    maxOpenPositions: 3,
+    maxLeverage: 20,
+    maxQty: null,
+    requireStopLoss: true,
+    useSentiment: true,
+    sentimentMode: 'filter',
+    sentimentMinScore: -0.15,
+  }
+}
+
 export function defaultConfig(symbol = 'BTCUSDT'): BotBaseConfig {
   return {
     symbol,
@@ -141,5 +157,16 @@ export function defaultConfig(symbol = 'BTCUSDT'): BotBaseConfig {
     maxPositions: 1,
     stopLossPct: 2,
     takeProfitPct: 3,
+    risk: defaultRiskConfig(),
   }
+}
+
+export function ensureRisk(cfg: BotBaseConfig): BotBaseConfig {
+  if (cfg.risk && typeof cfg.risk === 'object') {
+    return {
+      ...cfg,
+      risk: { ...defaultRiskConfig(), ...cfg.risk },
+    }
+  }
+  return { ...cfg, risk: defaultRiskConfig() }
 }
