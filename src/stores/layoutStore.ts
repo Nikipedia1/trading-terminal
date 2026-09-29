@@ -32,6 +32,7 @@ export const WIDGET_META: Record<
   ai: { title: 'AI Analysis', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   wallet: { title: 'Wallet', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
   bots: { title: 'Bots', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
+  admin: { title: 'Admin', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
