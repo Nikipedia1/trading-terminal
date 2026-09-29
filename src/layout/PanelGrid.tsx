@@ -18,6 +18,7 @@ import { VirtualizedTape } from '@/ui/VirtualizedTape'
 import { AlertPanel } from '@/alerts'
 import { JournalPanel } from '@/journal'
 import { WalletPanel } from '@/wallet'
+import { BotsPanel } from '@/bots'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import type { WidgetKind } from '@/types'
@@ -74,12 +75,15 @@ function WidgetBody({ kind }: { kind: WidgetKind }) {
       return <AiAnalysisPanel />
     case 'wallet':
       return <WalletPanel />
+    case 'bots':
+      return <BotsPanel />
     default:
       return null
   }
 }
 
 const ADDABLE: WidgetKind[] = [
+  'bots',
   'wallet',
   'ai',
   'watchlist',
@@ -149,12 +153,15 @@ export function PanelGrid({ width }: PanelGridProps) {
   if (width <= 0) return null
 
   return (
-    <div className="relative h-full w-full overflow-auto">
-      <div className="absolute top-1 right-2 z-20 flex gap-1" ref={menuRef}>
+    <div className="relative h-full w-full overflow-auto bg-[#0b0e11]">
+      <div
+        ref={menuRef}
+        className="absolute top-1 right-2 z-20 flex gap-1"
+      >
         <button
           type="button"
-          onClick={addPanel}
-          className="px-2 py-0.5 text-xs bg-terminal-green/20 text-terminal-green border border-terminal-green/40 rounded hover:bg-terminal-green/30"
+          onClick={() => addPanel()}
+          className="px-2 py-0.5 text-xs bg-[#1e2329] text-[#eaecef] border border-[#2b3139] rounded hover:border-[#5e6673]"
           title="Add chart panel"
         >
           + Chart
