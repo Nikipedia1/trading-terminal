@@ -4,39 +4,15 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import type {
-  ProfileWindow,
-  ProfileConfig,
-  FixedProfileKind,
-} from '@/analysis/volumeProfile'
-import {
-  PROFILE_WINDOW_LABELS,
-  FIXED_PROFILE_LABELS,
-  SESSION_NOTE,
-} from '@/analysis/volumeProfile'
-import type { DeepTradesConfig, ThresholdMode, SizeUnit } from '@/analysis/deepTrades'
+import type { ProfileConfig } from '@/analysis/volumeProfile'
+import { SESSION_NOTE } from '@/analysis/volumeProfile'
+import type { DeepTradesConfig } from '@/analysis/deepTrades'
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
 import { FOOTPRINT_NOTE } from '@/analysis/footprint'
 import { DEFAULT_GAMMA_CONFIG, type GammaConfig } from '@/analysis/gamma'
 import type { ExchangeId } from '@/types'
-
-const DEVELOPING_WINDOWS: ProfileWindow[] = [
-  'visible',
-  'session',
-  'last_30m',
-  'session_open_30m',
-  'previous_day',
-  'weekly',
-  'last_3d',
-]
-const FIXED_OPTIONS: FixedProfileKind[] = [
-  'none',
-  'session_open_30m',
-  'previous_day',
-  'weekly',
-]
 
 export interface OrderflowState {
   print: boolean
@@ -171,20 +147,31 @@ export function OrderflowMenu({
             Strumenti orderflow
           </div>
 
-          <Row label="Deep Print" on={state.print} onToggle={togglePrint}>
+          <Row label="Deep Print" on={!!state.print} onToggle={togglePrint}>
             <p className="text-[9px] text-[#5e6673] leading-snug">
               SELL|PX|BUY|Δ|VP · buy%/sell% · imbalance + stacked · VP candela
             </p>
           </Row>
 
-          <Row label="Delta" on={state.delta} onToggle={() => onChange({ delta: !state.delta })}>
+          <Row
+            label="Delta"
+            on={!!state.delta}
+            onToggle={() => onChange({ delta: !state.delta })}
+          >
             <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
               <input
                 type="checkbox"
                 className="accent-[#f0b90b]"
-                checked={state.deltaCfg.cvd}
+                checked={!!state.deltaCfg?.cvd}
                 onChange={(e) =>
-                  onChange({ deltaCfg: { ...state.deltaCfg, cvd: e.target.checked } })
+                  onChange({
+                    deltaCfg: {
+                      cvd: e.target.checked,
+                      divergence: !!state.deltaCfg?.divergence,
+                      absorption: state.deltaCfg?.absorption !== false,
+                      minBarPct: state.deltaCfg?.minBarPct ?? 0,
+                    },
+                  })
                 }
               />
               CVD line
@@ -193,7 +180,7 @@ export function OrderflowMenu({
 
           <Row
             label="Profile"
-            on={state.profile}
+            on={!!state.profile}
             onToggle={() => onChange({ profile: !state.profile })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
@@ -203,7 +190,7 @@ export function OrderflowMenu({
 
           <Row
             label="Deep Trades"
-            on={state.trades}
+            on={!!state.trades}
             onToggle={() => onChange({ trades: !state.trades })}
           >
             <p className="text-[9px] text-[#5e6673]">Large prints · effective/trapped</p>
@@ -211,17 +198,17 @@ export function OrderflowMenu({
 
           <Row
             label="DeepDom + ladder"
-            on={state.dom}
+            on={!!state.dom}
             onToggle={() => onChange({ dom: !state.dom })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              {L2_GRANULARITY_NOTES[exchange]}
+              {L2_GRANULARITY_NOTES[exchange] ?? 'L2 book heatmap + ladder'}
             </p>
           </Row>
 
           <Row
             label="Footprint grid"
-            on={state.footprint}
+            on={!!state.footprint}
             onToggle={() => onChange({ footprint: !state.footprint })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">{FOOTPRINT_NOTE}</p>
@@ -292,7 +279,7 @@ export function OrderflowMenu({
 
           <Row
             label="Replay (IDB)"
-            on={state.replay}
+            on={!!state.replay}
             onToggle={() => onChange({ replay: !state.replay })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
