@@ -6,6 +6,11 @@ import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useOrderflowStore } from '@/stores/orderflowStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import type { WorkspaceDocument, WorkspaceLayoutSlice } from './types'
+import type {
+  ChartPanelConfig,
+  GridLayoutItem,
+  WidgetPanelConfig,
+} from '@/types'
 
 function stripFns(obj: unknown): unknown {
   if (!obj || typeof obj !== 'object') return obj
@@ -54,32 +59,33 @@ export function captureOrderflow(): unknown {
 export function captureDrawings(): unknown {
   try {
     const s = useDrawingStore.getState()
-    return JSON.parse(JSON.stringify(s.byPanelSymbol))
+    return JSON.parse(JSON.stringify(s.byPanelSymbol)) as unknown
   } catch {
     return undefined
   }
 }
 
 export function applyLayout(slice: WorkspaceLayoutSlice): void {
-  const patch: Record<string, unknown> = {
-    panels: slice.panels,
-    layout: slice.layout,
+  const panels = slice.panels as ChartPanelConfig[]
+  const layout = slice.layout as GridLayoutItem[]
+  const widgets = (Array.isArray(slice.widgets) ? slice.widgets : []) as WidgetPanelConfig[]
+  useLayoutStore.setState({
+    panels,
+    layout,
+    widgets,
     primaryPanelId: slice.primaryPanelId,
-  }
-  if (Array.isArray(slice.widgets)) {
-    patch.widgets = slice.widgets
-  }
-  useLayoutStore.setState(patch as any)
-  // Repair: widgets listed but missing grid slots → re-attach
+  })
   useLayoutStore.getState().reconcileLayout?.()
 }
 
 export function applyIndicators(data: unknown): void {
   if (!data || typeof data !== 'object') return
   try {
-    const d = data as Record<string, unknown>
+    const d = data as { byPanel?: Record<string, unknown> }
     if (d.byPanel && typeof d.byPanel === 'object') {
-      useIndicatorStore.setState({ byPanel: d.byPanel as any })
+      useIndicatorStore.setState({ byPanel: d.byPanel } as Parameters<
+        typeof useIndicatorStore.setState
+      >[0])
     }
   } catch {
     /* schema drift */
@@ -89,9 +95,11 @@ export function applyIndicators(data: unknown): void {
 export function applyChartStyle(data: unknown): void {
   if (!data || typeof data !== 'object') return
   try {
-    const d = data as Record<string, unknown>
+    const d = data as { style?: Record<string, unknown> }
     if (d.style && typeof d.style === 'object') {
-      useChartStyleStore.setState({ style: d.style as any })
+      useChartStyleStore.setState({ style: d.style } as Parameters<
+        typeof useChartStyleStore.setState
+      >[0])
     }
   } catch {
     /* */
@@ -101,7 +109,10 @@ export function applyChartStyle(data: unknown): void {
 export function applyOrderflow(data: unknown): void {
   if (!data || typeof data !== 'object') return
   try {
-    useOrderflowStore.getState().hydrate(data as any)
+    const hydrate = useOrderflowStore.getState().hydrate
+    if (typeof hydrate === 'function') {
+      hydrate(data as Parameters<typeof hydrate>[0])
+    }
   } catch {
     /* */
   }
@@ -111,12 +122,20 @@ export function applyDrawings(data: unknown): void {
   if (!data || typeof data !== 'object') return
   try {
     const map = data as Record<string, Record<string, unknown[]>>
-    useDrawingStore.setState({ byPanelSymbol: map as any })
+    useDrawingStore.setState({
+      byPanelSymbol: map,
+    } as Parameters<typeof useDrawingStore.setState>[0])
     for (const [panelId, bySym] of Object.entries(map)) {
       if (!bySym || typeof bySym !== 'object') continue
       for (const [sym, drawings] of Object.entries(bySym)) {
         if (Array.isArray(drawings)) {
-          useDrawingStore.getState().setDrawings(panelId, sym, drawings as any)
+          useDrawingStore.getState().setDrawings(
+            panelId,
+            sym,
+            drawings as Parameters<
+              ReturnType<typeof useDrawingStore.getState>['setDrawings']
+            >[2]
+          )
         }
       }
     }
