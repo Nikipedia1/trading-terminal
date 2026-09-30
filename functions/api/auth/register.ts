@@ -13,6 +13,8 @@ import {
   publicUser,
   listUsers,
   type UserRecord,
+  checkRateLimit,
+  clientIp,
 } from './_shared'
 
 export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
@@ -21,6 +23,12 @@ export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const { env, request } = ctx
   if (!env.WORKSPACE_KV) return bad('KV not configured', 503, request)
+
+  const ip = clientIp(request)
+  const rl = await checkRateLimit(env.WORKSPACE_KV, `register:ip:${ip}`, 5, 3600)
+  if (!rl.ok) {
+    return bad(`rate limit exceeded – retry in ${rl.retryAfterSec}s`, 429, request)
+  }
 
   let body: { email?: string; password?: string }
   try {

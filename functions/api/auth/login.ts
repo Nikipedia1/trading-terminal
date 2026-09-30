@@ -10,6 +10,8 @@ import {
   createSession,
   sessionCookie,
   publicUser,
+  checkRateLimit,
+  clientIp,
 } from './_shared'
 
 export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
@@ -18,6 +20,12 @@ export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const { env, request } = ctx
   if (!env.WORKSPACE_KV) return bad('KV not configured', 503, request)
+
+  const ip = clientIp(request)
+  const rl = await checkRateLimit(env.WORKSPACE_KV, `login:ip:${ip}`, 20, 60)
+  if (!rl.ok) {
+    return bad(`rate limit exceeded – retry in ${rl.retryAfterSec}s`, 429, request)
+  }
 
   let body: { email?: string; password?: string }
   try {
@@ -28,6 +36,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
 
   const email = normalizeEmail(body.email || '')
   if (!email) return bad('invalid email', 400, request)
+  const rlEmail = await checkRateLimit(env.WORKSPACE_KV, `login:email:${email}`, 10, 60)
+  if (!rlEmail.ok) {
+    return bad(`rate limit exceeded – retry in ${rlEmail.retryAfterSec}s`, 429, request)
+  }
   const pwErr = validatePassword(body.password || '')
   if (pwErr) return bad('invalid credentials', 401, request)
 
