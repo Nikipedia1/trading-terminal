@@ -1,12 +1,14 @@
 /**
  * Shared auth helpers for Cloudflare Pages Functions.
  * Passwords: PBKDF2-SHA256, never stored plaintext.
- * Session: HttpOnly cookie preferred; Bearer only for non-browser clients.
+ * Session: HttpOnly cookie preferred; Bearer opt-in only.
  */
 
 export interface Env {
   WORKSPACE_KV: KVNamespace
   AUTH_SECRET?: string
+  /** Set to "1" to allow Authorization: Bearer session tokens */
+  AUTH_ALLOW_BEARER?: string
 }
 
 export type UserRole = 'user' | 'admin'
@@ -31,13 +33,14 @@ export interface SessionRecord {
 
 const PBKDF2_ITERATIONS = 100_000
 const SESSION_TTL_SEC = 60 * 60 * 24 * 7
+export const AUTH_BODY_MAX = 4_096
 
 export function cors(request: Request, extra?: HeadersInit): HeadersInit {
   const origin = request.headers.get('Origin') || '*'
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Bearer',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Max-Age': '86400',
     ...extra,
@@ -74,13 +77,16 @@ export function normalizeEmail(raw: string): string | null {
 export function validatePassword(pw: string): string | null {
   if (typeof pw !== 'string' || pw.length < 8) return 'password min 8 characters'
   if (pw.length > 128) return 'password too long'
+  if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) {
+    return 'password needs at least one letter and one digit'
+  }
   return null
 }
 
 function b64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf)
   let s = ''
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!)
   return btoa(s)
 }
 
@@ -132,7 +138,7 @@ export async function verifyPassword(
   const { passwordHash: h } = await hashPassword(password, salt)
   if (h.length !== passwordHash.length) return false
   let ok = 0
-  for (let i = 0; i < h.length; i++) ok |= h.charCodeAt(i) ^ passwordHash.charCodeAt(i)
+  for (let i = 0; i < h.length; i++) ok |= h.charCodeAt(i)! ^ passwordHash.charCodeAt(i)!
   return ok === 0
 }
 
@@ -272,17 +278,83 @@ export async function destroySession(
   await kv.delete(sessionKey(token))
 }
 
-/** Prefer HttpOnly cookie; Bearer only as non-browser fallback. */
-export function extractToken(request: Request): string | null {
+/** Prefer HttpOnly cookie. Bearer only if AUTH_ALLOW_BEARER=1 or X-Auth-Bearer: 1. */
+export function extractToken(
+  request: Request,
+  env?: { AUTH_ALLOW_BEARER?: string }
+): string | null {
   const cookie = request.headers.get('Cookie') || ''
   const m = cookie.match(/(?:^|;\s*)tt_session=([a-f0-9]+)/i)
   if (m?.[1]) return m[1]
+
+  const allowBearer =
+    env?.AUTH_ALLOW_BEARER === '1' || request.headers.get('X-Auth-Bearer') === '1'
+  if (!allowBearer) return null
+
   const auth = request.headers.get('Authorization')
   if (auth?.startsWith('Bearer ')) {
     const tok = auth.slice(7).trim()
-    if (tok) return tok
+    if (/^[a-f0-9]{64}$/i.test(tok)) return tok
   }
   return null
+}
+
+/** CSRF defense-in-depth for cookie-authenticated mutations. */
+export function assertCsrf(request: Request): Response | null {
+  const method = request.method.toUpperCase()
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null
+
+  const cookie = request.headers.get('Cookie') || ''
+  const hasSessionCookie = /(?:^|;\s*)tt_session=/.test(cookie)
+  if (!hasSessionCookie) return null
+
+  const origin = request.headers.get('Origin')
+  const referer = request.headers.get('Referer')
+  const expected = new URL(request.url).origin
+
+  if (origin) {
+    if (origin !== expected && origin !== 'null') {
+      return bad('csrf: origin mismatch', 403, request)
+    }
+    return null
+  }
+  if (referer) {
+    try {
+      if (new URL(referer).origin !== expected) {
+        return bad('csrf: referer mismatch', 403, request)
+      }
+      return null
+    } catch {
+      return bad('csrf: bad referer', 403, request)
+    }
+  }
+  return bad('csrf: missing origin', 403, request)
+}
+
+export async function readJsonBody<T extends Record<string, unknown>>(
+  request: Request,
+  maxBytes = AUTH_BODY_MAX
+): Promise<{ ok: true; data: T } | { ok: false; response: Response }> {
+  const ct = request.headers.get('Content-Type') || ''
+  if (ct && !ct.includes('application/json')) {
+    return {
+      ok: false,
+      response: bad('Content-Type must be application/json', 415, request),
+    }
+  }
+  const text = await request.text()
+  if (text.length > maxBytes) {
+    return { ok: false, response: bad('body too large', 413, request) }
+  }
+  try {
+    const data = JSON.parse(text || '{}') as T
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, response: bad('invalid json object', 400, request) }
+    }
+    return { ok: true, data }
+  } catch {
+    return { ok: false, response: bad('invalid json', 400, request) }
+  }
 }
 
 export function sessionCookie(
@@ -312,7 +384,9 @@ export async function requireUser(
   request: Request
 ): Promise<{ user: UserRecord; token: string } | Response> {
   if (!env.WORKSPACE_KV) return bad('KV not configured', 503, request)
-  const token = extractToken(request)
+  const csrf = assertCsrf(request)
+  if (csrf) return csrf
+  const token = extractToken(request, env)
   const sess = await getSession(env.WORKSPACE_KV, token)
   if (!sess || !token) return bad('unauthorized', 401, request)
   const user = await getUserById(env.WORKSPACE_KV, sess.userId)
@@ -330,7 +404,6 @@ export async function requireAdmin(
   return r
 }
 
-/** Sliding window rate limit via KV. */
 export async function checkRateLimit(
   kv: KVNamespace,
   key: string,
@@ -350,7 +423,10 @@ export async function checkRateLimit(
   hits = hits.filter((t) => t > cutoff)
   if (hits.length >= limit) {
     const oldest = hits[0] ?? now
-    const retryAfterSec = Math.max(1, Math.ceil((oldest + windowSec * 1000 - now) / 1000))
+    const retryAfterSec = Math.max(
+      1,
+      Math.ceil((oldest + windowSec * 1000 - now) / 1000)
+    )
     return { ok: false, retryAfterSec }
   }
   hits.push(now)
