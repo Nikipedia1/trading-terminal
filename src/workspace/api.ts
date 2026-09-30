@@ -2,7 +2,8 @@
  * Workspace persistence:
  *  1. Always write/read localStorage (works offline, €0)
  *  2. Same-origin /api/workspace/:id → Cloudflare KV (Pages Function)
- * Auth: workspace id is the capability token (stored in localStorage).
+ * Cloud writes require authenticated session (HttpOnly cookie).
+ * Ownership is stored server-side (wsmeta). Local cache still works offline.
  */
 
 import type {
@@ -56,8 +57,7 @@ async function cloudGet(id: string): Promise<WorkspaceDocument | null> {
   try {
     const res = await fetch(url, {
       method: 'GET',
-      credentials: 'omit',
-      headers: { 'X-Workspace-Token': id },
+      credentials: 'include',
     })
     if (res.status === 404) return null
     if (!res.ok) throw new Error(`cloud GET ${res.status}`)
@@ -78,10 +78,9 @@ async function cloudPut(doc: WorkspaceDocument): Promise<boolean> {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'X-Workspace-Token': doc.id,
       },
       body: JSON.stringify(doc),
-      credentials: 'omit',
+      credentials: 'include',
     })
     if (!res.ok) {
       const t = await res.text().catch(() => '')
@@ -89,18 +88,20 @@ async function cloudPut(doc: WorkspaceDocument): Promise<boolean> {
     }
     return true
   } catch (e) {
-    console.warn('[workspace] cloud PUT failed – kept local only', e)
+    console.warn('[workspace] cloud PUT failed', e)
     return false
   }
 }
 
-export function cloudEnabled(): boolean {
-  if (import.meta.env.VITE_WORKSPACE_API) return true
-  if (typeof window !== 'undefined') {
+function cloudEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
     const h = window.location.hostname
-    if (h.endsWith('.pages.dev') || h === 'localhost' || h === '127.0.0.1') {
+    if (h.endsWith('pages.dev') || h === 'localhost' || h === '127.0.0.1') {
       return true
     }
+  } catch {
+    /* */
   }
   return false
 }
