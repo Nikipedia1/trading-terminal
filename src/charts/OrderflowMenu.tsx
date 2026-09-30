@@ -53,10 +53,8 @@ export interface OrderflowState {
 
 interface OrderflowMenuProps {
   state: OrderflowState
-  /** Used for L2 granularity notes; defaults to binance */
   exchange?: ExchangeId
   onChange: (patch: Partial<OrderflowState>) => void
-  /** Optional; defaults to toggling state.print via onChange */
   onPrintToggle?: () => void
 }
 
@@ -177,7 +175,8 @@ export function OrderflowMenu({
 
           <Row label="Deep Print" on={state.print} onToggle={togglePrint}>
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              SELL|PX|BUY|Δ · buy% + sell% live · imbalance + stacked (≥3)
+              SELL|PX|BUY|Δ|VP · buy%/sell% · imbalance + stacked · VP candela
+              (POC/VA) nelle impostazioni del pannello Print
             </p>
           </Row>
 
