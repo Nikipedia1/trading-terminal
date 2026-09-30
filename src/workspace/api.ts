@@ -93,7 +93,8 @@ async function cloudPut(doc: WorkspaceDocument): Promise<boolean> {
   }
 }
 
-function cloudEnabled(): boolean {
+/** True when cloud workspace API is available (Pages / localhost with Functions). */
+export function cloudEnabled(): boolean {
   if (typeof window === 'undefined') return false
   try {
     const h = window.location.hostname
@@ -103,6 +104,7 @@ function cloudEnabled(): boolean {
   } catch {
     /* */
   }
+  if (apiBase()) return true
   return false
 }
 
