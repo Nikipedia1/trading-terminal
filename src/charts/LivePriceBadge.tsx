@@ -1,6 +1,7 @@
 /**
  * TradingView-style live price badge on the right scale.
  * Follows last candle close via priceToCoordinate (anti-pellicola).
+ * Adaptive decimals for any instrument.
  */
 
 import { useEffect, useState } from 'react'
@@ -9,9 +10,18 @@ import type { Candle } from '@/types'
 
 function formatPrice(n: number): string {
   if (!Number.isFinite(n)) return '—'
-  if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 })
-  if (n >= 1) return n.toFixed(n >= 100 ? 2 : 4)
-  return n.toPrecision(6)
+  const a = Math.abs(n)
+  if (a >= 1000)
+    return n.toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 2,
+    })
+  if (a >= 100) return n.toFixed(2)
+  if (a >= 10) return n.toFixed(3)
+  if (a >= 1) return n.toFixed(4)
+  if (a >= 0.01) return n.toFixed(6)
+  if (a >= 0.0001) return n.toFixed(8)
+  return n.toFixed(10)
 }
 
 export function LivePriceBadge({
