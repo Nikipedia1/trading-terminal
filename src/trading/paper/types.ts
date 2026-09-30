@@ -1,7 +1,6 @@
 /**
  * Paper trading types – simulated account only.
  * Prices always come from real market data (never synthetic).
- * Strictly separate from live execution ledger.
  */
 
 export type PaperSide = 'long' | 'short'
@@ -22,9 +21,7 @@ export interface PaperPosition {
   markPrice: number
   takeProfit: number | null
   stopLoss: number | null
-  /** Trailing stop distance in % of price (e.g. 0.5 = 0.5%). null = off */
   trailingPct: number | null
-  /** Peak (long) / trough (short) price since trail armed */
   trailExtreme: number | null
 }
 
@@ -46,7 +43,6 @@ export interface PaperOrder {
   trailingPct?: number | null
   postOnly?: boolean
   reduceOnly?: boolean
-  /** OCO group id – when one exit fills, cancel siblings */
   ocoGroupId?: string | null
 }
 
@@ -60,10 +56,27 @@ export interface PaperFill {
   leverage: number
   realizedPnl: number
   time: number
-  action: 'open' | 'close' | 'tp' | 'sl' | 'trail' | 'liquidate'
+  action: 'open' | 'close' | 'tp' | 'sl' | 'trail' | 'liquidate' | 'funding'
+  fee?: number
+  isMaker?: boolean
 }
 
 export interface PaperAccount {
   balance: number
   initialBalance: number
+  feesPaid?: number
+  fundingPaid?: number
+  takerBps?: number
+  makerBps?: number
+  fundingRate8h?: number
+  lastFundingAt?: number
+}
+
+export interface PaperEquityPoint {
+  t: number
+  equity: number
+  balance: number
+  unrealized: number
+  fees: number
+  funding: number
 }
