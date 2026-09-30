@@ -33,6 +33,10 @@ export const WIDGET_META: Record<
   wallet: { title: 'Wallet', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
   bots: { title: 'Bots', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
   admin: { title: 'Admin', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  liquidity: { title: 'Liquidity', minW: 3, minH: 6, defaultW: 3, defaultH: 10 },
+  backtest: { title: 'Backtest', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  livekeys: { title: 'Live Keys', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
+  plugins: { title: 'Plugins', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
