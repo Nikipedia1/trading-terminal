@@ -1,7 +1,6 @@
 /**
- * Deep Print – Bid/Ask footprint with imbalance + stacked imbalance.
- * Optional integrated candle volume profile (POC / VA) from the same trades.
- * Pin follows selected candle (click / ← →).
+ * Deep Print – Bid/Ask footprint + optional live volume bars beside the print.
+ * VP bars update with the selected candle trades (real data only).
  */
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
@@ -28,6 +27,7 @@ const IMB_THRESHOLD = 0.7
 const STACK_MIN = 3
 const BUY = '#0ecb81'
 const SELL = '#a855f7'
+const VP_COL_W = 72
 
 function formatQty(q: number): string {
   if (Math.abs(q) >= 1000) return q.toFixed(2)
@@ -318,14 +318,14 @@ export function DeepPrintOverlay({
 
   const panelW = Math.min(
     showVp ? 400 : 340,
-    Math.max(showVp ? 320 : 260, 240 + Math.min(visibleLevels.length, 12) * 2 + (showVp ? 56 : 0))
+    Math.max(showVp ? 300 : 260, 240 + Math.min(visibleLevels.length, 12) * 2 + (showVp ? VP_COL_W : 0))
   )
   const rowH = 22
   const panelH = Math.min(380, 88 + Math.max(1, visibleLevels.length) * rowH)
 
   let left = pos.x + 14
   let top = pos.y - panelH / 2
-  if (left + panelW > cw - 8) left = pos.x - panelW - 14
+  if (left + panelW > cw - 8) left = Math.max(4, pos.x - panelW - 14)
   if (left < 4) left = 4
   if (top < 4) top = 4
   if (top + panelH > ch - 4) top = Math.max(4, ch - panelH - 4)
@@ -334,14 +334,15 @@ export function DeepPrintOverlay({
     ...visibleLevels.map((l) => Math.max(l.buyQty, l.sellQty)),
     0.0001
   )
+  const maxVpVol = Math.max(
+    ...(candleProfile?.buckets.map((b) => b.volume) ?? [0]),
+    0.0001
+  )
 
   const totalVol = model.totalBuy + model.totalSell
   const buyPct = totalVol > 0 ? model.totalBuy / totalVol : 0.5
   const sellPct = totalVol > 0 ? model.totalSell / totalVol : 0.5
-
-  const colCls = showVp
-    ? 'grid-cols-[1fr_56px_1fr_40px_52px]'
-    : 'grid-cols-[1fr_64px_1fr_48px]'
+  const colCls = 'grid-cols-[1fr_64px_1fr_48px]'
 
   return (
     <div
@@ -386,7 +387,6 @@ export function DeepPrintOverlay({
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
-              title="Previous candle"
               onClick={() => shiftPin(-1)}
             >
               ←
@@ -394,7 +394,6 @@ export function DeepPrintOverlay({
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
-              title="Next candle"
               onClick={() => shiftPin(1)}
             >
               →
@@ -402,7 +401,6 @@ export function DeepPrintOverlay({
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
-              title="Pin last closed (P)"
               onClick={() => {
                 userPickedRef.current = true
                 pinLastClosed()
@@ -456,7 +454,7 @@ export function DeepPrintOverlay({
                 checked={showVp}
                 onChange={(e) => setShowVp(e.target.checked)}
               />
-              Volume profile
+              Barre VP live
             </label>
             {showVp && (
               <>
@@ -500,19 +498,26 @@ export function DeepPrintOverlay({
                 color: model.totalDelta >= 0 ? BUY : SELL,
               }}
             >
-              ⚠ STACKED IMBALANCE · {stacked.size} levels ≥{STACK_MIN}
+              ⚠ STACKED IMBALANCE · {stacked.size} levels
             </div>
           )}
         </div>
 
-        <div
-          className={`grid gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80 ${colCls}`}
-        >
-          <span className="text-left text-[#a855f7]">SELL</span>
-          <span className="text-center text-[#848e9c]">PX</span>
-          <span className="text-right text-[#0ecb81]">BUY</span>
-          <span className="text-right text-[#848e9c]">Δ</span>
-          {showVp && <span className="text-right text-[#f0b90b]">VP</span>}
+        <div className="flex items-stretch border-b border-[#2b3139]/80">
+          {showVp && (
+            <div
+              className="shrink-0 flex items-center justify-center text-[10px] font-bold text-[#f0b90b] bg-[#0d1118] border-r border-[#f0b90b]/30"
+              style={{ width: VP_COL_W }}
+            >
+              VP live
+            </div>
+          )}
+          <div className={`grid gap-0 px-2 py-1.5 text-[11px] font-bold flex-1 ${colCls}`}>
+            <span className="text-left text-[#a855f7]">SELL</span>
+            <span className="text-center text-[#848e9c]">PX</span>
+            <span className="text-right text-[#0ecb81]">BUY</span>
+            <span className="text-right text-[#848e9c]">Δ</span>
+          </div>
         </div>
 
         <div className="max-h-72 overflow-y-auto">
@@ -532,6 +537,9 @@ export function DeepPrintOverlay({
               const ratio = buyRatio(l)
               const sellAlpha = imb === 'sell' ? 0.72 : 0.42
               const buyAlpha = imb === 'buy' ? 0.72 : 0.42
+              const vp = vpByPrice.get(l.price)
+              const vol = vp?.volume ?? l.buyQty + l.sellQty
+              const vpPct = Math.max(vol > 0 ? 10 : 0, (vol / maxVpVol) * 100)
 
               let rowBg = 'transparent'
               if (isStack && imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.18)'
@@ -539,108 +547,99 @@ export function DeepPrintOverlay({
               else if (imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.10)'
               else if (imb === 'sell') rowBg = 'rgba(168, 85, 247, 0.10)'
 
-              const vp = vpByPrice.get(l.price)
-              const vpW = vp ? Math.max(vp.volume > 0 ? 12 : 0, vp.share * 100) : 0
-
               return (
                 <div
                   key={l.price}
-                  className={`grid gap-0 px-2 items-stretch border-b border-[#1e2329]/50 ${colCls}`}
-                  style={{
-                    minHeight: rowH,
-                    background: rowBg,
-                    boxShadow: isStack
-                      ? imb === 'buy'
-                        ? 'inset 3px 0 0 #0ecb81'
-                        : 'inset 3px 0 0 #a855f7'
-                      : undefined,
-                  }}
-                  title={
-                    imb
-                      ? `${imb} imbalance ${formatPct(imb === 'buy' ? ratio : 1 - ratio)}${
-                          isStack ? ' · STACKED' : ''
-                        }`
-                      : undefined
-                  }
+                  className="flex items-stretch border-b border-[#1e2329]/50"
+                  style={{ minHeight: rowH, background: rowBg }}
                 >
-                  <div className="relative flex items-center justify-end pr-1">
+                  {showVp && (
                     <div
-                      className="absolute inset-y-1 right-0 rounded-sm"
-                      style={{
-                        width: `${Math.max(l.sellQty > 0 ? 10 : 0, sellPctBar)}%`,
-                        backgroundColor: `rgba(168, 85, 247, ${sellAlpha})`,
-                      }}
-                    />
-                    <span className="relative text-[12px] font-semibold text-[#a855f7] tabular-nums">
-                      {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
-                    </span>
-                  </div>
-                  <div
-                    className={`flex items-center justify-center text-[12px] font-bold tabular-nums ${
-                      imb === 'buy'
-                        ? 'text-[#0ecb81]'
-                        : imb === 'sell'
-                          ? 'text-[#a855f7]'
-                          : 'text-[#eaecef]'
-                    }`}
-                  >
-                    {l.price}
-                  </div>
-                  <div className="relative flex items-center justify-start pl-1">
-                    <div
-                      className="absolute inset-y-1 left-0 rounded-sm"
-                      style={{
-                        width: `${Math.max(l.buyQty > 0 ? 10 : 0, buyPctLvl)}%`,
-                        backgroundColor: `rgba(14, 203, 129, ${buyAlpha})`,
-                      }}
-                    />
-                    <span className="relative text-[12px] font-semibold text-[#0ecb81] tabular-nums">
-                      {l.buyQty > 0 ? formatQty(l.buyQty) : ''}
-                    </span>
-                  </div>
-                  <div className="relative flex items-center justify-end pl-0.5">
-                    <div className="relative w-full h-3.5 flex items-center justify-end">
+                      className="relative shrink-0 flex items-center justify-end pr-1 bg-[#0d1118] border-r border-[#f0b90b]/30"
+                      style={{ width: VP_COL_W }}
+                      title={`VP live ${formatQty(vol)}${vp?.isPoc ? ' · POC' : ''}${vp?.inVa ? ' · VA' : ''}`}
+                    >
                       <div
-                        className="h-3 rounded-sm"
+                        className="h-4 rounded-sm transition-[width] duration-150"
                         style={{
-                          width: `${Math.max(l.delta !== 0 ? 14 : 0, dPct)}%`,
-                          backgroundColor: l.delta >= 0 ? BUY : SELL,
-                          opacity: imb ? 0.95 : 0.8,
+                          width: `${vpPct}%`,
+                          minWidth: vol > 0 ? 4 : 0,
+                          backgroundColor: vp?.isPoc
+                            ? '#f0b90b'
+                            : vp?.inVa
+                              ? 'rgba(240, 185, 11, 0.75)'
+                              : 'rgba(91, 141, 239, 0.7)',
+                          boxShadow: vp?.isPoc ? '0 0 8px rgba(240,185,11,0.5)' : undefined,
                         }}
                       />
                     </div>
-                  </div>
-                  {showVp && (
+                  )}
+                  <div
+                    className={`grid gap-0 px-2 items-stretch flex-1 min-w-0 ${colCls}`}
+                    style={{
+                      minHeight: rowH,
+                      boxShadow: isStack
+                        ? imb === 'buy'
+                          ? 'inset 3px 0 0 #0ecb81'
+                          : 'inset 3px 0 0 #a855f7'
+                        : undefined,
+                    }}
+                    title={
+                      imb
+                        ? `${imb} imbalance ${formatPct(imb === 'buy' ? ratio : 1 - ratio)}${
+                            isStack ? ' · STACKED' : ''
+                          }`
+                        : undefined
+                    }
+                  >
+                    <div className="relative flex items-center justify-end pr-1">
+                      <div
+                        className="absolute inset-y-1 right-0 rounded-sm"
+                        style={{
+                          width: `${Math.max(l.sellQty > 0 ? 10 : 0, sellPctBar)}%`,
+                          backgroundColor: `rgba(168, 85, 247, ${sellAlpha})`,
+                        }}
+                      />
+                      <span className="relative text-[12px] font-semibold text-[#a855f7] tabular-nums">
+                        {l.sellQty > 0 ? formatQty(l.sellQty) : ''}
+                      </span>
+                    </div>
                     <div
-                      className="relative flex items-center justify-end pl-0.5"
-                      title={
-                        vp
-                          ? `Vol ${formatQty(vp.volume)}${vp.isPoc ? ' · POC' : ''}${
-                              vp.inVa ? ' · VA' : ''
-                            }`
-                          : undefined
-                      }
+                      className={`flex items-center justify-center text-[12px] font-bold tabular-nums ${
+                        imb === 'buy'
+                          ? 'text-[#0ecb81]'
+                          : imb === 'sell'
+                            ? 'text-[#a855f7]'
+                            : 'text-[#eaecef]'
+                      }`}
                     >
+                      {l.price}
+                    </div>
+                    <div className="relative flex items-center justify-start pl-1">
+                      <div
+                        className="absolute inset-y-1 left-0 rounded-sm"
+                        style={{
+                          width: `${Math.max(l.buyQty > 0 ? 10 : 0, buyPctLvl)}%`,
+                          backgroundColor: `rgba(14, 203, 129, ${buyAlpha})`,
+                        }}
+                      />
+                      <span className="relative text-[12px] font-semibold text-[#0ecb81] tabular-nums">
+                        {l.buyQty > 0 ? formatQty(l.buyQty) : ''}
+                      </span>
+                    </div>
+                    <div className="relative flex items-center justify-end pl-0.5">
                       <div className="relative w-full h-3.5 flex items-center justify-end">
                         <div
                           className="h-3 rounded-sm"
                           style={{
-                            width: `${vpW}%`,
-                            backgroundColor: vp?.isPoc
-                              ? '#f0b90b'
-                              : vp?.inVa
-                                ? 'rgba(240, 185, 11, 0.55)'
-                                : 'rgba(132, 142, 156, 0.45)',
+                            width: `${Math.max(l.delta !== 0 ? 14 : 0, dPct)}%`,
+                            backgroundColor: l.delta >= 0 ? BUY : SELL,
+                            opacity: imb ? 0.95 : 0.8,
                           }}
                         />
                       </div>
-                      {vp?.isPoc && (
-                        <span className="absolute -left-0.5 text-[8px] font-bold text-[#f0b90b]">
-                          P
-                        </span>
-                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               )
             })
@@ -666,7 +665,7 @@ export function DeepPrintOverlay({
             <span className="text-[#f0b90b] font-semibold">POC {candleProfile.poc}</span>
             <span>VAH {candleProfile.vah}</span>
             <span>VAL {candleProfile.val}</span>
-            <span>VA {candleProfile.vaPct.toFixed(0)}% (candle trades)</span>
+            <span>VA {candleProfile.vaPct.toFixed(0)}% · barre live</span>
           </div>
         )}
       </div>
