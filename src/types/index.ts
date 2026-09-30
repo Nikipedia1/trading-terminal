@@ -91,6 +91,10 @@ export type WidgetKind =
   | 'wallet'
   | 'bots'
   | 'admin'
+  | 'liquidity'
+  | 'backtest'
+  | 'livekeys'
+  | 'plugins'
 
 export interface WidgetPanelConfig {
   id: string
