@@ -1,12 +1,5 @@
 /**
- * React adapter for BotScheduler.
- *
- * Stable dependencies only:
- *  - enabledBotIds (sorted id list of enabled bots)
- *  - candleCloseTime + lastPrice (drive forceTick without recreating scheduler)
- *
- * Scheduler instance lives for the whole "has enabled bots" session.
- * Debounce + signalId + hard cooldown live inside BotScheduler.
+ * React adapter – stable deps, multi-symbol BotScheduler, true grid support.
  */
 
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
@@ -51,9 +44,7 @@ export function useMarketSentiment(): SentimentSnapshot | null {
   return computeSentiment(candles, ticker?.priceChangePercent ?? null, fg)
 }
 
-function buildDeps(
-  sentimentRef: MutableRefObject<SentimentSnapshot | null>
-) {
+function buildDeps(sentimentRef: MutableRefObject<SentimentSnapshot | null>) {
   return {
     getPrimaryCandles: () => useMarketStore.getState().candles,
     getPrimarySymbol: () => useMarketStore.getState().symbol,
@@ -74,14 +65,34 @@ function buildDeps(
       usePaperStore.getState().positions.reduce((s, p) => s + (p.margin || 0), 0),
     getOpenPositions: () => usePaperStore.getState().positions.length,
     getFills: () => usePaperStore.getState().fills,
+    getOpenLimits: (symbol: string) => {
+      const sym = symbol.toUpperCase()
+      return usePaperStore
+        .getState()
+        .orders.filter(
+          (o) => o.symbol === sym && o.status === 'open' && o.type === 'limit'
+        )
+        .map((o) => ({
+          id: o.id,
+          symbol: o.symbol,
+          side: o.side,
+          type: o.type,
+          status: o.status,
+          price: o.price,
+          qty: o.qty,
+        }))
+    },
     placeOrder: (args: {
       symbol: string
       side: 'long' | 'short'
       qty: number
       leverage: number
+      orderType: 'market' | 'limit'
+      price?: number | null
       markPrice: number
       takeProfitPct?: number | null
       stopLossPct?: number | null
+      postOnly?: boolean
     }) => {
       const mark = args.markPrice
       const tp =
@@ -96,16 +107,23 @@ function buildDeps(
             ? mark * (1 - args.stopLossPct / 100)
             : mark * (1 + args.stopLossPct / 100)
           : null
-      usePaperStore.getState().placeOrder({
+      const res = usePaperStore.getState().placeOrder({
         symbol: args.symbol,
         side: args.side,
-        type: 'market',
+        type: args.orderType,
         qty: args.qty,
         leverage: args.leverage,
+        price: args.price,
         markPrice: mark,
         takeProfit: tp,
         stopLoss: sl,
+        postOnly: args.postOnly,
       })
+      if (res.ok) return { ok: true, orderId: res.orderId }
+      return { ok: false, error: 'error' in res ? res.error : 'order failed' }
+    },
+    cancelOrder: (orderId: string) => {
+      usePaperStore.getState().cancelOrder(orderId)
     },
     closeSide: (symbol: string, side: 'long' | 'short', price: number) => {
       usePaperStore.getState().closeSide(symbol, side, price)
@@ -113,8 +131,17 @@ function buildDeps(
     markToMarket: (symbol: string, price: number) => {
       usePaperStore.getState().markToMarket(symbol, price)
     },
+    tryFillLimits: (symbol: string, price: number) => {
+      usePaperStore.getState().tryFillLimits(symbol, price)
+    },
     checkExits: (symbol: string, price: number) => {
       usePaperStore.getState().checkExits(symbol, price)
+    },
+    applyFunding: (marks: Record<string, number>) => {
+      usePaperStore.getState().applyFunding(marks)
+    },
+    recordEquity: () => {
+      usePaperStore.getState().recordEquity()
     },
     getSentiment: () => sentimentRef.current,
   }
@@ -151,10 +178,9 @@ export function useBotRunner() {
       schedulerRef.current = null
       return
     }
-
     if (!schedulerRef.current) {
       schedulerRef.current = new BotScheduler(buildDeps(sentimentRef), {
-        tickMs: 5_000,
+        tickMs: 4_000,
         cooldownMs: BOT_HARD_COOLDOWN_MS,
       })
       schedulerRef.current.start()
