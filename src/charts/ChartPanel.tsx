@@ -3,7 +3,7 @@
  * Full pair (BTCUSDT) always shown as yellow chip in the header.
  */
 
-import { type MouseEvent } from 'react'
+import { type MouseEvent, useEffect } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu } from './OrderflowMenu'
@@ -11,7 +11,7 @@ import { ChartPanelHud } from './ChartHud'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
-import { useOrderflowStore } from '@/stores/orderflowStore'
+import { useOrderflowStore, defaultOrderflowState } from '@/stores/orderflowStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES, EXCHANGE_LABELS } from '@/data/exchanges/registry'
@@ -36,12 +36,19 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const isPrimary = primaryPanelId === id
   const setMarketSymbol = useMarketStore((s) => s.setSymbol)
 
-  const ofState = useOrderflowStore((s) => s.get(id))
+  const ofRaw = useOrderflowStore((s) => s.byPanel[id])
+  const ofState = ofRaw ?? defaultOrderflowState()
   const patchOf = useOrderflowStore((s) => s.patch)
 
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
 
   const { candles, status, lastError } = usePanelMarket(symbol, interval, exchange)
+
+  // Ensure stable orderflow entry so toggles re-render ChartContainer
+  useEffect(() => {
+    const st = useOrderflowStore.getState()
+    if (!st.byPanel[id]) st.set(id, defaultOrderflowState())
+  }, [id])
 
   const onDetach = (e: MouseEvent) => {
     e.stopPropagation()
@@ -161,9 +168,14 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0 overflow-x-auto">
+      <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0 overflow-visible relative z-30">
         <DrawingToolbar panelId={id} symbol={symbol} />
-        <OrderflowMenu state={ofState} onChange={(next) => patchOf(id, next)} />
+        <OrderflowMenu
+          state={ofState}
+          exchange={exchange}
+          onChange={(next) => patchOf(id, next)}
+          onPrintToggle={() => patchOf(id, { print: !ofState.print })}
+        />
         <button
           type="button"
           className="text-xxs px-1 text-terminal-muted hover:text-terminal-text"
