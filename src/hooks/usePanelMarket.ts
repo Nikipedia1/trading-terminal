@@ -24,11 +24,26 @@ export function usePanelMarket(
   interval: Interval,
   exchange: ExchangeId = 'binance'
 ) {
+  const instrumentKey = `${exchange}|${symbol.toUpperCase()}|${interval}`
+
   const [state, setState] = useState<PanelMarketState>({
     candles: [],
     status: 'disconnected',
     lastError: null,
   })
+
+  // Clear stale candles in the same render as the instrument change
+  // (avoids one frame of BTC data painted on SOL and locking the price scale)
+  const [seenKey, setSeenKey] = useState(instrumentKey)
+  if (seenKey !== instrumentKey) {
+    setSeenKey(instrumentKey)
+    setState({
+      candles: [],
+      status: 'connecting',
+      lastError: null,
+      statusDetail: `loading ${symbol.toUpperCase()}`,
+    })
+  }
 
   const unsubRef = useRef<(() => void) | null>(null)
   const mountedRef = useRef(true)
@@ -91,42 +106,46 @@ export function usePanelMarket(
         },
         (err) => {
           if (!mountedRef.current || gen !== genRef.current) return
-          setState((s) => ({
-            ...s,
+          setState((prev) => ({
+            ...prev,
             status: 'error',
-            lastError: err,
-            statusDetail: err.message,
+            lastError: {
+              code: 'WS_ERROR',
+              message: err?.message ?? 'WebSocket error',
+            },
+            statusDetail: 'websocket error',
           }))
         },
-        (status, detail) => {
+        () => {
           if (!mountedRef.current || gen !== genRef.current) return
-          setState((s) => ({
-            ...s,
-            status,
-            statusDetail: detail,
-            lastError:
-              status === 'error'
-                ? s.lastError
-                : status === 'connected'
-                  ? null
-                  : s.lastError,
+          setState((prev) => ({
+            ...prev,
+            status: 'connected',
+            statusDetail: undefined,
           }))
         }
       )
-    } catch (err: any) {
+
+      if (!mountedRef.current || gen !== genRef.current) {
+        stopLive()
+        return
+      }
+
+      setState((prev) => ({
+        ...prev,
+        status: 'connected',
+        statusDetail: undefined,
+      }))
+    } catch (e: any) {
       if (!mountedRef.current || gen !== genRef.current) return
       setState({
         candles: [],
         status: 'error',
-        lastError: err.code
-          ? err
-          : {
-              code: 'LOAD_HIST',
-              message: err.message || 'Failed to load historical data',
-              exchange,
-              timestamp: Date.now(),
-            },
-        statusDetail: err.message,
+        lastError: {
+          code: 'REST_ERROR',
+          message: e?.message ?? 'Failed to load klines',
+        },
+        statusDetail: 'history failed',
       })
     }
   }, [symbol, interval, exchange, stopLive])
@@ -140,11 +159,5 @@ export function usePanelMarket(
     }
   }, [loadAndStart, stopLive])
 
-  return {
-    candles: state.candles,
-    status: state.status,
-    lastError: state.lastError,
-    statusDetail: state.statusDetail,
-    reload: loadAndStart,
-  }
+  return state
 }
