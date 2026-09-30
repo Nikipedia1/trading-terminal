@@ -1,9 +1,7 @@
 /**
  * Deep Print – Bid/Ask footprint with imbalance + stacked imbalance.
- * Palette: buy #0ecb81 · sell #a855f7
- * Layout: SELL | PX | BUY | Δ
- * Pin follows the candle you select (click / ← →); does not jump back to last closed.
- * Anti-pellicola: position from timeToCoordinate / priceToCoordinate.
+ * Optional integrated candle volume profile (POC / VA) from the same trades.
+ * Pin follows selected candle (click / ← →).
  */
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
@@ -14,6 +12,7 @@ import { aggregatePrint } from './aggregate'
 import { intervalToSeconds } from './interval'
 import { buyRatio, levelImbalance, stackedImbalancePrices } from './imbalance'
 import type { DeepPrintModel, PrintLevel } from './types'
+import { buildCandleProfile } from './candleProfile'
 
 interface DeepPrintOverlayProps {
   enabled: boolean
@@ -65,6 +64,8 @@ export function DeepPrintOverlay({
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const [deltaFilterOn, setDeltaFilterOn] = useState(false)
   const [deltaFilterPct, setDeltaFilterPct] = useState(15)
+  const [showVp, setShowVp] = useState(true)
+  const [vpVaPct, setVpVaPct] = useState<68 | 70 | 80>(70)
 
   const modelRef = useRef<DeepPrintModel | null>(null)
   modelRef.current = model
@@ -193,7 +194,6 @@ export function DeepPrintOverlay({
       const candle =
         candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
       if (!candle) return
-      // Move pin to the clicked candle (works while already pinned)
       selectCandle(candle.time)
     }
 
@@ -248,7 +248,6 @@ export function DeepPrintOverlay({
     return () => window.removeEventListener('keydown', onKey)
   }, [enabled, pinned, pinLastClosed, shiftPin])
 
-  // Auto-pin only when tool turns on or instrument changes — never fight user candle pick
   useEffect(() => {
     if (!enabled) {
       setModel(null)
@@ -260,7 +259,7 @@ export function DeepPrintOverlay({
     }
     userPickedRef.current = false
     pinLastClosed()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on enable / instrument change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, symbol, exchange, interval])
 
   const maxAbsDelta = useMemo(() => {
@@ -280,6 +279,28 @@ export function DeepPrintOverlay({
     [visibleLevels]
   )
 
+  const candleProfile = useMemo(
+    () => (showVp ? buildCandleProfile(visibleLevels, vpVaPct) : null),
+    [showVp, visibleLevels, vpVaPct]
+  )
+
+  const vpByPrice = useMemo(() => {
+    const m = new Map<
+      number,
+      { share: number; isPoc: boolean; inVa: boolean; volume: number }
+    >()
+    if (!candleProfile) return m
+    for (const b of candleProfile.buckets) {
+      m.set(b.price, {
+        share: b.share,
+        isPoc: b.isPoc,
+        inVa: b.inVa,
+        volume: b.volume,
+      })
+    }
+    return m
+  }, [candleProfile])
+
   if (!enabled) return null
   if (!model || !pos) {
     return (
@@ -295,7 +316,10 @@ export function DeepPrintOverlay({
   const cw = parent?.clientWidth ?? 0
   const ch = parent?.clientHeight ?? 0
 
-  const panelW = Math.min(320, Math.max(260, 240 + Math.min(visibleLevels.length, 12) * 2))
+  const panelW = Math.min(
+    showVp ? 400 : 340,
+    Math.max(showVp ? 320 : 260, 240 + Math.min(visibleLevels.length, 12) * 2 + (showVp ? 56 : 0))
+  )
   const rowH = 22
   const panelH = Math.min(380, 88 + Math.max(1, visibleLevels.length) * rowH)
 
@@ -315,6 +339,10 @@ export function DeepPrintOverlay({
   const buyPct = totalVol > 0 ? model.totalBuy / totalVol : 0.5
   const sellPct = totalVol > 0 ? model.totalSell / totalVol : 0.5
 
+  const colCls = showVp
+    ? 'grid-cols-[1fr_56px_1fr_40px_52px]'
+    : 'grid-cols-[1fr_64px_1fr_48px]'
+
   return (
     <div
       className="absolute z-20 pointer-events-auto select-none"
@@ -333,13 +361,9 @@ export function DeepPrintOverlay({
               Δ {formatQty(model.totalDelta)}
             </span>
             <div className="flex items-center gap-1.5 text-[12px] font-semibold tabular-nums">
-              <span className="text-[#0ecb81]" title="Buy aggressor volume share">
-                buy {formatPct(buyPct)}
-              </span>
+              <span className="text-[#0ecb81]">buy {formatPct(buyPct)}</span>
               <span className="text-[#5e6673]">·</span>
-              <span className="text-[#a855f7]" title="Sell aggressor volume share">
-                sell {formatPct(sellPct)}
-              </span>
+              <span className="text-[#a855f7]">sell {formatPct(sellPct)}</span>
             </div>
             <button
               type="button"
@@ -357,13 +381,12 @@ export function DeepPrintOverlay({
           </div>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-[10px] text-[#848e9c]">
-              {pinned ? '📌 pin' : 'hover'} · click candle to move · {model.tradeCount}{' '}
-              trades · tick {model.tickSize}
+              {pinned ? '📌 pin' : 'hover'} · click candle · {model.tradeCount} trades
             </span>
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
-              title="Previous candle (←)"
+              title="Previous candle"
               onClick={() => shiftPin(-1)}
             >
               ←
@@ -371,7 +394,7 @@ export function DeepPrintOverlay({
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
-              title="Next candle (→)"
+              title="Next candle"
               onClick={() => shiftPin(1)}
             >
               →
@@ -379,7 +402,7 @@ export function DeepPrintOverlay({
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
-              title="Pin last closed candle (P)"
+              title="Pin last closed (P)"
               onClick={() => {
                 userPickedRef.current = true
                 pinLastClosed()
@@ -424,6 +447,44 @@ export function DeepPrintOverlay({
             />
             <span className="text-[10px] text-[#eaecef] w-8 tabular-nums">{deltaFilterPct}%</span>
           </div>
+
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <label className="flex items-center gap-1.5 text-[10px] text-[#848e9c] cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-[#f0b90b]"
+                checked={showVp}
+                onChange={(e) => setShowVp(e.target.checked)}
+              />
+              Volume profile
+            </label>
+            {showVp && (
+              <>
+                <span className="text-[10px] text-[#5e6673]">VA%</span>
+                {([68, 70, 80] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                      vpVaPct === v
+                        ? 'border-[#f0b90b] text-[#f0b90b] bg-[#f0b90b]/10'
+                        : 'border-[#2b3139] text-[#848e9c] hover:text-[#eaecef]'
+                    }`}
+                    onClick={() => setVpVaPct(v)}
+                  >
+                    {v}
+                  </button>
+                ))}
+                {candleProfile && (
+                  <span className="text-[10px] text-[#848e9c] tabular-nums">
+                    POC {candleProfile.poc} · VAH {candleProfile.vah} · VAL{' '}
+                    {candleProfile.val}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
           {stacked.size >= STACK_MIN && (
             <div
               className="mt-1.5 px-2 py-1 rounded text-[11px] font-bold tracking-wide border"
@@ -439,22 +500,24 @@ export function DeepPrintOverlay({
                 color: model.totalDelta >= 0 ? BUY : SELL,
               }}
             >
-              ⚠ STACKED IMBALANCE · {stacked.size} levels ≥{STACK_MIN} consecutive
-              (threshold {(IMB_THRESHOLD * 100).toFixed(0)}%)
+              ⚠ STACKED IMBALANCE · {stacked.size} levels ≥{STACK_MIN}
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80">
+        <div
+          className={`grid gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80 ${colCls}`}
+        >
           <span className="text-left text-[#a855f7]">SELL</span>
           <span className="text-center text-[#848e9c]">PX</span>
           <span className="text-right text-[#0ecb81]">BUY</span>
           <span className="text-right text-[#848e9c]">Δ</span>
+          {showVp && <span className="text-right text-[#f0b90b]">VP</span>}
         </div>
 
         <div className="max-h-72 overflow-y-auto">
           {visibleLevels.length === 0 ? (
-            <div className="px-3 py-5 text-[12px] text-[#848e9c] text-center leading-relaxed">
+            <div className="px-3 py-5 text-[12px] text-[#848e9c] text-center">
               {model.levels.length === 0
                 ? 'No trades in buffer for this candle.'
                 : 'No levels pass the |Δ| filter.'}
@@ -476,10 +539,13 @@ export function DeepPrintOverlay({
               else if (imb === 'buy') rowBg = 'rgba(14, 203, 129, 0.10)'
               else if (imb === 'sell') rowBg = 'rgba(168, 85, 247, 0.10)'
 
+              const vp = vpByPrice.get(l.price)
+              const vpW = vp ? Math.max(vp.volume > 0 ? 12 : 0, vp.share * 100) : 0
+
               return (
                 <div
                   key={l.price}
-                  className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 items-stretch border-b border-[#1e2329]/50"
+                  className={`grid gap-0 px-2 items-stretch border-b border-[#1e2329]/50 ${colCls}`}
                   style={{
                     minHeight: rowH,
                     background: rowBg,
@@ -544,6 +610,37 @@ export function DeepPrintOverlay({
                       />
                     </div>
                   </div>
+                  {showVp && (
+                    <div
+                      className="relative flex items-center justify-end pl-0.5"
+                      title={
+                        vp
+                          ? `Vol ${formatQty(vp.volume)}${vp.isPoc ? ' · POC' : ''}${
+                              vp.inVa ? ' · VA' : ''
+                            }`
+                          : undefined
+                      }
+                    >
+                      <div className="relative w-full h-3.5 flex items-center justify-end">
+                        <div
+                          className="h-3 rounded-sm"
+                          style={{
+                            width: `${vpW}%`,
+                            backgroundColor: vp?.isPoc
+                              ? '#f0b90b'
+                              : vp?.inVa
+                                ? 'rgba(240, 185, 11, 0.55)'
+                                : 'rgba(132, 142, 156, 0.45)',
+                          }}
+                        />
+                      </div>
+                      {vp?.isPoc && (
+                        <span className="absolute -left-0.5 text-[8px] font-bold text-[#f0b90b]">
+                          P
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })
@@ -557,12 +654,21 @@ export function DeepPrintOverlay({
           </span>
           <span className="text-[#848e9c] text-[10px]">
             {stacked.size > 0 ? `stack ${stacked.size} lvl` : 'no stack'}
+            {candleProfile ? ` · VP Σ ${formatQty(candleProfile.totalVolume)}` : ''}
           </span>
           <span className="text-[#0ecb81] font-semibold tabular-nums">
             Σ {formatQty(model.totalBuy)}{' '}
             <span className="opacity-80 font-normal">({formatPct(buyPct)})</span>
           </span>
         </div>
+        {showVp && candleProfile && (
+          <div className="px-2.5 py-1 border-t border-[#2b3139]/80 text-[10px] text-[#848e9c] flex flex-wrap gap-x-3 gap-y-0.5">
+            <span className="text-[#f0b90b] font-semibold">POC {candleProfile.poc}</span>
+            <span>VAH {candleProfile.vah}</span>
+            <span>VAL {candleProfile.val}</span>
+            <span>VA {candleProfile.vaPct.toFixed(0)}% (candle trades)</span>
+          </div>
+        )}
       </div>
     </div>
   )
