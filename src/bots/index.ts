@@ -2,4 +2,9 @@ export { BotsPanel } from './BotsPanel'
 export { useBotStore } from './botStore'
 export type { BotInstance, BotKind } from './types'
 export type { SentimentSnapshot } from './sentiment'
-export { BotScheduler, realizedDayPnlFromFills } from './scheduler'
+export {
+  BotScheduler,
+  realizedDayPnlFromFills,
+  makeSignalId,
+  BOT_HARD_COOLDOWN_MS,
+} from './scheduler'
