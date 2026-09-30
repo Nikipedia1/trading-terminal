@@ -12,6 +12,7 @@ import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
 import { useOrderflowStore, defaultOrderflowState } from '@/stores/orderflowStore'
+import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES, EXCHANGE_LABELS } from '@/data/exchanges/registry'
@@ -41,6 +42,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const patchOf = useOrderflowStore((s) => s.patch)
 
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
+  const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
+  const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
 
   const { candles, status, lastError } = usePanelMarket(symbol, interval, exchange)
 
@@ -194,6 +197,22 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onChange={(next) => patchOf(id, next)}
           onPrintToggle={() => patchOf(id, { print: !ofState.print })}
         />
+        <button
+          type="button"
+          className={`text-xxs px-1.5 py-0.5 rounded border ${
+            stylePanelOpen
+              ? 'bg-[#1e2329] text-[#f0b90b] border-[#f0b90b]/50'
+              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
+          }`}
+          title="Colore candele e canvas"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleStylePanel()
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Stile
+        </button>
         <button
           type="button"
           className="text-xxs px-1 text-terminal-muted hover:text-terminal-text"

@@ -2,7 +2,7 @@
  * ChartStylePanel – customize candle body/wick and canvas colors.
  */
 
-import { useChartStyleStore, DEFAULT_CHART_STYLE } from '@/stores/chartStyleStore'
+import { useChartStyleStore } from '@/stores/chartStyleStore'
 
 function ColorField({
   label,
@@ -19,9 +19,10 @@ function ColorField({
       <span className="flex items-center gap-1">
         <input
           type="color"
-          value={value.length === 7 ? value : '#000000'}
+          value={/^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#888888'}
           onChange={(e) => onChange(e.target.value)}
-          className="w-6 h-5 cursor-pointer border border-terminal-border rounded bg-transparent p-0"
+          className="w-7 h-6 cursor-pointer border border-terminal-border rounded bg-transparent p-0"
+          title={label}
         />
         <input
           type="text"
@@ -48,9 +49,10 @@ export function ChartStylePanel() {
 
   return (
     <div
-      className="absolute top-2 right-2 z-30 w-56 bg-terminal-panel border border-terminal-border rounded shadow-lg p-2 text-terminal-text"
+      className="absolute top-2 right-2 z-40 w-60 bg-terminal-panel border border-terminal-border rounded shadow-lg p-2 text-terminal-text"
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      data-no-pan
     >
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold">Stile grafico</span>
@@ -65,65 +67,113 @@ export function ChartStylePanel() {
 
       <div className="text-xxs text-terminal-muted uppercase tracking-wider mb-1">Candele</div>
       <div className="flex flex-col gap-1 mb-2">
-        <ColorField label="Body up" value={candle.upBody} onChange={(v) => setCandle({ upBody: v, upBorder: v })} />
-        <ColorField label="Body down" value={candle.downBody} onChange={(v) => setCandle({ downBody: v, downBorder: v })} />
+        <ColorField
+          label="Body up"
+          value={candle.upBody}
+          onChange={(v) => setCandle({ upBody: v, upBorder: v })}
+        />
+        <ColorField
+          label="Body down"
+          value={candle.downBody}
+          onChange={(v) => setCandle({ downBody: v, downBorder: v })}
+        />
         <ColorField label="Wick up" value={candle.upWick} onChange={(v) => setCandle({ upWick: v })} />
-        <ColorField label="Wick down" value={candle.downWick} onChange={(v) => setCandle({ downWick: v })} />
-        <ColorField label="Border up" value={candle.upBorder} onChange={(v) => setCandle({ upBorder: v })} />
-        <ColorField label="Border down" value={candle.downBorder} onChange={(v) => setCandle({ downBorder: v })} />
+        <ColorField
+          label="Wick down"
+          value={candle.downWick}
+          onChange={(v) => setCandle({ downWick: v })}
+        />
+        <ColorField
+          label="Border up"
+          value={candle.upBorder}
+          onChange={(v) => setCandle({ upBorder: v })}
+        />
+        <ColorField
+          label="Border down"
+          value={candle.downBorder}
+          onChange={(v) => setCandle({ downBorder: v })}
+        />
       </div>
 
       <div className="text-xxs text-terminal-muted uppercase tracking-wider mb-1">Canvas</div>
       <div className="flex flex-col gap-1 mb-2">
-        <ColorField label="Sfondo" value={canvas.background} onChange={(v) => setCanvas({ background: v })} />
+        <ColorField
+          label="Sfondo"
+          value={canvas.background}
+          onChange={(v) => setCanvas({ background: v })}
+        />
         <ColorField label="Griglia" value={canvas.grid} onChange={(v) => setCanvas({ grid: v })} />
         <ColorField label="Testo" value={canvas.text} onChange={(v) => setCanvas({ text: v })} />
-        <ColorField label="Bordi assi" value={canvas.border} onChange={(v) => setCanvas({ border: v })} />
+        <ColorField
+          label="Bordo"
+          value={canvas.border}
+          onChange={(v) => setCanvas({ border: v })}
+        />
       </div>
 
-      <div className="flex gap-1 mt-1">
+      <div className="text-xxs text-terminal-muted uppercase tracking-wider mb-1 mt-1">Preset</div>
+      <div className="flex flex-wrap gap-1 mb-2">
         <button
           type="button"
-          className="flex-1 px-2 py-1 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
-          onClick={resetStyle}
-          title="Ripristina default KuCoin-style"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          className="px-2 py-1 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
-          onClick={() => resetStyle()}
-        >
-          Dark
-        </button>
-        <button
-          type="button"
-          className="px-2 py-1 text-xxs border border-terminal-border rounded hover:bg-terminal-hover"
+          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border hover:border-[#0ecb81]"
+          title="KuCoin green/red"
           onClick={() => {
-            setCanvas({
-              background: '#ffffff',
-              text: '#333333',
-              grid: '#e5e7eb',
-              border: '#d1d5db',
-            })
             setCandle({
-              upBody: '#16a34a',
-              downBody: '#dc2626',
-              upBorder: '#16a34a',
-              downBorder: '#dc2626',
-              upWick: '#16a34a',
-              downWick: '#dc2626',
+              upBody: '#0ecb81',
+              downBody: '#f6465d',
+              upBorder: '#0ecb81',
+              downBorder: '#f6465d',
+              upWick: '#0ecb81',
+              downWick: '#f6465d',
             })
           }}
         >
-          Light
+          KuCoin
+        </button>
+        <button
+          type="button"
+          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border hover:border-[#26a69a]"
+          title="Classic teal/red"
+          onClick={() => {
+            setCandle({
+              upBody: '#26a69a',
+              downBody: '#ef5350',
+              upBorder: '#26a69a',
+              downBorder: '#ef5350',
+              upWick: '#26a69a',
+              downWick: '#ef5350',
+            })
+          }}
+        >
+          Classic
+        </button>
+        <button
+          type="button"
+          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border hover:border-[#f0b90b]"
+          title="Mono white/gray"
+          onClick={() => {
+            setCandle({
+              upBody: '#eaecef',
+              downBody: '#848e9c',
+              upBorder: '#eaecef',
+              downBorder: '#848e9c',
+              upWick: '#eaecef',
+              downWick: '#848e9c',
+            })
+          }}
+        >
+          Mono
         </button>
       </div>
-
-      <p className="text-[10px] text-terminal-muted mt-2 leading-tight">
-        Default: up {DEFAULT_CHART_STYLE.candle.upBody} / down {DEFAULT_CHART_STYLE.candle.downBody}
-      </p>
+      <div className="flex gap-1 mt-1">
+        <button
+          type="button"
+          className="flex-1 text-xxs py-1 rounded border border-terminal-border text-terminal-muted hover:text-terminal-text"
+          onClick={resetStyle}
+        >
+          Reset default
+        </button>
+      </div>
     </div>
   )
 }
