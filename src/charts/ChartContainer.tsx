@@ -1,6 +1,5 @@
 /**
  * ChartContainer – price chart on top; oscillator panes stacked below.
- * Layer stack: profile (L1) → footprint (L2) → bubbles (L3) → drawings (L5).
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -32,6 +31,11 @@ import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
 import { LivePriceBadge } from './LivePriceBadge'
+import {
+  GammaOverlay,
+  DEFAULT_GAMMA_CONFIG,
+  type GammaConfig,
+} from '@/analysis/gamma'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
 import {
   useCandleDeltaSeries,
@@ -65,30 +69,15 @@ import { PaperPositionLines } from '@/trading/paper'
 
 function intervalToSeconds(interval: Interval): number {
   const m: Record<string, number> = {
-    '1m': 60,
-    '3m': 180,
-    '5m': 300,
-    '15m': 900,
-    '30m': 1800,
-    '1h': 3600,
-    '2h': 7200,
-    '4h': 14400,
-    '6h': 21600,
-    '8h': 28800,
-    '12h': 43200,
-    '1d': 86400,
-    '3d': 259200,
-    '1w': 604800,
-    '1M': 2592000,
+    '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800,
+    '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '8h': 28800,
+    '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000,
   }
   return m[interval] ?? 60
 }
 
 function buildChartOptions(canvas: {
-  background: string
-  text: string
-  grid: string
-  border: string
+  background: string; text: string; grid: string; border: string
 }) {
   return {
     layout: {
@@ -101,18 +90,8 @@ function buildChartOptions(canvas: {
     },
     crosshair: {
       mode: CrosshairMode.Normal,
-      vertLine: {
-        color: canvas.text,
-        width: 1 as const,
-        style: 2,
-        labelBackgroundColor: canvas.border,
-      },
-      horzLine: {
-        color: canvas.text,
-        width: 1 as const,
-        style: 2,
-        labelBackgroundColor: canvas.border,
-      },
+      vertLine: { color: canvas.text, width: 1 as const, style: 2, labelBackgroundColor: canvas.border },
+      horzLine: { color: canvas.text, width: 1 as const, style: 2, labelBackgroundColor: canvas.border },
     },
     rightPriceScale: {
       borderColor: canvas.border,
@@ -165,6 +144,8 @@ export interface ChartContainerProps {
   deepDomConfig?: DeepDomConfig
   footprintEnabled?: boolean
   footprintConfig?: FootprintConfig
+  gammaEnabled?: boolean
+  gammaConfig?: GammaConfig
   replayEnabled?: boolean
   isPrimary?: boolean
 }
@@ -189,6 +170,8 @@ export function ChartContainer({
   deepDomConfig = DEFAULT_DEEP_DOM_CONFIG,
   footprintEnabled = false,
   footprintConfig = DEFAULT_FOOTPRINT_CONFIG,
+  gammaEnabled = false,
+  gammaConfig = DEFAULT_GAMMA_CONFIG,
   replayEnabled = false,
   isPrimary = false,
 }: ChartContainerProps) {
@@ -213,24 +196,19 @@ export function ChartContainer({
 
   useEffect(() => {
     if (!containerRef.current) return
-
     const initial = useChartStyleStore.getState().style
     const chart = createChart(containerRef.current, {
       ...buildChartOptions(initial.canvas),
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
     })
-
     const mgr = new SeriesManager()
     mgr.attach(chart, initial.candle)
-
     const indMgr = new IndicatorSeriesManager()
     indMgr.attach(chart)
-
     const bridgeInstance = new CoordinateBridge()
     const candleSeries = mgr.getCandleSeries()
     if (candleSeries) bridgeInstance.attach(chart, candleSeries)
-
     chartRef.current = chart
     setMainChart(chart)
     seriesMgrRef.current = mgr
@@ -238,13 +216,11 @@ export function ChartContainer({
     setSeriesMgr(mgr)
     bridgeRef.current = bridgeInstance
     setBridge(bridgeInstance)
-
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       if (width > 0 && height > 0) chart.applyOptions({ width, height })
     })
     ro.observe(containerRef.current)
-
     return () => {
       ro.disconnect()
       bridgeInstance.detach()
@@ -263,18 +239,13 @@ export function ChartContainer({
 
   useEffect(() => {
     const chart = chartRef.current
-    const series = seriesMgrRef.current?.getCandleSeries() as
-      | ISeriesApi<'Candlestick'>
-      | null
-      | undefined
+    const series = seriesMgrRef.current?.getCandleSeries() as ISeriesApi<'Candlestick'> | null | undefined
     const el = containerRef.current
     if (!chart || !series || !el) return
-
-    const detach = attachFreePan(
+    return attachFreePan(
       { chart, series, container: el },
       () => useDrawingStore.getState().activeTool === 'pan'
     )
-    return detach
   }, [mainChart, seriesMgr])
 
   useEffect(() => {
@@ -293,13 +264,12 @@ export function ChartContainer({
       layout: opts.layout,
       grid: opts.grid,
       crosshair: opts.crosshair,
-      rightPriceScale: { borderColor: chartStyle.canvas.border },
+      rightPriceScale: { borderColor: chartStyle.canvas.border, autoScale: true },
       timeScale: { borderColor: chartStyle.canvas.border },
     })
     mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
-  // Instrument identity – any change must wipe series + unlock price scale
   const instrumentKey = `${exchange}|${symbol}|${interval}`
   const instrumentKeyRef = useRef(instrumentKey)
   instrumentKeyRef.current = instrumentKey
@@ -310,17 +280,12 @@ export function ChartContainer({
     seriesMgrRef.current?.resetPriceScale()
     bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
     const chart = chartRef.current
-    const series = seriesMgrRef.current?.getCandleSeries() as
-      | ISeriesApi<'Candlestick'>
-      | null
-      | undefined
+    const series = seriesMgrRef.current?.getCandleSeries() as ISeriesApi<'Candlestick'> | null | undefined
     if (chart && series) {
       try {
         unlockPriceScale(chart, series)
         chart.timeScale().resetTimeScale()
-      } catch {
-        /* */
-      }
+      } catch { /* */ }
     }
   }, [instrumentKey, interval])
 
@@ -332,16 +297,13 @@ export function ChartContainer({
       bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
       return
     }
-
     const historyKey = `${instrumentKey}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       seriesMgrRef.current.setCandles(candles)
       seriesMgrRef.current.resetPriceScale()
       const chart = chartRef.current
-      const series = seriesMgrRef.current.getCandleSeries() as
-        | ISeriesApi<'Candlestick'>
-        | null
+      const series = seriesMgrRef.current.getCandleSeries() as ISeriesApi<'Candlestick'> | null
       if (chart && series) {
         try {
           unlockPriceScale(chart, series)
@@ -351,13 +313,9 @@ export function ChartContainer({
             try {
               unlockPriceScale(chart, series)
               chart.timeScale().fitContent()
-            } catch {
-              /* */
-            }
+            } catch { /* */ }
           })
-        } catch {
-          /* */
-        }
+        } catch { /* */ }
       }
     } else {
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
@@ -383,27 +341,17 @@ export function ChartContainer({
         from: (focusRequest.timeSec - pad) as Time,
         to: (focusRequest.timeSec + pad) as Time,
       })
-    } catch {
-      /* */
-    }
+    } catch { /* */ }
   }, [focusRequest, isPrimary])
 
   useCandleDeltaSeries(
-    deltaEnabled,
-    seriesMgr,
-    exchange,
-    symbol,
-    interval,
-    candles,
-    deltaConfig
+    deltaEnabled, seriesMgr, exchange, symbol, interval, candles, deltaConfig
   )
 
   useEffect(() => {
     if (!syncGroup || !chartRef.current) return
     const chart = chartRef.current
-    const candleSeries = seriesMgrRef.current?.getCandleSeries() as
-      | ISeriesApi<'Candlestick'>
-      | null
+    const candleSeries = seriesMgrRef.current?.getCandleSeries() as ISeriesApi<'Candlestick'> | null
 
     const onRange = () => {
       if (applyingRemoteRef.current) return
@@ -421,12 +369,7 @@ export function ChartContainer({
     const onCrosshair = (param: any) => {
       if (applyingRemoteRef.current) return
       if (!param || param.time === undefined) {
-        publishSync(syncGroup, panelId, {
-          type: 'crosshair',
-          time: null,
-          price: null,
-          highlight: null,
-        })
+        publishSync(syncGroup, panelId, { type: 'crosshair', time: null, price: null, highlight: null })
         setSyncHighlight(syncGroup, null)
         return
       }
@@ -443,7 +386,6 @@ export function ChartContainer({
           : null
       if (highlight) setSyncHighlight(syncGroup, highlight)
       else setSyncHighlight(syncGroup, null)
-
       publishSync(syncGroup, panelId, { type: 'crosshair', time, price, highlight })
     }
     chart.subscribeCrosshairMove(onCrosshair)
@@ -455,10 +397,7 @@ export function ChartContainer({
       applyingRemoteRef.current = true
       try {
         if (payload.type === 'timeRange') {
-          c.timeScale().setVisibleRange({
-            from: payload.from as Time,
-            to: payload.to as Time,
-          })
+          c.timeScale().setVisibleRange({ from: payload.from as Time, to: payload.to as Time })
         } else if (payload.type === 'crosshair') {
           const series = seriesMgrRef.current?.getCandleSeries()
           if (payload.time == null || payload.price == null || !series) {
@@ -467,26 +406,16 @@ export function ChartContainer({
           } else {
             try {
               c.setCrosshairPosition(payload.price, payload.time as Time, series)
-            } catch {
-              /* */
-            }
+            } catch { /* */ }
             if (payload.highlight) setSyncHighlight(syncGroup, payload.highlight)
             else if (payload.time != null && payload.price != null) {
-              setSyncHighlight(syncGroup, {
-                timeSec: payload.time,
-                price: payload.price,
-              })
-            } else {
-              setSyncHighlight(syncGroup, null)
-            }
+              setSyncHighlight(syncGroup, { timeSec: payload.time, price: payload.price })
+            } else setSyncHighlight(syncGroup, null)
           }
         }
-      } catch {
-        /* */
-      } finally {
-        requestAnimationFrame(() => {
-          applyingRemoteRef.current = false
-        })
+      } catch { /* */ }
+      finally {
+        requestAnimationFrame(() => { applyingRemoteRef.current = false })
       }
     })
 
@@ -507,11 +436,7 @@ export function ChartContainer({
 
         <IndicatorValuesHud candles={candles} params={indicatorParams} />
 
-        <LivePriceBadge
-          bridge={bridge}
-          containerRef={containerRef}
-          candles={candles}
-        />
+        <LivePriceBadge bridge={bridge} containerRef={containerRef} candles={candles} />
 
         <RangeDiscoveryBadge
           enabled={profileEnabled || deltaEnabled}
@@ -575,6 +500,15 @@ export function ChartContainer({
           candles={candles}
         />
 
+        <GammaOverlay
+          enabled={gammaEnabled}
+          bridge={bridge}
+          containerRef={containerRef}
+          exchange={exchange}
+          symbol={symbol}
+          config={gammaConfig}
+        />
+
         <DrawingLayer
           panelId={panelId}
           symbol={symbol}
@@ -591,9 +525,7 @@ export function ChartContainer({
         />
 
         <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
-
         <ReplayBar enabled={replayEnabled} exchange={exchange} symbol={symbol} />
-
         <ChartStylePanel />
 
         {lastError && (
