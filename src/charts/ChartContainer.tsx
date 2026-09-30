@@ -31,6 +31,7 @@ import { useIndicatorStore } from '@/stores/indicatorStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingLayer } from '@/drawings/DrawingLayer'
 import { ChartStylePanel } from './ChartStylePanel'
+import { LivePriceBadge } from './LivePriceBadge'
 import { DeepPrintOverlay } from '@/analysis/deepPrint'
 import {
   useCandleDeltaSeries,
@@ -117,6 +118,10 @@ function buildChartOptions(canvas: {
       borderColor: canvas.border,
       scaleMargins: { top: 0.05, bottom: 0.28 },
       autoScale: true,
+      entireTextOnly: false,
+      ticksVisible: true,
+      borderVisible: true,
+      minimumWidth: 72,
     },
     timeScale: {
       borderColor: canvas.border,
@@ -294,7 +299,6 @@ export function ChartContainer({
     mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
-  // Hard reset series when instrument changes (avoid leaving previous symbol candles)
   useEffect(() => {
     lastHistoryKeyRef.current = ''
     seriesMgrRef.current?.clearCandles()
@@ -309,7 +313,6 @@ export function ChartContainer({
       bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
       return
     }
-    // Include symbol so BTC→ETH never reuses historyKey / updateCandle path
     const historyKey = `${symbol}|${exchange}|${interval}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
@@ -462,6 +465,12 @@ export function ChartContainer({
         <div ref={containerRef} className="absolute inset-0" />
 
         <IndicatorValuesHud candles={candles} params={indicatorParams} />
+
+        <LivePriceBadge
+          bridge={bridge}
+          containerRef={containerRef}
+          candles={candles}
+        />
 
         <RangeDiscoveryBadge
           enabled={profileEnabled || deltaEnabled}
