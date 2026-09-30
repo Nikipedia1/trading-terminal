@@ -7,7 +7,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuthStore, type AuthUser } from './authStore'
 
 export function AdminPanel() {
-  const token = useAuthStore((s) => s.token)
   const me = useAuthStore((s) => s.user)
   const [users, setUsers] = useState<AuthUser[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -16,12 +15,10 @@ export function AdminPanel() {
   const [newPw, setNewPw] = useState('')
 
   const load = useCallback(async () => {
-    if (!token) return
     setBusy(true)
     setError(null)
     try {
       const res = await fetch('/api/admin/users', {
-        headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       })
       const data = await res.json()
@@ -36,7 +33,7 @@ export function AdminPanel() {
     } finally {
       setBusy(false)
     }
-  }, [token])
+  }, [])
 
   useEffect(() => {
     void load()
@@ -46,12 +43,10 @@ export function AdminPanel() {
     id: string,
     body: { role?: string; disabled?: boolean; newPassword?: string }
   ) => {
-    if (!token) return
     setError(null)
     const res = await fetch(`/api/admin/users/${id}`, {
       method: 'PATCH',
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       credentials: 'include',
