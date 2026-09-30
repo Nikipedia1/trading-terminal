@@ -33,7 +33,7 @@ export function usePanelMarket(
   })
 
   // Clear stale candles in the same render as the instrument change
-  // (avoids one frame of BTC data painted on SOL and locking the price scale)
+  // (avoids one frame of BTC data on SOL locking the price scale)
   const [seenKey, setSeenKey] = useState(instrumentKey)
   if (seenKey !== instrumentKey) {
     setSeenKey(instrumentKey)
@@ -106,46 +106,42 @@ export function usePanelMarket(
         },
         (err) => {
           if (!mountedRef.current || gen !== genRef.current) return
-          setState((prev) => ({
-            ...prev,
+          setState((s) => ({
+            ...s,
             status: 'error',
-            lastError: {
-              code: 'WS_ERROR',
-              message: err?.message ?? 'WebSocket error',
-            },
-            statusDetail: 'websocket error',
+            lastError: err,
+            statusDetail: err.message,
           }))
         },
-        () => {
+        (status, detail) => {
           if (!mountedRef.current || gen !== genRef.current) return
-          setState((prev) => ({
-            ...prev,
-            status: 'connected',
-            statusDetail: undefined,
+          setState((s) => ({
+            ...s,
+            status,
+            statusDetail: detail,
+            lastError:
+              status === 'error'
+                ? s.lastError
+                : status === 'connected'
+                  ? null
+                  : s.lastError,
           }))
         }
       )
-
-      if (!mountedRef.current || gen !== genRef.current) {
-        stopLive()
-        return
-      }
-
-      setState((prev) => ({
-        ...prev,
-        status: 'connected',
-        statusDetail: undefined,
-      }))
-    } catch (e: any) {
+    } catch (err: any) {
       if (!mountedRef.current || gen !== genRef.current) return
       setState({
         candles: [],
         status: 'error',
-        lastError: {
-          code: 'REST_ERROR',
-          message: e?.message ?? 'Failed to load klines',
-        },
-        statusDetail: 'history failed',
+        lastError: err.code
+          ? err
+          : {
+              code: 'LOAD_HIST',
+              message: err.message || 'Failed to load historical data',
+              exchange,
+              timestamp: Date.now(),
+            },
+        statusDetail: err.message,
       })
     }
   }, [symbol, interval, exchange, stopLive])
@@ -159,5 +155,11 @@ export function usePanelMarket(
     }
   }, [loadAndStart, stopLive])
 
-  return state
+  return {
+    candles: state.candles,
+    status: state.status,
+    lastError: state.lastError,
+    statusDetail: state.statusDetail,
+    reload: loadAndStart,
+  }
 }
