@@ -17,3 +17,4 @@ export type {
   PaperPosition,
   PaperSide,
 } from './types'
+export { usePaperWalletSync } from './usePaperWalletSync'

@@ -67,7 +67,6 @@ async function api<T>(
   }
 }
 
-/** Drop any legacy token left from older builds */
 function clearLegacyToken() {
   try {
     localStorage.removeItem('tt-auth-token')
@@ -88,6 +87,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     clearLegacyToken()
     const res = await api<{ user: AuthUser }>('/api/auth/me')
     if (!res.ok) {
+      // B9: local Vite without Pages Functions → soft-dev session
+      const isDev =
+        typeof import.meta !== 'undefined' &&
+        Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV)
+      if (isDev && (res.status === 0 || res.status === 404)) {
+        set({
+          user: {
+            id: 'dev-local',
+            email: 'dev@localhost',
+            role: 'admin',
+            createdAt: Date.now(),
+          },
+          status: 'authenticated',
+          error: null,
+        })
+        return
+      }
       set({ user: null, status: 'guest' })
       return
     }

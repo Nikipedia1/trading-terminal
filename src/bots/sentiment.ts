@@ -1,7 +1,4 @@
-/**
- * Market sentiment – composite local score + optional Fear & Greed.
- * Score ∈ [-1, +1]: bearish → bullish.
- */
+/** Local market sentiment score from candles + optional Fear&Greed. */
 
 import type { CandleLike } from './engine'
 
@@ -22,14 +19,14 @@ export interface SentimentSnapshot {
     fearGreed: number | null
   }
   updatedAt: number
-  source: string
+  source: 'local' | 'local+fng'
 }
 
-function clamp(n: number, a = -1, b = 1) {
-  return Math.max(a, Math.min(b, n))
+function clamp(n: number, lo = -1, hi = 1) {
+  return Math.max(lo, Math.min(hi, n))
 }
 
-function rsi(closes: number[], period = 14): number | null {
+function rsi(closes: number[], period: number): number | null {
   if (closes.length < period + 1) return null
   let gains = 0
   let losses = 0
@@ -108,17 +105,25 @@ let cachedFg: { value: number; at: number } | null = null
 
 export async function fetchFearGreed(): Promise<number | null> {
   if (cachedFg && Date.now() - cachedFg.at < 30 * 60_000) return cachedFg.value
-  try {
-    const res = await fetch('https://api.alternative.me/fng/?limit=1', {
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!res.ok) return cachedFg?.value ?? null
-    const data = await res.json()
-    const v = Number(data?.data?.[0]?.value)
-    if (!Number.isFinite(v)) return cachedFg?.value ?? null
-    cachedFg = { value: v, at: Date.now() }
-    return v
-  } catch {
-    return cachedFg?.value ?? null
+  const endpoints = ['/api/sentiment/fng', 'https://api.alternative.me/fng/?limit=1']
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(5000),
+        credentials: url.startsWith('/') ? 'include' : 'omit',
+      })
+      if (!res.ok) continue
+      const data = await res.json()
+      const v =
+        typeof data?.value === 'number'
+          ? Number(data.value)
+          : Number(data?.data?.[0]?.value)
+      if (!Number.isFinite(v)) continue
+      cachedFg = { value: v, at: Date.now() }
+      return v
+    } catch {
+      /* try next */
+    }
   }
+  return cachedFg?.value ?? null
 }
