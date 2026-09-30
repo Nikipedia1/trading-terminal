@@ -18,6 +18,8 @@ import { formatSymbolOption } from '@/data/symbolMeta'
 import { LoginScreen, useAuthStore } from '@/auth'
 import { readDetachConfig } from '@/layout/detachPanel'
 import { usePaperWalletSync } from '@/trading/paper'
+import { OnboardingTour, resetOnboardingTour } from '@/ui/OnboardingTour'
+import { ErrorBoundary } from '@/ui/ErrorBoundary'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -279,7 +281,7 @@ function DetachedApp({
 
   return (
     <div className="h-full flex flex-col bg-terminal-bg">
-      <header className="flex items-center gap-3 px-3 py-1.5 border-b border-terminal-border bg-terminal-panel shrink-0">
+      <header className="flex items-center gap-3 px-3 py-1.5 border-b border-terminal-border shrink-0">
         <span className="text-xxs font-semibold tracking-wide text-[#f0b90b]">DETACHED</span>
         <SymbolBadge symbol={symbol} size="sm" showName={false} />
         <span className="text-xs font-mono-nums text-terminal-text">
@@ -353,6 +355,17 @@ function TerminalApp() {
           >
             ?
           </button>
+          <button
+            type="button"
+            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#eaecef] density-chrome"
+            title="Replay onboarding tour"
+            onClick={() => {
+              resetOnboardingTour()
+              window.location.reload()
+            }}
+          >
+            Tour
+          </button>
           <ArchiveMenu />
           <WorkspaceMenu />
           <UserMenu />
@@ -363,16 +376,20 @@ function TerminalApp() {
       <ErrorBanner />
       <Controls />
       <TickerBar />
-      <div className="density-chrome">
+      <div className="density-chrome" data-tour="execution-bar">
         <ExecutionBar />
       </div>
 
-      <div className="flex-1 bg-terminal-bg overflow-hidden min-h-0 flex flex-col">
+      <div
+        className="flex-1 bg-terminal-bg overflow-hidden min-h-0 flex flex-col"
+        data-tour="chart-area"
+      >
         <ChartArea />
       </div>
 
       <FeedHealthHud />
       <HotkeyHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <OnboardingTour />
     </div>
   )
 }
@@ -416,7 +433,11 @@ export default function App() {
   if (status !== 'authenticated') {
     return <LoginScreen />
   }
-  return <TerminalApp />
+  return (
+    <ErrorBoundary name="terminal">
+      <TerminalApp />
+    </ErrorBoundary>
+  )
 }
 
 void EXCHANGE_LABELS
