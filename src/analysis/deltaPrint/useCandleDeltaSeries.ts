@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react'
+import type { SeriesMarker, Time } from 'lightweight-charts'
 import type { SeriesManager } from '@/charts/series-manager'
 import type { Candle, ExchangeId, Interval } from '@/types'
 import { retainTradeBuffer } from '@/analysis/deepPrint/tradeBuffer'
@@ -23,12 +24,17 @@ export function useCandleDeltaSeries(
   config: DeltaPrintConfig = DEFAULT_DELTA_CONFIG
 ) {
   const timesKeyRef = useRef('')
+  const cfg = { ...DEFAULT_DELTA_CONFIG, ...config }
 
   useEffect(() => {
     if (!enabled) {
-      seriesMgr?.clearDelta()
-      seriesMgr?.clearCvd()
-      seriesMgr?.clearCandleMarkers()
+      try {
+        seriesMgr?.clearDelta()
+        seriesMgr?.clearCvd()
+        seriesMgr?.clearCandleMarkers()
+      } catch {
+        /* */
+      }
       return
     }
     return retainTradeBuffer(exchange, symbol)
@@ -38,44 +44,76 @@ export function useCandleDeltaSeries(
     if (!enabled || !seriesMgr || candles.length === 0) return
 
     const refresh = () => {
-      const slice = candles.slice(-120)
-      const times = slice.map((c) => c.time)
-      const bars = computeCandleDeltas(exchange, symbol, times, interval)
+      try {
+        const slice = candles.slice(-120)
+        const times = slice.map((c) => c.time)
+        const bars = computeCandleDeltas(exchange, symbol, times, interval)
 
-      const maxAbs = Math.max(...bars.map((b) => Math.abs(b.delta)), 0.0001)
-      const thresh =
-        config.minBarPct > 0 ? maxAbs * (config.minBarPct / 100) : 0
-      const filtered =
-        thresh > 0
-          ? bars.map((b) =>
-              Math.abs(b.delta) < thresh ? { ...b, delta: 0 } : b
-            )
-          : bars
+        const maxAbs = Math.max(...bars.map((b) => Math.abs(b.delta)), 0.0001)
+        const thresh =
+          cfg.minBarPct > 0 ? maxAbs * (cfg.minBarPct / 100) : 0
+        const filtered =
+          thresh > 0
+            ? bars.map((b) =>
+                Math.abs(b.delta) < thresh ? { ...b, delta: 0 } : b
+              )
+            : bars
 
-      seriesMgr.setDeltaBars(filtered)
+        seriesMgr.setDeltaBars(filtered)
 
-      if (config.cvd) {
-        let acc = 0
-        const cvd = bars.map((b) => {
-          acc += b.delta
-          return { time: b.time, value: acc }
-        })
-        seriesMgr.setCvdLine(cvd)
-      } else {
-        seriesMgr.clearCvd()
+        if (cfg.cvd) {
+          let acc = 0
+          const cvd = bars.map((b) => {
+            acc += b.delta
+            return { time: b.time, value: acc }
+          })
+          seriesMgr.setCvd(cvd)
+        } else {
+          seriesMgr.clearCvd()
+        }
+
+        const markers: SeriesMarker<Time>[] = []
+
+        if (cfg.absorption) {
+          for (const m of detectAbsorptionAggression(slice, bars)) {
+            const bull =
+              m.kind === 'aggression_buy' || m.kind === 'absorption_buy'
+            markers.push({
+              time: m.time as Time,
+              position: bull ? 'belowBar' : 'aboveBar',
+              color: bull ? '#0ecb81' : '#f6465d',
+              shape: m.kind.startsWith('absorption') ? 'square' : 'circle',
+              text:
+                m.kind === 'aggression_buy'
+                  ? 'Agg↑'
+                  : m.kind === 'aggression_sell'
+                    ? 'Agg↓'
+                    : m.kind === 'absorption_buy'
+                      ? 'Abs↑'
+                      : 'Abs↓',
+            })
+          }
+        }
+
+        if (cfg.divergence) {
+          for (const m of detectDivergences(slice, bars)) {
+            markers.push({
+              time: m.time as Time,
+              position: m.kind === 'bearish' ? 'aboveBar' : 'belowBar',
+              color: m.kind === 'bearish' ? '#f6465d' : '#0ecb81',
+              shape: m.kind === 'bearish' ? 'arrowDown' : 'arrowUp',
+              text: m.kind === 'bearish' ? 'Δ↓' : 'Δ↑',
+            })
+          }
+        }
+
+        seriesMgr.setCandleMarkers(markers)
+      } catch (e) {
+        console.warn('[deltaPrint] refresh failed', e)
       }
-
-      // Combined markers: absorption + divergence (SeriesManager merges)
-      const absMarks = config.absorption
-        ? detectAbsorptionAggression(slice, bars)
-        : []
-      const divMarks = config.divergence
-        ? detectDivergences(slice, bars)
-        : []
-      seriesMgr.setCandleAnnotationMarkers(absMarks, divMarks)
     }
 
-    const key = `${candles[0]?.time}|${candles.length}|${candles[candles.length - 1]?.time}|${config.cvd}|${config.divergence}|${config.absorption}|${config.minBarPct}`
+    const key = `${candles[0]?.time}|${candles.length}|${candles[candles.length - 1]?.time}|${cfg.cvd}|${cfg.divergence}|${cfg.absorption}|${cfg.minBarPct}`
     if (key !== timesKeyRef.current) {
       timesKeyRef.current = key
       refresh()
@@ -83,5 +121,16 @@ export function useCandleDeltaSeries(
 
     const id = window.setInterval(refresh, 1000)
     return () => window.clearInterval(id)
-  }, [enabled, seriesMgr, exchange, symbol, interval, candles, config])
+  }, [
+    enabled,
+    seriesMgr,
+    exchange,
+    symbol,
+    interval,
+    candles,
+    cfg.cvd,
+    cfg.divergence,
+    cfg.absorption,
+    cfg.minBarPct,
+  ])
 }

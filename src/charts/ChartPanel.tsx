@@ -38,7 +38,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const setMarketSymbol = useMarketStore((s) => s.setSymbol)
 
   const ofRaw = useOrderflowStore((s) => s.byPanel[id])
-  const ofState = ofRaw ?? defaultOrderflowState()
+  // Merge defaults so missing keys (deltaCfg, gammaCfg, …) never crash toggles
+  const ofState = { ...defaultOrderflowState(), ...(ofRaw ?? {}) }
   const patchOf = useOrderflowStore((s) => s.patch)
 
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
@@ -234,7 +235,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           lastError={lastError}
           syncGroup={syncGroup}
           deepPrintEnabled={ofState.print}
-          deltaEnabled={ofState.delta}
+          deltaEnabled={!!ofState.delta}
           deltaConfig={ofState.deltaCfg}
           profileEnabled={ofState.profile}
           profileConfig={ofState.profileCfg}
