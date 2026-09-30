@@ -99,6 +99,8 @@ export interface BotInstance {
     lastOrderAt?: number
     dcaCount?: number
     gridCenter?: number
+    /** Indices of grid levels already filled this cycle */
+    gridFilledLevels?: number[]
     lastSide?: 'long' | 'short' | null
     dayKey?: string
     dayPnl?: number
@@ -107,7 +109,7 @@ export interface BotInstance {
 }
 
 export const BOT_KIND_META: Record<BotKind, { label: string; hint: string }> = {
-  grid: { label: 'Grid', hint: 'Buy low / sell high in a price range' },
+  grid: { label: 'Grid', hint: 'Buy low / sell high across discrete levels' },
   dca: { label: 'DCA', hint: 'Dollar-cost average buys on a timer' },
   rsi: { label: 'RSI Reversion', hint: 'Long oversold, short overbought' },
   ema_cross: { label: 'EMA Cross', hint: 'Trend follow on fast/slow EMA cross' },
