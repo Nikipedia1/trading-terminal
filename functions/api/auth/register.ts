@@ -59,6 +59,6 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     { user: publicUser(user), token },
     201,
     request,
-    { 'Set-Cookie': sessionCookie(token) }
+    { 'Set-Cookie': sessionCookie(token, request) }
   )
 }

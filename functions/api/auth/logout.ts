@@ -16,6 +16,6 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     await destroySession(env.WORKSPACE_KV, extractToken(request))
   }
   return json({ ok: true }, 200, request, {
-    'Set-Cookie': clearSessionCookie(),
+    'Set-Cookie': clearSessionCookie(request),
   })
 }
