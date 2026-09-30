@@ -1,6 +1,6 @@
 /**
- * Client auth – Cloudflare Pages Functions + KV.
- * Token in memory + localStorage; passwords never stored client-side.
+ * Client auth – session via HttpOnly cookie (credentials: include).
+ * No session token in localStorage (XSS-safe). Memory user only.
  */
 
 import { create } from 'zustand'
@@ -17,7 +17,6 @@ export interface AuthUser {
 
 interface AuthState {
   user: AuthUser | null
-  token: string | null
   status: 'unknown' | 'guest' | 'authenticated'
   error: string | null
   busy: boolean
@@ -28,18 +27,16 @@ interface AuthState {
   clearError: () => void
 }
 
-const TOKEN_KEY = 'tt-auth-token'
-
 async function api<T>(
   path: string,
-  opts: RequestInit & { token?: string | null } = {}
+  opts: RequestInit = {}
 ): Promise<{ ok: true; data: T } | { ok: false; error: string; status: number }> {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(opts.headers as Record<string, string>),
   }
-  const token = opts.token ?? localStorage.getItem(TOKEN_KEY)
-  if (token) headers.Authorization = `Bearer ${token}`
+  if (opts.body && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json'
+  }
   try {
     const res = await fetch(path, {
       ...opts,
@@ -70,9 +67,17 @@ async function api<T>(
   }
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+/** Drop any legacy token left from older builds */
+function clearLegacyToken() {
+  try {
+    localStorage.removeItem('tt-auth-token')
+  } catch {
+    /* */
+  }
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null,
   status: 'unknown',
   error: null,
   busy: false,
@@ -80,35 +85,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearError: () => set({ error: null }),
 
   refreshMe: async () => {
-    const token = get().token ?? localStorage.getItem(TOKEN_KEY)
-    if (!token) {
-      set({ user: null, token: null, status: 'guest' })
-      return
-    }
-    const res = await api<{ user: AuthUser }>('/api/auth/me', { token })
+    clearLegacyToken()
+    const res = await api<{ user: AuthUser }>('/api/auth/me')
     if (!res.ok) {
-      localStorage.removeItem(TOKEN_KEY)
-      set({ user: null, token: null, status: 'guest' })
+      set({ user: null, status: 'guest' })
       return
     }
-    set({ user: res.data.user, token, status: 'authenticated', error: null })
+    set({ user: res.data.user, status: 'authenticated', error: null })
   },
 
   login: async (email, password) => {
     set({ busy: true, error: null })
-    const res = await api<{ user: AuthUser; token: string }>('/api/auth/login', {
+    const res = await api<{ user: AuthUser }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
     set({ busy: false })
     if (!res.ok) {
-      set({ error: res.error, status: 'guest', user: null, token: null })
+      set({ error: res.error, status: 'guest', user: null })
       return false
     }
-    localStorage.setItem(TOKEN_KEY, res.data.token)
+    clearLegacyToken()
     set({
       user: res.data.user,
-      token: res.data.token,
       status: 'authenticated',
       error: null,
     })
@@ -117,19 +116,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   register: async (email, password) => {
     set({ busy: true, error: null })
-    const res = await api<{ user: AuthUser; token: string }>('/api/auth/register', {
+    const res = await api<{ user: AuthUser }>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
     set({ busy: false })
     if (!res.ok) {
-      set({ error: res.error, status: 'guest', user: null, token: null })
+      set({ error: res.error, status: 'guest', user: null })
       return false
     }
-    localStorage.setItem(TOKEN_KEY, res.data.token)
+    clearLegacyToken()
     set({
       user: res.data.user,
-      token: res.data.token,
       status: 'authenticated',
       error: null,
     })
@@ -137,9 +135,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    const token = get().token
-    await api('/api/auth/logout', { method: 'POST', token })
-    localStorage.removeItem(TOKEN_KEY)
-    set({ user: null, token: null, status: 'guest', error: null })
+    await api('/api/auth/logout', { method: 'POST' })
+    clearLegacyToken()
+    set({ user: null, status: 'guest', error: null })
   },
 }))
