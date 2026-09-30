@@ -20,6 +20,10 @@ import { readDetachConfig } from '@/layout/detachPanel'
 import { usePaperWalletSync } from '@/trading/paper'
 import { OnboardingTour, resetOnboardingTour } from '@/ui/OnboardingTour'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { FEATURES } from '@/lib/features'
+import { useSessionModeStore } from '@/stores/sessionModeStore'
+import { useCloudLayoutSync } from '@/workspace/useCloudLayoutSync'
+import { useMobileLayout } from '@/layout/useMobileLayout'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -66,20 +70,16 @@ function Controls() {
   const startLive = useMarketStore((s) => s.startLive)
   const stopLive = useMarketStore((s) => s.stopLive)
   const status = useMarketStore((s) => s.status)
-
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
   const updatePanel = useLayoutStore((s) => s.updatePanel)
-
   const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
   const symbol = primary?.symbol ?? marketSymbol
   const interval = primary?.interval ?? marketInterval
-
   const [symbolDraft, setSymbolDraft] = useState(symbol)
   useEffect(() => {
     setSymbolDraft(symbol)
   }, [symbol])
-
   const applySymbol = (raw: string) => {
     const v = normalizeSymbol(raw)
     if (!v || v === symbol) {
@@ -89,13 +89,11 @@ function Controls() {
     setSymbol(v)
     updatePanel(primaryPanelId, { symbol: v })
   }
-
   const applyInterval = (v: Interval) => {
     if (v === interval) return
     setIntervalStore(v)
     updatePanel(primaryPanelId, { interval: v })
   }
-
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel density-compact">
       <SymbolBadge symbol={symbolDraft || symbol} size="sm" className="shrink-0" />
@@ -117,7 +115,6 @@ function Controls() {
           </option>
         ))}
       </datalist>
-
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm max-w-[11rem]"
         value={SYMBOL_PRESETS.some((p) => p.symbol === symbol) ? symbol : ''}
@@ -136,7 +133,6 @@ function Controls() {
           </optgroup>
         ))}
       </select>
-
       <select
         className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
         value={interval}
@@ -148,7 +144,6 @@ function Controls() {
           </option>
         ))}
       </select>
-
       <button
         onClick={() => loadHistorical()}
         className="px-3 py-1 bg-terminal-blue/20 text-terminal-blue rounded text-sm hover:bg-terminal-blue/30 density-chrome"
@@ -203,7 +198,6 @@ function usePrimarySync(enabled: boolean) {
   const startLive = useMarketStore((s) => s.startLive)
   const stopLive = useMarketStore((s) => s.stopLive)
   const primary = panels.find((p) => p.id === primaryPanelId)
-
   useEffect(() => {
     if (!enabled || !primary) return
     stopLive()
@@ -260,14 +254,12 @@ function DetachedApp({
   const setExchange = useMarketStore((s) => s.setExchange)
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
-
   useEffect(() => {
     setSymbol(symbol)
     setIntervalStore(interval)
     setExchange(exchange)
     void loadHistorical().then(() => startLive())
   }, [symbol, interval, exchange])
-
   const config = useMemo(
     () => ({
       id: 'detached',
@@ -278,7 +270,6 @@ function DetachedApp({
     }),
     [symbol, interval, exchange]
   )
-
   return (
     <div className="h-full flex flex-col bg-terminal-bg">
       <header className="flex items-center gap-3 px-3 py-1.5 border-b border-terminal-border shrink-0">
@@ -298,19 +289,18 @@ function DetachedApp({
 
 function TerminalApp() {
   usePaperWalletSync()
+  useCloudLayoutSync()
+  const mobile = useMobileLayout()
   const detach = useDetachParams()
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
   const density = useUiDensityStore((s) => s.mode)
   const toggleDensity = useUiDensityStore((s) => s.toggle)
   const { helpOpen, setHelpOpen } = useGlobalHotkeys()
-
   useExecutionHotkeys()
-
   useEffect(() => {
     startAlertEngine()
   }, [])
-
   useEffect(() => {
     if (detach) return
     void loadWorkspace()
@@ -321,9 +311,7 @@ function TerminalApp() {
         loadHistorical().then(() => startLive())
       })
   }, [detach])
-
   usePrimarySync(!detach)
-
   if (detach) {
     return (
       <DetachedApp
@@ -333,9 +321,8 @@ function TerminalApp() {
       />
     )
   }
-
   return (
-    <div className="h-full flex flex-col pb-7">
+    <div className={`h-full flex flex-col pb-7 ${mobile ? 'tt-mobile-shell' : ''}`}>
       <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel density-compact">
         <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
         <div className="flex items-center gap-3">
@@ -372,21 +359,18 @@ function TerminalApp() {
           <span className="text-xxs text-terminal-muted density-chrome">Desk workflow</span>
         </div>
       </header>
-
       <ErrorBanner />
       <Controls />
       <TickerBar />
       <div className="density-chrome" data-tour="execution-bar">
         <ExecutionBar />
       </div>
-
       <div
         className="flex-1 bg-terminal-bg overflow-hidden min-h-0 flex flex-col"
         data-tour="chart-area"
       >
         <ChartArea />
       </div>
-
       <FeedHealthHud />
       <HotkeyHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
       <OnboardingTour />
@@ -415,14 +399,46 @@ function UserMenu() {
   )
 }
 
+function GuestEntry() {
+  const setMode = useSessionModeStore((s) => s.setMode)
+  const [entered, setEntered] = useState(false)
+  useEffect(() => {
+    if (entered) setMode('guest-readonly')
+  }, [entered, setMode])
+  if (!entered) {
+    return (
+      <div className="min-h-screen bg-[#0b0e11] flex flex-col items-center justify-center gap-4 text-[#eaecef] px-4">
+        <h1 className="text-lg font-semibold tracking-wide">TRADING TERMINAL</h1>
+        <p className="text-[12px] text-[#848e9c] max-w-sm text-center">
+          Continue as guest for a read-only demo (charts & public data). Trading, bots, and live keys
+          stay disabled.
+        </p>
+        <button
+          type="button"
+          className="px-4 py-2 rounded bg-[#f0b90b] text-[#0b0e11] text-sm font-medium"
+          onClick={() => setEntered(true)}
+        >
+          Enter as guest
+        </button>
+        <div className="w-full max-w-sm">
+          <LoginScreen />
+        </div>
+      </div>
+    )
+  }
+  return <TerminalApp />
+}
+
 export default function App() {
   const status = useAuthStore((s) => s.status)
   const refreshMe = useAuthStore((s) => s.refreshMe)
-
+  const setMode = useSessionModeStore((s) => s.setMode)
   useEffect(() => {
     void refreshMe()
   }, [refreshMe])
-
+  useEffect(() => {
+    if (status === 'authenticated') setMode('full')
+  }, [status, setMode])
   if (status === 'unknown') {
     return (
       <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center text-[#848e9c] text-sm">
@@ -431,6 +447,13 @@ export default function App() {
     )
   }
   if (status !== 'authenticated') {
+    if (FEATURES.allowGuest) {
+      return (
+        <ErrorBoundary name="terminal-guest">
+          <GuestEntry />
+        </ErrorBoundary>
+      )
+    }
     return <LoginScreen />
   }
   return (
