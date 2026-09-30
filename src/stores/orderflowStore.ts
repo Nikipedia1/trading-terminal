@@ -9,6 +9,7 @@ import { DEFAULT_DEEP_TRADES_CONFIG } from '@/analysis/deepTrades'
 import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
 import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
 import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
+import { DEFAULT_GAMMA_CONFIG } from '@/analysis/gamma'
 
 export function defaultOrderflowState(): OrderflowState {
   return {
@@ -22,6 +23,8 @@ export function defaultOrderflowState(): OrderflowState {
     dom: false,
     domCfg: { ...DEFAULT_DEEP_DOM_CONFIG },
     footprint: false,
+    gamma: false,
+    gammaCfg: { ...DEFAULT_GAMMA_CONFIG },
     replay: false,
   }
 }
@@ -31,9 +34,7 @@ interface OrderflowStoreState {
   get: (panelId: string) => OrderflowState
   set: (panelId: string, next: OrderflowState) => void
   patch: (panelId: string, patch: Partial<OrderflowState>) => void
-  /** Replace entire map (workspace load) */
   hydrate: (map: Record<string, OrderflowState>) => void
-  /** Serializable snapshot */
   exportAll: () => Record<string, OrderflowState>
 }
 
