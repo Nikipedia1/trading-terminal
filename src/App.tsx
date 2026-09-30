@@ -16,6 +16,8 @@ import { EXCHANGE_LABELS } from '@/data/exchanges/registry'
 import { SymbolBadge } from '@/ui/SymbolBadge'
 import { formatSymbolOption } from '@/data/symbolMeta'
 import { LoginScreen, useAuthStore } from '@/auth'
+import { readDetachConfig } from '@/layout/detachPanel'
+import { usePaperWalletSync } from '@/trading/paper'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -231,12 +233,14 @@ function ChartArea() {
 
 function useDetachParams() {
   return useMemo(() => {
-    const q = new URLSearchParams(window.location.search)
-    if (q.get('detach') !== '1') return null
-    const symbol = normalizeSymbol(q.get('symbol') || 'BTCUSDT') || 'BTCUSDT'
-    const interval = (q.get('interval') || '1m') as Interval
-    const exchange = (q.get('exchange') || 'binance') as ExchangeId
-    return { symbol, interval, exchange }
+    const cfg = readDetachConfig()
+    if (!cfg) return null
+    const symbol = normalizeSymbol(cfg.symbol) || 'BTCUSDT'
+    return {
+      symbol,
+      interval: cfg.interval as Interval,
+      exchange: cfg.exchange as ExchangeId,
+    }
   }, [])
 }
 
@@ -291,6 +295,7 @@ function DetachedApp({
 }
 
 function TerminalApp() {
+  usePaperWalletSync()
   const detach = useDetachParams()
   const loadHistorical = useMarketStore((s) => s.loadHistorical)
   const startLive = useMarketStore((s) => s.startLive)
