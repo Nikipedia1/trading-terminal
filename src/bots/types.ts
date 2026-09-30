@@ -41,6 +41,9 @@ export interface BotBaseConfig {
 export interface GridParams {
   levels: number
   rangePct: number
+  orderNotionalUsdt: number
+  reCenterPct: number
+  maxInventory: number
 }
 
 export interface DcaParams {
@@ -99,8 +102,10 @@ export interface BotInstance {
     lastOrderAt?: number
     dcaCount?: number
     gridCenter?: number
-    /** Indices of grid levels already filled this cycle */
     gridFilledLevels?: number[]
+    gridOrderIds?: Record<string, string>
+    gridInventory?: number
+    gridRecenterAt?: number
     lastSide?: 'long' | 'short' | null
     dayKey?: string
     dayPnl?: number
@@ -109,7 +114,7 @@ export interface BotInstance {
 }
 
 export const BOT_KIND_META: Record<BotKind, { label: string; hint: string }> = {
-  grid: { label: 'Grid', hint: 'Buy low / sell high across discrete levels' },
+  grid: { label: 'Grid', hint: 'True grid: limit orders per level, inventory, re-center' },
   dca: { label: 'DCA', hint: 'Dollar-cost average buys on a timer' },
   rsi: { label: 'RSI Reversion', hint: 'Long oversold, short overbought' },
   ema_cross: { label: 'EMA Cross', hint: 'Trend follow on fast/slow EMA cross' },
@@ -120,7 +125,16 @@ export const BOT_KIND_META: Record<BotKind, { label: string; hint: string }> = {
 export function defaultParams(kind: BotKind): BotParams {
   switch (kind) {
     case 'grid':
-      return { kind: 'grid', grid: { levels: 5, rangePct: 4 } }
+      return {
+        kind: 'grid',
+        grid: {
+          levels: 5,
+          rangePct: 4,
+          orderNotionalUsdt: 50,
+          reCenterPct: 3,
+          maxInventory: 0,
+        },
+      }
     case 'dca':
       return { kind: 'dca', dca: { intervalMin: 15, maxOrders: 20 } }
     case 'rsi':
