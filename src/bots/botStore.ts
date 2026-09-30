@@ -1,5 +1,6 @@
+import { userStorage } from '@/lib/userScopedStorage'
 /**
- * Bot instances – localStorage, paper trading only.
+ * Bot instances – user-scoped storage, paper trading only.
  */
 
 import { create } from 'zustand'
@@ -14,7 +15,7 @@ function uid() {
 
 function load(): BotInstance[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = userStorage.getItem(STORAGE_KEY)
     if (!raw) return []
     const arr = JSON.parse(raw) as BotInstance[]
     if (!Array.isArray(arr)) return []
@@ -43,7 +44,7 @@ function persist(bots: BotInstance[]) {
         dayTrades: runtime?.dayTrades,
       },
     }))
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(slim))
+    userStorage.setItem(STORAGE_KEY, JSON.stringify(slim))
   } catch {
     /* */
   }
