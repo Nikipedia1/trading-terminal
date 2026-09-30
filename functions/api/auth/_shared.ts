@@ -1,6 +1,7 @@
 /**
  * Shared auth helpers for Cloudflare Pages Functions.
  * Passwords: PBKDF2-SHA256, never stored plaintext.
+ * Session: HttpOnly cookie preferred; Bearer only for non-browser clients.
  */
 
 export interface Env {
@@ -172,7 +173,6 @@ export async function getUserById(
   }
 }
 
-/** Persist user. Index is best-effort; listUsers uses KV list as source of truth. */
 export async function saveUser(kv: KVNamespace, user: UserRecord): Promise<void> {
   const body = JSON.stringify(user)
   await kv.put(userKeyEmail(user.email), body)
@@ -194,7 +194,6 @@ export async function saveUser(kv: KVNamespace, user: UserRecord): Promise<void>
   }
 }
 
-/** Race-safe: list auth:user:id:* keys */
 export async function listUsers(kv: KVNamespace): Promise<UserRecord[]> {
   const out: UserRecord[] = []
   let cursor: string | undefined
@@ -273,15 +272,17 @@ export async function destroySession(
   await kv.delete(sessionKey(token))
 }
 
+/** Prefer HttpOnly cookie; Bearer only as non-browser fallback. */
 export function extractToken(request: Request): string | null {
-  const auth = request.headers.get('Authorization')
-  if (auth?.startsWith('Bearer ')) {
-    const t = auth.slice(7).trim()
-    if (t) return t
-  }
   const cookie = request.headers.get('Cookie') || ''
   const m = cookie.match(/(?:^|;\s*)tt_session=([a-f0-9]+)/i)
-  return m?.[1] ?? null
+  if (m?.[1]) return m[1]
+  const auth = request.headers.get('Authorization')
+  if (auth?.startsWith('Bearer ')) {
+    const tok = auth.slice(7).trim()
+    if (tok) return tok
+  }
+  return null
 }
 
 export function sessionCookie(
