@@ -2,8 +2,8 @@
  * Deep Print – Bid/Ask footprint with imbalance + stacked imbalance.
  * Palette: buy #0ecb81 · sell #a855f7
  * Layout: SELL | PX | BUY | Δ
+ * Pin follows the candle you select (click / ← →); does not jump back to last closed.
  * Anti-pellicola: position from timeToCoordinate / priceToCoordinate.
- * Header shows live buy% AND sell% from real aggressor trades.
  */
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
@@ -41,6 +41,15 @@ function formatPct(r: number): string {
   return `${(r * 100).toFixed(0)}%`
 }
 
+function findCandleCovering(
+  candles: Candle[],
+  timeSec: number,
+  interval: Interval
+): Candle | undefined {
+  const sec = intervalToSeconds(interval)
+  return candles.find((c) => timeSec >= c.time && timeSec < c.time + sec)
+}
+
 export function DeepPrintOverlay({
   enabled,
   bridge,
@@ -59,6 +68,7 @@ export function DeepPrintOverlay({
 
   const modelRef = useRef<DeepPrintModel | null>(null)
   modelRef.current = model
+  const userPickedRef = useRef(false)
 
   useEffect(() => {
     if (!enabled) return
@@ -95,6 +105,33 @@ export function DeepPrintOverlay({
     const closed = candles[candles.length - 2]
     if (closed) pinCandle(closed.time)
   }, [candles, pinCandle])
+
+  const selectCandle = useCallback(
+    (candleTime: number) => {
+      userPickedRef.current = true
+      pinCandle(candleTime)
+    },
+    [pinCandle]
+  )
+
+  const shiftPin = useCallback(
+    (dir: -1 | 1) => {
+      if (!candles.length) return
+      const t = pinnedTime ?? modelRef.current?.candleTime
+      if (t == null) {
+        pinLastClosed()
+        return
+      }
+      const idx = candles.findIndex((c) => c.time === t)
+      if (idx < 0) {
+        pinLastClosed()
+        return
+      }
+      const next = candles[idx + dir]
+      if (next) selectCandle(next.time)
+    },
+    [candles, pinnedTime, pinLastClosed, selectCandle]
+  )
 
   const updatePosition = useCallback(() => {
     const m = modelRef.current
@@ -156,7 +193,8 @@ export function DeepPrintOverlay({
       const candle =
         candles.find((c) => c.time === t) || findCandleCovering(candles, t, interval)
       if (!candle) return
-      pinCandle(candle.time)
+      // Move pin to the clicked candle (works while already pinned)
+      selectCandle(candle.time)
     }
 
     const onMove = (param: any) => {
@@ -179,7 +217,7 @@ export function DeepPrintOverlay({
       chart.unsubscribeClick(onClick)
       chart.unsubscribeCrosshairMove(onMove)
     }
-  }, [enabled, bridge, candles, interval, pinned, rebuildModel, pinCandle])
+  }, [enabled, bridge, candles, interval, pinned, rebuildModel, selectCandle])
 
   useEffect(() => {
     if (!enabled) return
@@ -188,29 +226,42 @@ export function DeepPrintOverlay({
         return
       if (e.key === 'p' || e.key === 'P') {
         e.preventDefault()
+        userPickedRef.current = true
         pinLastClosed()
+      }
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        shiftPin(-1)
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        shiftPin(1)
       }
       if (e.key === 'Escape' && pinned) {
         setPinned(false)
         setPinnedTime(null)
         setModel(null)
+        userPickedRef.current = false
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [enabled, pinned, pinLastClosed])
+  }, [enabled, pinned, pinLastClosed, shiftPin])
 
+  // Auto-pin only when tool turns on or instrument changes — never fight user candle pick
   useEffect(() => {
     if (!enabled) {
       setModel(null)
       setPinned(false)
       setPinnedTime(null)
       setPos(null)
+      userPickedRef.current = false
       return
     }
-    // Auto-pin last closed candle so Print is visible without hover
+    userPickedRef.current = false
     pinLastClosed()
-  }, [enabled, symbol, exchange, interval, pinLastClosed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on enable / instrument change
+  }, [enabled, symbol, exchange, interval])
 
   const maxAbsDelta = useMemo(() => {
     if (!model?.levels.length) return 0.0001
@@ -234,7 +285,7 @@ export function DeepPrintOverlay({
     return (
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div className="px-2 py-1 rounded bg-[#0b0e11]/90 border border-[#f0b90b]/40 text-[11px] text-[#f0b90b]">
-          Deep Print on · hover/click a candle · P = last closed
+          Deep Print on · click a candle to pin · ← → move · P = last closed
         </div>
       </div>
     )
@@ -298,6 +349,7 @@ export function DeepPrintOverlay({
                 setModel(null)
                 setPinned(false)
                 setPinnedTime(null)
+                userPickedRef.current = false
               }}
             >
               ✕
@@ -305,13 +357,33 @@ export function DeepPrintOverlay({
           </div>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             <span className="text-[10px] text-[#848e9c]">
-              {pinned ? `📌 pinned` : 'hover'} · {model.tradeCount} trades · tick {model.tickSize}
+              {pinned ? '📌 pin' : 'hover'} · click candle to move · {model.tradeCount}{' '}
+              trades · tick {model.tickSize}
             </span>
             <button
               type="button"
               className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
+              title="Previous candle (←)"
+              onClick={() => shiftPin(-1)}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
+              title="Next candle (→)"
+              onClick={() => shiftPin(1)}
+            >
+              →
+            </button>
+            <button
+              type="button"
+              className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#eaecef] hover:bg-[#1e2329]"
               title="Pin last closed candle (P)"
-              onClick={pinLastClosed}
+              onClick={() => {
+                userPickedRef.current = true
+                pinLastClosed()
+              }}
             >
               Last closed
             </button>
@@ -322,6 +394,7 @@ export function DeepPrintOverlay({
                 onClick={() => {
                   setPinned(false)
                   setPinnedTime(null)
+                  userPickedRef.current = false
                 }}
               >
                 Unpin
@@ -493,13 +566,4 @@ export function DeepPrintOverlay({
       </div>
     </div>
   )
-}
-
-function findCandleCovering(
-  candles: Candle[],
-  timeSec: number,
-  interval: Interval
-): Candle | undefined {
-  const sec = intervalToSeconds(interval)
-  return candles.find((c) => timeSec >= c.time && timeSec < c.time + sec)
 }
