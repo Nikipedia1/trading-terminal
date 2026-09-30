@@ -1,8 +1,13 @@
-/** Paper store – trailing stop; real prices only; separate from live */
+/** Paper store – trailing stop; real prices only; multi-account via wallet activeId */
 import { create } from 'zustand'
 import type { PaperAccount, PaperFill, PaperMarginMode, PaperOrder, PaperOrderType, PaperPosition, PaperSide } from './types'
 
-const STORAGE_KEY = 'tt-paper:v2'
+const STORAGE_PREFIX = 'tt-paper:v3:'
+const LEGACY_KEYS = ['tt-paper:v2', 'tt-paper:v1']
+let activeWalletId = 'main'
+function storageKey(walletId?: string) {
+  return STORAGE_PREFIX + (walletId || activeWalletId)
+}
 const DEFAULT_BALANCE = 10_000
 const MAX_LEVERAGE = 125
 const MIN_LEVERAGE = 1
@@ -20,9 +25,16 @@ function normalizePosition(p: Partial<PaperPosition> & Pick<PaperPosition, 'id' 
     trailExtreme: typeof p.trailExtreme === 'number' && p.trailExtreme > 0 ? p.trailExtreme : null,
   }
 }
-function load(): Persisted {
+function load(walletId?: string): Persisted {
+  const wid = walletId || activeWalletId
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('tt-paper:v1')
+    let raw = localStorage.getItem(storageKey(wid))
+    if (!raw && wid === 'main') {
+      for (const k of LEGACY_KEYS) {
+        raw = localStorage.getItem(k)
+        if (raw) break
+      }
+    }
     if (!raw) throw new Error('empty')
     const parsed = JSON.parse(raw) as Persisted
     if (!parsed?.account || typeof parsed.account.balance !== 'number') throw new Error('bad')
@@ -38,7 +50,7 @@ function load(): Persisted {
 }
 function persist(state: Pick<PaperState, 'account' | 'positions' | 'orders' | 'fills'>) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ account: state.account, positions: state.positions, orders: state.orders, fills: state.fills.slice(0, 200) }))
+    localStorage.setItem(storageKey(), JSON.stringify({ account: state.account, positions: state.positions, orders: state.orders, fills: state.fills.slice(0, 200) }))
   } catch { /* quota */ }
 }
 export interface PlaceOrderInput {
@@ -48,6 +60,7 @@ export interface PlaceOrderInput {
   postOnly?: boolean; reduceOnly?: boolean
 }
 interface PaperState {
+  walletAccountId: string
   account: PaperAccount; positions: PaperPosition[]; orders: PaperOrder[]; fills: PaperFill[]; lastError: string | null
   placeOrder: (input: PlaceOrderInput) => { ok: true } | { ok: false; error: string }
   cancelOrder: (orderId: string) => void
@@ -60,6 +73,7 @@ interface PaperState {
   checkExits: (symbol: string, markPrice: number) => void
   resetAccount: (balance?: number) => void
   clearError: () => void
+  bindWalletAccount: (walletAccountId: string) => void
 }
 function clampLeverage(lev: number): number {
   if (!Number.isFinite(lev)) return MIN_LEVERAGE
@@ -87,7 +101,17 @@ export function estLiqPrice(pos: { side: PaperSide; entryPrice: number; leverage
 }
 const initial = load()
 export const usePaperStore = create<PaperState>((set, get) => ({
+  walletAccountId: activeWalletId,
   account: initial.account, positions: initial.positions, orders: initial.orders, fills: initial.fills, lastError: null,
+  bindWalletAccount: (walletAccountId) => {
+    const id = (walletAccountId || 'main').trim() || 'main'
+    if (id === activeWalletId && get().walletAccountId === id) return
+    const cur = get()
+    persist({ account: cur.account, positions: cur.positions, orders: cur.orders, fills: cur.fills })
+    activeWalletId = id
+    const next = load(id)
+    set({ walletAccountId: id, ...next, lastError: null })
+  },
   clearError: () => set({ lastError: null }),
   resetAccount: (balance = DEFAULT_BALANCE) => {
     const next = { account: { balance, initialBalance: balance }, positions: [] as PaperPosition[], orders: [] as PaperOrder[], fills: [] as PaperFill[], lastError: null }
