@@ -25,6 +25,11 @@ import { usePanelMarket } from '@/hooks/usePanelMarket'
 import type { WidgetKind } from '@/types'
 import { EmptyState } from '@/ui/EmptyState'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { LiquidityPanel } from '@/ui/liquidity/LiquidityPanel'
+import { BacktestPanel } from '@/bots/backtest/BacktestPanel'
+import { LiveKeysPanel } from '@/live/LiveKeysPanel'
+import { PluginIndicatorPanel } from '@/plugins/PluginIndicatorPanel'
+import { useMobileLayout } from '@/layout/useMobileLayout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -90,6 +95,14 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <BotsPanel />
     case 'admin':
       return <AdminPanel />
+    case 'liquidity':
+      return <LiquidityPanel />
+    case 'backtest':
+      return <BacktestPanel />
+    case 'livekeys':
+      return <LiveKeysPanel />
+    case 'plugins':
+      return <PluginIndicatorPanel />
     default:
       return null
   }
@@ -109,9 +122,14 @@ const ADDABLE: WidgetKind[] = [
   'futures',
   'alerts',
   'journal',
+  'liquidity',
+  'backtest',
+  'livekeys',
+  'plugins',
 ]
 
 export function PanelGrid({ width }: PanelGridProps) {
+  const mobile = useMobileLayout()
   const panels = useLayoutStore((s) => s.panels)
   const widgets = useLayoutStore((s) => s.widgets)
   const layout = useLayoutStore((s) => s.layout)
@@ -167,7 +185,9 @@ export function PanelGrid({ width }: PanelGridProps) {
   if (width <= 0) return null
 
   return (
-    <div className="relative h-full w-full overflow-auto bg-[#0b0e11]">
+    <div
+      className={`relative h-full w-full overflow-auto bg-[#0b0e11] ${mobile ? 'tt-mobile-desk' : ''}`}
+    >
       {panels.length === 0 && widgets.length === 0 ? (
         <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
           <div className="pointer-events-auto">
