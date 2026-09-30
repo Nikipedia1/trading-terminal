@@ -15,6 +15,7 @@ import {
   type UserRecord,
   checkRateLimit,
   clientIp,
+  readJsonBody,
 } from './_shared'
 
 export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
@@ -30,16 +31,13 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     return bad(`rate limit exceeded – retry in ${rl.retryAfterSec}s`, 429, request)
   }
 
-  let body: { email?: string; password?: string }
-  try {
-    body = await request.json()
-  } catch {
-    return bad('invalid json', 400, request)
-  }
+  const bodyRes = await readJsonBody<{ email?: string; password?: string }>(request)
+  if (!bodyRes.ok) return bodyRes.response
+  const body = bodyRes.data
 
-  const email = normalizeEmail(body.email || '')
+  const email = normalizeEmail(String(body.email || ''))
   if (!email) return bad('invalid email', 400, request)
-  const pwErr = validatePassword(body.password || '')
+  const pwErr = validatePassword(String(body.password || ''))
   if (pwErr) return bad(pwErr, 400, request)
 
   const existing = await getUserByEmail(env.WORKSPACE_KV, email)
@@ -48,7 +46,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const users = await listUsers(env.WORKSPACE_KV)
   const isFirst = users.length === 0
 
-  const { salt, passwordHash } = await hashPassword(body.password!)
+  const { salt, passwordHash } = await hashPassword(String(body.password))
   const now = Date.now()
   const user: UserRecord = {
     id: crypto.randomUUID(),
