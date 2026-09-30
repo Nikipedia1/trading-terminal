@@ -299,11 +299,26 @@ export function ChartContainer({
     mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
+  // Instrument identity – any change must wipe series + unlock price scale
+  const instrumentKey = `${exchange}|${symbol}|${interval}`
+  const instrumentKeyRef = useRef(instrumentKey)
+  instrumentKeyRef.current = instrumentKey
+
   useEffect(() => {
     lastHistoryKeyRef.current = ''
     seriesMgrRef.current?.clearCandles()
+    seriesMgrRef.current?.resetPriceScale()
     bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
-  }, [symbol, exchange, interval])
+    const chart = chartRef.current
+    if (chart) {
+      try {
+        chart.priceScale('right').applyOptions({ autoScale: true })
+        chart.timeScale().resetTimeScale()
+      } catch {
+        /* */
+      }
+    }
+  }, [instrumentKey, interval])
 
   useEffect(() => {
     if (!seriesMgrRef.current) return
@@ -313,11 +328,31 @@ export function ChartContainer({
       bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
       return
     }
-    const historyKey = `${symbol}|${exchange}|${interval}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
+
+    // historyKey embeds instrument so BTC bars cannot stick under SOL
+    const historyKey = `${instrumentKey}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       seriesMgrRef.current.setCandles(candles)
-      chartRef.current?.timeScale().fitContent()
+      seriesMgrRef.current.resetPriceScale()
+      const chart = chartRef.current
+      if (chart) {
+        try {
+          chart.priceScale('right').applyOptions({ autoScale: true })
+          chart.timeScale().fitContent()
+          requestAnimationFrame(() => {
+            if (instrumentKeyRef.current !== instrumentKey) return
+            try {
+              chart.priceScale('right').applyOptions({ autoScale: true })
+              chart.timeScale().fitContent()
+            } catch {
+              /* */
+            }
+          })
+        } catch {
+          /* */
+        }
+      }
     } else {
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
     }
@@ -325,7 +360,7 @@ export function ChartContainer({
       candles.map((c) => c.time),
       intervalToSeconds(interval)
     )
-  }, [candles, interval, symbol, exchange])
+  }, [candles, interval, instrumentKey])
 
   useEffect(() => {
     const ind = indicatorMgrRef.current
