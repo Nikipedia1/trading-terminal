@@ -1,3 +1,4 @@
+import { userStorage } from '@/lib/userScopedStorage'
 /**
  * Session journal – notes + PnL tags linked to chart time.
  * Optional screenshot as dataURL (local only).
@@ -8,12 +9,10 @@ import { create } from 'zustand'
 export interface JournalEntry {
   id: string
   ts: number
-  /** Chart time (unix sec) to jump to */
   chartTimeSec: number | null
   symbol: string
   note: string
   pnlTag: number | null
-  /** Optional small dataURL – can be large; keep short list */
   screenshot?: string
 }
 
@@ -22,7 +21,7 @@ const MAX = 200
 
 function load(): JournalEntry[] {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = userStorage.getItem(KEY)
     if (!raw) return []
     const a = JSON.parse(raw)
     return Array.isArray(a) ? a : []
@@ -33,12 +32,11 @@ function load(): JournalEntry[] {
 
 function save(entries: JournalEntry[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(entries.slice(0, MAX)))
+    userStorage.setItem(KEY, JSON.stringify(entries.slice(0, MAX)))
   } catch {
-    /* quota – drop screenshots */
     try {
       const slim = entries.map((e) => ({ ...e, screenshot: undefined })).slice(0, MAX)
-      localStorage.setItem(KEY, JSON.stringify(slim))
+      userStorage.setItem(KEY, JSON.stringify(slim))
     } catch {
       /* */
     }
