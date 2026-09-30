@@ -294,9 +294,23 @@ export function ChartContainer({
     mgr.applyStyle(chartStyle.candle)
   }, [chartStyle])
 
+  // Hard reset series when instrument changes (avoid leaving previous symbol candles)
   useEffect(() => {
-    if (!seriesMgrRef.current || candles.length === 0) return
-    const historyKey = `${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
+    lastHistoryKeyRef.current = ''
+    seriesMgrRef.current?.clearCandles()
+    bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
+  }, [symbol, exchange, interval])
+
+  useEffect(() => {
+    if (!seriesMgrRef.current) return
+    if (candles.length === 0) {
+      seriesMgrRef.current.clearCandles()
+      lastHistoryKeyRef.current = ''
+      bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
+      return
+    }
+    // Include symbol so BTC→ETH never reuses historyKey / updateCandle path
+    const historyKey = `${symbol}|${exchange}|${interval}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       seriesMgrRef.current.setCandles(candles)
@@ -308,7 +322,7 @@ export function ChartContainer({
       candles.map((c) => c.time),
       intervalToSeconds(interval)
     )
-  }, [candles, interval])
+  }, [candles, interval, symbol, exchange])
 
   useEffect(() => {
     const ind = indicatorMgrRef.current
@@ -379,7 +393,6 @@ export function ChartContainer({
         if (d && 'close' in d) price = d.close as number
         else if (d && 'value' in d) price = d.value as number
       }
-      // Orderflow highlight: nearest point under crosshair (time+price)
       const highlight =
         time != null && price != null
           ? { timeSec: time, price, aggressor: undefined as 'buy' | 'sell' | undefined }
@@ -411,7 +424,7 @@ export function ChartContainer({
             try {
               c.setCrosshairPosition(payload.price, payload.time as Time, series)
             } catch {
-              /* series may not have that time */
+              /* */
             }
             if (payload.highlight) setSyncHighlight(syncGroup, payload.highlight)
             else if (payload.time != null && payload.price != null) {
@@ -461,7 +474,6 @@ export function ChartContainer({
           }
         />
 
-        {/* L1 static profile */}
         <VolumeProfileOverlay
           enabled={profileEnabled}
           bridge={bridge}
@@ -471,7 +483,6 @@ export function ChartContainer({
           config={profileConfig}
         />
 
-        {/* L2 footprint */}
         <FootprintOverlay
           enabled={footprintEnabled}
           bridge={bridge}
@@ -492,7 +503,6 @@ export function ChartContainer({
           config={deepDomConfig}
         />
 
-        {/* L3 live bubbles */}
         <DeepTradesOverlay
           enabled={deepTradesEnabled}
           bridge={bridge}
@@ -515,7 +525,6 @@ export function ChartContainer({
           candles={candles}
         />
 
-        {/* L5 drawings – topmost interactive data layer */}
         <DrawingLayer
           panelId={panelId}
           symbol={symbol}
@@ -548,7 +557,7 @@ export function ChartContainer({
 
         {status === 'connecting' && candles.length === 0 && !lastError && (
           <div className="absolute inset-0 flex items-center justify-center text-terminal-muted text-sm z-10">
-            Connecting…
+            Loading {symbol}…
           </div>
         )}
       </div>
