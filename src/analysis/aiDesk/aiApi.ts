@@ -159,15 +159,20 @@ function buildSystemPrompt(
   return lines.join('\n')
 }
 
-export async function runAiChat(
+/**
+ * Primary API used by AiAnalysisPanel.
+ * callAiChat(message, settings, mode, ta, smc) → { text, source }
+ */
+export async function callAiChat(
   userMessage: string,
-  mode: AiMode,
   settings: AiApiSettings,
+  mode: AiMode,
   report: TaReport | null,
   smc: SmcReport | null
-): Promise<string> {
+): Promise<{ text: string; source: string }> {
   if (settings.provider === 'local') {
-    return answerMessage(userMessage, mode, report, smc)
+    const text = answerMessage(userMessage, mode, report, smc)
+    return { text, source: 'local' }
   }
   const meta = providerMeta(settings.provider)
   const base =
@@ -194,13 +199,25 @@ export async function runAiChat(
     }),
   })
   if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(`AI HTTP ${res.status}: ${t.slice(0, 200)}`)
+    const errText = await res.text().catch(() => '')
+    throw new Error(`AI HTTP ${res.status}: ${errText.slice(0, 200)}`)
   }
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[]
   }
   const text = data.choices?.[0]?.message?.content?.trim()
   if (!text) throw new Error('Empty AI response')
-  return text
+  return { text, source: meta.label }
+}
+
+/** Alias kept for scripts/tests that used the old name/order. */
+export async function runAiChat(
+  userMessage: string,
+  mode: AiMode,
+  settings: AiApiSettings,
+  report: TaReport | null,
+  smc: SmcReport | null
+): Promise<string> {
+  const r = await callAiChat(userMessage, settings, mode, report, smc)
+  return r.text
 }
