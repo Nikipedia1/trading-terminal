@@ -24,8 +24,7 @@ export interface RiskDecision {
 }
 
 function dayKey(ts = Date.now()) {
-  const d = new Date(ts)
-  return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`
+  return new Date(ts).toISOString().slice(0, 10)
 }
 
 export function ensureDayRuntime(bot: BotInstance): NonNullable<BotInstance['runtime']> {
@@ -52,10 +51,10 @@ export function sizeFromRisk(
   const lossPerUnit = price * (slPct / 100)
   if (lossPerUnit <= 0) return 0
   let qty = riskUsd / lossPerUnit
-  const maxByMargin = (equity * 0.95 * leverage) / price
-  qty = Math.min(qty, maxByMargin)
   if (maxQty != null && maxQty > 0) qty = Math.min(qty, maxQty)
-  return qty > 0 ? qty : 0
+  if (qty >= 1) qty = Math.round(qty * 1e4) / 1e4
+  else qty = Math.round(qty * 1e8) / 1e8
+  return qty
 }
 
 export function evaluateRisk(
@@ -66,21 +65,20 @@ export function evaluateRisk(
 ): RiskDecision {
   const cfg = bot.config
   const risk = cfg.risk
+  let leverage = cfg.leverage
+  let takeProfitPct = cfg.takeProfitPct
+  let stopLossPct = cfg.stopLossPct
+
   const runtime = ensureDayRuntime(bot)
 
-  let leverage = cfg.leverage
   if (risk.maxLeverage != null && risk.maxLeverage > 0) {
     leverage = Math.min(leverage, risk.maxLeverage)
   }
-  leverage = Math.max(1, Math.min(125, Math.round(leverage)))
-
-  let stopLossPct = cfg.stopLossPct
-  let takeProfitPct = cfg.takeProfitPct
 
   if (risk.requireStopLoss && (stopLossPct == null || stopLossPct <= 0)) {
     return {
       ok: false,
-      reason: 'Risk: stop-loss required',
+      reason: 'Risk: stop loss required',
       qty: 0,
       leverage,
       takeProfitPct,
@@ -88,8 +86,19 @@ export function evaluateRisk(
     }
   }
 
-  const dayPnl = runtime.dayPnl ?? ctx.dayPnl
+  if (risk.maxOpenPositions != null && ctx.openPositions >= risk.maxOpenPositions) {
+    return {
+      ok: false,
+      reason: `Risk: max open positions (${risk.maxOpenPositions})`,
+      qty: 0,
+      leverage,
+      takeProfitPct,
+      stopLossPct,
+    }
+  }
+
   if (risk.maxDailyLossPct != null && risk.maxDailyLossPct > 0) {
+    const dayPnl = runtime.dayPnl ?? ctx.dayPnl
     const limit = -Math.abs(ctx.equity * (risk.maxDailyLossPct / 100))
     if (dayPnl <= limit) {
       return {
@@ -100,17 +109,6 @@ export function evaluateRisk(
         takeProfitPct,
         stopLossPct,
       }
-    }
-  }
-
-  if (risk.maxOpenPositions != null && ctx.openPositions >= risk.maxOpenPositions) {
-    return {
-      ok: false,
-      reason: 'Risk: max open positions',
-      qty: 0,
-      leverage,
-      takeProfitPct,
-      stopLossPct,
     }
   }
 
