@@ -1,6 +1,7 @@
-/** Paper store – trailing stop; real prices only; multi-account via wallet activeId */
+/** Paper store – trailing stop; real prices only; multi-account via wallet activeId; user-scoped keys */
 import { create } from 'zustand'
 import type { PaperAccount, PaperFill, PaperMarginMode, PaperOrder, PaperOrderType, PaperPosition, PaperSide } from './types'
+import { userStorage } from '@/lib/userScopedStorage'
 
 const STORAGE_PREFIX = 'tt-paper:v3:'
 const LEGACY_KEYS = ['tt-paper:v2', 'tt-paper:v1']
@@ -28,10 +29,10 @@ function normalizePosition(p: Partial<PaperPosition> & Pick<PaperPosition, 'id' 
 function load(walletId?: string): Persisted {
   const wid = walletId || activeWalletId
   try {
-    let raw = localStorage.getItem(storageKey(wid))
+    let raw = userStorage.getItem(storageKey(wid))
     if (!raw && wid === 'main') {
       for (const k of LEGACY_KEYS) {
-        raw = localStorage.getItem(k)
+        raw = userStorage.getItem(k)
         if (raw) break
       }
     }
@@ -50,7 +51,7 @@ function load(walletId?: string): Persisted {
 }
 function persist(state: Pick<PaperState, 'account' | 'positions' | 'orders' | 'fills'>) {
   try {
-    localStorage.setItem(storageKey(), JSON.stringify({ account: state.account, positions: state.positions, orders: state.orders, fills: state.fills.slice(0, 200) }))
+    userStorage.setItem(storageKey(), JSON.stringify({ account: state.account, positions: state.positions, orders: state.orders, fills: state.fills.slice(0, 200) }))
   } catch { /* quota */ }
 }
 export interface PlaceOrderInput {
