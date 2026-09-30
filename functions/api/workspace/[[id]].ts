@@ -1,6 +1,6 @@
 /**
  * Cloudflare Pages Function – workspace CRUD on KV.
- * Auth required for PUT/DELETE; GET requires owner match when meta exists.
+ * Auth required for GET / PUT / DELETE – workspace id is not a capability token.
  * Maintains user:ws:{userId} index for listing.
  */
 
@@ -8,9 +8,6 @@ import {
   type Env,
   requireUser,
   cors,
-  extractToken,
-  getSession,
-  getUserById,
 } from '../auth/_shared'
 
 const MAX_BYTES = 900_000
@@ -96,19 +93,6 @@ async function writeMeta(
   await kv.put(META_PREFIX + id, JSON.stringify(meta))
 }
 
-async function optionalUserId(
-  env: Env,
-  request: Request
-): Promise<{ userId: string; role: string } | null> {
-  if (!env.WORKSPACE_KV) return null
-  const token = extractToken(request)
-  const sess = await getSession(env.WORKSPACE_KV, token)
-  if (!sess || !token) return null
-  const user = await getUserById(env.WORKSPACE_KV, sess.userId)
-  if (!user || user.disabled) return null
-  return { userId: user.id, role: user.role }
-}
-
 export const onRequestOptions: PagesFunction<Env> = async (context) => {
   return new Response(null, {
     status: 204,
@@ -123,13 +107,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     return bad('WORKSPACE_KV not bound', 503, context.request)
   }
 
+  const auth = await requireUser(context.env, context.request)
+  if (auth instanceof Response) return auth
+
   const meta = await readMeta(context.env.WORKSPACE_KV, id)
-  if (meta) {
-    const auth = await optionalUserId(context.env, context.request)
-    if (!auth) return bad('unauthorized', 401, context.request)
-    if (auth.userId !== meta.ownerId && auth.role !== 'admin') {
-      return bad('forbidden', 403, context.request)
-    }
+  if (meta && meta.ownerId !== auth.user.id && auth.user.role !== 'admin') {
+    return bad('forbidden', 403, context.request)
   }
 
   const raw = await context.env.WORKSPACE_KV.get(KEY_PREFIX + id)
