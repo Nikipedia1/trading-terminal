@@ -1,6 +1,6 @@
 /**
  * Candlestick + volume + delta/CVD series management.
- * Last price line/label reactive (TradingView-like).
+ * Reactive price scale for every instrument (adaptive precision + autoScale).
  */
 
 import type {
@@ -30,6 +30,26 @@ function hexToRgba(hex: string, alpha: number): string {
   const g = (n >> 8) & 255
   const b = n & 255
   return `rgba(${r},${g},${b},${alpha})`
+}
+
+/** Adaptive price scale format for any instrument (BTC, SOL, SHIB, …). */
+export function inferPriceFormat(refPrice: number): {
+  type: 'price'
+  precision: number
+  minMove: number
+} {
+  const p = Math.abs(refPrice)
+  if (!Number.isFinite(p) || p === 0) {
+    return { type: 'price', precision: 2, minMove: 0.01 }
+  }
+  if (p >= 1000) return { type: 'price', precision: 2, minMove: 0.01 }
+  if (p >= 100) return { type: 'price', precision: 2, minMove: 0.01 }
+  if (p >= 10) return { type: 'price', precision: 3, minMove: 0.001 }
+  if (p >= 1) return { type: 'price', precision: 4, minMove: 0.0001 }
+  if (p >= 0.1) return { type: 'price', precision: 5, minMove: 0.00001 }
+  if (p >= 0.01) return { type: 'price', precision: 6, minMove: 0.000001 }
+  if (p >= 0.0001) return { type: 'price', precision: 8, minMove: 0.00000001 }
+  return { type: 'price', precision: 10, minMove: 0.0000000001 }
 }
 
 export class SeriesManager {
@@ -92,6 +112,7 @@ export class SeriesManager {
     })
     chart.priceScale('right').applyOptions({
       scaleMargins: { top: 0.05, bottom: 0.32 },
+      autoScale: true,
     })
   }
 
@@ -128,12 +149,26 @@ export class SeriesManager {
     this.clearDelta()
     this.clearCvd()
     this.clearCandleMarkers()
-    this.chart?.priceScale('right').applyOptions({ autoScale: true })
+    this.resetPriceScale()
   }
 
-  /** Hard reset price scale to fit current series (symbol change). */
+  /**
+   * Full unlock of the right price scale (all instruments).
+   * Clears free-pan autoscaleInfoProvider lock + forces autoScale.
+   */
   resetPriceScale() {
-    this.chart?.priceScale('right').applyOptions({ autoScale: true })
+    this.candleSeries?.applyOptions({
+      autoscaleInfoProvider: undefined,
+    })
+    this.chart?.priceScale('right').applyOptions({
+      autoScale: true,
+    })
+  }
+
+  /** Apply adaptive priceFormat from a reference price (last close). */
+  applyPriceFormatFor(refPrice: number) {
+    const fmt = inferPriceFormat(refPrice)
+    this.candleSeries?.applyOptions({ priceFormat: fmt })
   }
 
   setCandles(candles: Candle[]) {
@@ -162,11 +197,13 @@ export class SeriesManager {
     if (candles.length > 0) {
       const last = candles[candles.length - 1]
       const bull = last.close >= last.open
+      this.applyPriceFormatFor(last.close)
       this.candleSeries.applyOptions({
         priceLineColor: bull ? this.candleStyle.upBody : this.candleStyle.downBody,
+        autoscaleInfoProvider: undefined,
       })
     }
-    this.chart?.priceScale('right').applyOptions({ autoScale: true })
+    this.resetPriceScale()
   }
 
   updateCandle(candle: Candle) {
