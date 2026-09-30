@@ -206,8 +206,11 @@ export function DeepPrintOverlay({
       setPinned(false)
       setPinnedTime(null)
       setPos(null)
+      return
     }
-  }, [enabled, symbol, exchange, interval])
+    // Auto-pin last closed candle so Print is visible without hover
+    pinLastClosed()
+  }, [enabled, symbol, exchange, interval, pinLastClosed])
 
   const maxAbsDelta = useMemo(() => {
     if (!model?.levels.length) return 0.0001
@@ -226,9 +229,15 @@ export function DeepPrintOverlay({
     [visibleLevels]
   )
 
-  if (!enabled || !model || !pos) {
-    if (enabled && !model) return null
-    return null
+  if (!enabled) return null
+  if (!model || !pos) {
+    return (
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+        <div className="px-2 py-1 rounded bg-[#0b0e11]/90 border border-[#f0b90b]/40 text-[11px] text-[#f0b90b]">
+          Deep Print on · hover/click a candle · P = last closed
+        </div>
+      </div>
+    )
   }
 
   const parent = containerRef.current
@@ -272,7 +281,6 @@ export function DeepPrintOverlay({
             >
               Δ {formatQty(model.totalDelta)}
             </span>
-            {/* Live buy% + sell% from real aggressor volume */}
             <div className="flex items-center gap-1.5 text-[12px] font-semibold tabular-nums">
               <span className="text-[#0ecb81]" title="Buy aggressor volume share">
                 buy {formatPct(buyPct)}
@@ -364,7 +372,6 @@ export function DeepPrintOverlay({
           )}
         </div>
 
-        {/* 4 columns: SELL | PX | BUY | Δ */}
         <div className="grid grid-cols-[1fr_64px_1fr_48px] gap-0 px-2 py-1.5 text-[11px] font-bold border-b border-[#2b3139]/80">
           <span className="text-left text-[#a855f7]">SELL</span>
           <span className="text-center text-[#848e9c]">PX</span>
