@@ -80,11 +80,11 @@ export class SeriesManager {
   }
 
   detach() {
+    this.chart = null
     this.candleSeries = null
     this.volumeSeries = null
     this.deltaSeries = null
     this.cvdSeries = null
-    this.chart = null
     this.lastCandles = []
   }
 
@@ -94,16 +94,24 @@ export class SeriesManager {
 
   applyStyle(style: CandleStyle) {
     this.candleStyle = { ...style }
-    if (!this.candleSeries) return
-    this.candleSeries.applyOptions({
-      upColor: style.upBody,
-      downColor: style.downBody,
-      borderUpColor: style.upBorder,
-      borderDownColor: style.downBorder,
-      wickUpColor: style.upWick,
-      wickDownColor: style.downWick,
+    this.candleSeries?.applyOptions({
+      upColor: this.candleStyle.upBody,
+      downColor: this.candleStyle.downBody,
+      borderUpColor: this.candleStyle.upBorder,
+      borderDownColor: this.candleStyle.downBorder,
+      wickUpColor: this.candleStyle.upWick,
+      wickDownColor: this.candleStyle.downWick,
     })
     if (this.lastCandles.length > 0) this.setCandles(this.lastCandles)
+  }
+
+  clearCandles() {
+    this.lastCandles = []
+    this.candleSeries?.setData([])
+    this.volumeSeries?.setData([])
+    this.clearDelta()
+    this.clearCvd()
+    this.clearCandleMarkers()
   }
 
   setCandles(candles: Candle[]) {
@@ -154,7 +162,6 @@ export class SeriesManager {
 
     const upVol = hexToRgba(this.candleStyle.upBody, 0.4)
     const downVol = hexToRgba(this.candleStyle.downBody, 0.4)
-
     this.volumeSeries.update({
       time: candle.time as Time,
       value: candle.volume,
@@ -176,103 +183,48 @@ export class SeriesManager {
     this.deltaSeries?.setData([])
   }
 
-  setCvdLine(points: { time: number; value: number }[]) {
+  setCvd(points: { time: number; value: number }[]) {
     if (!this.cvdSeries) return
     const data: LineData[] = points.map((p) => ({
       time: p.time as Time,
       value: p.value,
     }))
     this.cvdSeries.setData(data)
+    this.chart?.priceScale('cvd').applyOptions({ visible: points.length > 0 })
   }
 
   clearCvd() {
     this.cvdSeries?.setData([])
+    this.chart?.priceScale('cvd').applyOptions({ visible: false })
   }
 
-  /**
-   * Merge absorption + divergence into a single setMarkers call
-   * (Lightweight Charts allows one marker list per series).
-   */
-  setCandleAnnotationMarkers(
-    absorption: AbsorptionMarker[],
-    divergences: DivergenceMarker[]
-  ) {
+  setCandleMarkers(markers: SeriesMarker<Time>[]) {
+    this.candleSeries?.setMarkers(markers)
+  }
+
+  setDivergenceMarkers(markers: DivergenceMarker[]) {
     if (!this.candleSeries) return
-    const markers: SeriesMarker<Time>[] = []
-
-    for (const m of absorption) {
-      switch (m.kind) {
-        case 'aggression_buy':
-          markers.push({
-            time: m.time as Time,
-            position: 'belowBar',
-            color: '#0ecb81',
-            shape: 'arrowUp',
-            text: 'Agg',
-          })
-          break
-        case 'aggression_sell':
-          markers.push({
-            time: m.time as Time,
-            position: 'aboveBar',
-            color: '#a855f7',
-            shape: 'arrowDown',
-            text: 'Agg',
-          })
-          break
-        case 'absorption_buy':
-          markers.push({
-            time: m.time as Time,
-            position: 'belowBar',
-            color: '#f0b90b',
-            shape: 'circle',
-            text: 'Abs',
-          })
-          break
-        case 'absorption_sell':
-          markers.push({
-            time: m.time as Time,
-            position: 'aboveBar',
-            color: '#f0b90b',
-            shape: 'circle',
-            text: 'Abs',
-          })
-          break
-      }
-    }
-
-    for (const m of divergences) {
-      if (m.kind === 'bearish') {
-        markers.push({
-          time: m.time as Time,
-          position: 'aboveBar',
-          color: '#f6465d',
-          shape: 'arrowDown',
-          text: 'Δ div',
-        })
-      } else {
-        markers.push({
-          time: m.time as Time,
-          position: 'belowBar',
-          color: '#0ecb81',
-          shape: 'arrowUp',
-          text: 'Δ div',
-        })
-      }
-    }
-
-    // One marker per time (prefer absorption over div if collision)
-    const byTime = new Map<number, SeriesMarker<Time>>()
-    for (const mk of markers) {
-      const t = mk.time as number
-      if (!byTime.has(t)) byTime.set(t, mk)
-    }
-    this.candleSeries.setMarkers(Array.from(byTime.values()))
+    const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
+      time: m.time as Time,
+      position: m.kind === 'bearish' ? 'aboveBar' : 'belowBar',
+      color: m.kind === 'bearish' ? DELTA_DOWN : DELTA_UP,
+      shape: m.kind === 'bearish' ? 'arrowDown' : 'arrowUp',
+      text: m.kind === 'bearish' ? 'Δ↓' : 'Δ↑',
+    }))
+    this.candleSeries.setMarkers(seriesMarkers)
   }
 
-  /** @deprecated use setCandleAnnotationMarkers */
-  setDivergenceMarkers(marks: DivergenceMarker[]) {
-    this.setCandleAnnotationMarkers([], marks)
+  setAbsorptionMarkers(markers: AbsorptionMarker[]) {
+    if (!this.candleSeries) return
+    const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
+      time: m.time as Time,
+      position: 'inBar',
+      color: 'rgba(240, 185, 11, 0.9)',
+      shape: 'circle',
+      text: 'ABS',
+    }))
+    // Merge with existing is not tracked; caller should combine if needed
+    this.candleSeries.setMarkers(seriesMarkers)
   }
 
   clearCandleMarkers() {
