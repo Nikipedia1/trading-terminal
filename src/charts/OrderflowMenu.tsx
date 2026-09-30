@@ -1,6 +1,6 @@
 /**
  * Orderflow – un unico menu a tendina con tutti gli strumenti:
- * Print · Delta (CVD/div/abs) · Profile · Trades · Dom · Footprint · Replay
+ * Print · Delta · Profile · Trades · Dom · Footprint · Gamma · Replay
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -19,6 +19,7 @@ import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
 import { FOOTPRINT_NOTE } from '@/analysis/footprint'
+import { DEFAULT_GAMMA_CONFIG, type GammaConfig } from '@/analysis/gamma'
 import type { ExchangeId } from '@/types'
 
 const DEVELOPING_WINDOWS: ProfileWindow[] = [
@@ -48,6 +49,8 @@ export interface OrderflowState {
   dom: boolean
   domCfg: DeepDomConfig
   footprint: boolean
+  gamma: boolean
+  gammaCfg: GammaConfig
   replay: boolean
 }
 
@@ -58,13 +61,7 @@ interface OrderflowMenuProps {
   onPrintToggle?: () => void
 }
 
-function Toggle({
-  on,
-  onChange,
-}: {
-  on: boolean
-  onChange: () => void
-}) {
+function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   return (
     <button
       type="button"
@@ -139,6 +136,7 @@ export function OrderflowMenu({
     state.trades && 'Trades',
     state.dom && 'Dom',
     state.footprint && 'FP',
+    state.gamma && 'Gamma',
     state.replay && 'Replay',
   ].filter(Boolean) as string[]
 
@@ -176,15 +174,10 @@ export function OrderflowMenu({
           <Row label="Deep Print" on={state.print} onToggle={togglePrint}>
             <p className="text-[9px] text-[#5e6673] leading-snug">
               SELL|PX|BUY|Δ|VP · buy%/sell% · imbalance + stacked · VP candela
-              (POC/VA) nelle impostazioni del pannello Print
             </p>
           </Row>
 
-          <Row
-            label="Delta"
-            on={state.delta}
-            onToggle={() => onChange({ delta: !state.delta })}
-          >
+          <Row label="Delta" on={state.delta} onToggle={() => onChange({ delta: !state.delta })}>
             <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
               <input
                 type="checkbox"
@@ -196,32 +189,6 @@ export function OrderflowMenu({
               />
               CVD line
             </label>
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#f0b90b]"
-                checked={state.deltaCfg.divergence}
-                onChange={(e) =>
-                  onChange({
-                    deltaCfg: { ...state.deltaCfg, divergence: e.target.checked },
-                  })
-                }
-              />
-              Δ divergence
-            </label>
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#f0b90b]"
-                checked={state.deltaCfg.absorption !== false}
-                onChange={(e) =>
-                  onChange({
-                    deltaCfg: { ...state.deltaCfg, absorption: e.target.checked },
-                  })
-                }
-              />
-              Abs / Agg tags
-            </label>
           </Row>
 
           <Row
@@ -229,48 +196,6 @@ export function OrderflowMenu({
             on={state.profile}
             onToggle={() => onChange({ profile: !state.profile })}
           >
-            <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-              <span className="w-14 shrink-0">Dev</span>
-              <select
-                className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                value={state.profileCfg.developing}
-                onChange={(e) =>
-                  onChange({
-                    profileCfg: {
-                      ...state.profileCfg,
-                      developing: e.target.value as ProfileWindow,
-                    },
-                  })
-                }
-              >
-                {DEVELOPING_WINDOWS.map((w) => (
-                  <option key={w} value={w}>
-                    {PROFILE_WINDOW_LABELS[w]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] text-[#848e9c]">
-              <span className="w-14 shrink-0">Fixed</span>
-              <select
-                className="flex-1 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                value={state.profileCfg.fixed}
-                onChange={(e) =>
-                  onChange({
-                    profileCfg: {
-                      ...state.profileCfg,
-                      fixed: e.target.value as FixedProfileKind,
-                    },
-                  })
-                }
-              >
-                {FIXED_OPTIONS.map((f) => (
-                  <option key={f} value={f}>
-                    {FIXED_PROFILE_LABELS[f]}
-                  </option>
-                ))}
-              </select>
-            </div>
             <p className="text-[9px] text-[#5e6673] leading-snug">
               POC/VAH/VAL/LVN · {SESSION_NOTE}
             </p>
@@ -281,87 +206,7 @@ export function OrderflowMenu({
             on={state.trades}
             onToggle={() => onChange({ trades: !state.trades })}
           >
-            <div className="flex items-center gap-1.5 text-[11px] text-[#848e9c]">
-              <select
-                className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                value={state.tradesCfg.mode}
-                onChange={(e) =>
-                  onChange({
-                    tradesCfg: {
-                      ...state.tradesCfg,
-                      mode: e.target.value as ThresholdMode,
-                    },
-                  })
-                }
-              >
-                <option value="percentile">pctl</option>
-                <option value="fixed">min</option>
-              </select>
-              {state.tradesCfg.mode === 'percentile' ? (
-                <input
-                  type="number"
-                  min={20}
-                  max={99}
-                  className="w-12 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.tradesCfg.percentile}
-                  onChange={(e) =>
-                    onChange({
-                      tradesCfg: {
-                        ...state.tradesCfg,
-                        percentile: Number(e.target.value) || 70,
-                      },
-                    })
-                  }
-                />
-              ) : (
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  className="w-16 bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                  value={state.tradesCfg.fixedMin}
-                  onChange={(e) =>
-                    onChange({
-                      tradesCfg: {
-                        ...state.tradesCfg,
-                        fixedMin: Number(e.target.value) || 0,
-                      },
-                    })
-                  }
-                />
-              )}
-              <select
-                className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px]"
-                value={state.tradesCfg.sizeUnit}
-                onChange={(e) =>
-                  onChange({
-                    tradesCfg: {
-                      ...state.tradesCfg,
-                      sizeUnit: e.target.value as SizeUnit,
-                    },
-                  })
-                }
-              >
-                <option value="quote">USDT</option>
-                <option value="base">base</option>
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
-              <input
-                type="checkbox"
-                className="accent-[#0ecb81]"
-                checked={state.tradesCfg.onlyEffective}
-                onChange={(e) =>
-                  onChange({
-                    tradesCfg: {
-                      ...state.tradesCfg,
-                      onlyEffective: e.target.checked,
-                    },
-                  })
-                }
-              />
-              Solo Effective
-            </label>
+            <p className="text-[9px] text-[#5e6673]">Large prints · effective/trapped</p>
           </Row>
 
           <Row
@@ -370,7 +215,6 @@ export function OrderflowMenu({
             onToggle={() => onChange({ dom: !state.dom })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Ladder: agg 1/5/10 tick · min size · flash pull/refill.{' '}
               {L2_GRANULARITY_NOTES[exchange]}
             </p>
           </Row>
@@ -380,9 +224,70 @@ export function OrderflowMenu({
             on={state.footprint}
             onToggle={() => onChange({ footprint: !state.footprint })}
           >
+            <p className="text-[9px] text-[#5e6673] leading-snug">{FOOTPRINT_NOTE}</p>
+          </Row>
+
+          <Row
+            label="Gamma levels"
+            on={!!state.gamma}
+            onToggle={() => onChange({ gamma: !state.gamma })}
+          >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Cells + POC + UA↑/UA↓ · {FOOTPRINT_NOTE}
+              Call/Put walls · flip · max pain da Deribit OI (BTC/ETH). Live,
+              linee sincronizzate al prezzo del grafico.
             </p>
+            {state.gamma && (
+              <div className="flex flex-col gap-1 mt-1">
+                <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[#0ecb81]"
+                    checked={state.gammaCfg?.walls !== false}
+                    onChange={(e) =>
+                      onChange({
+                        gammaCfg: {
+                          ...(state.gammaCfg ?? DEFAULT_GAMMA_CONFIG),
+                          walls: e.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  Call / Put walls
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[#f0b90b]"
+                    checked={state.gammaCfg?.flip !== false}
+                    onChange={(e) =>
+                      onChange({
+                        gammaCfg: {
+                          ...(state.gammaCfg ?? DEFAULT_GAMMA_CONFIG),
+                          flip: e.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  Flip level
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[#60a5fa]"
+                    checked={state.gammaCfg?.maxPain !== false}
+                    onChange={(e) =>
+                      onChange({
+                        gammaCfg: {
+                          ...(state.gammaCfg ?? DEFAULT_GAMMA_CONFIG),
+                          maxPain: e.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  Max pain
+                </label>
+              </div>
+            )}
           </Row>
 
           <Row
@@ -391,7 +296,7 @@ export function OrderflowMenu({
             onToggle={() => onChange({ replay: !state.replay })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Seek tick archiviati · centra chart primary · no fill sintetici
+              Seek tick archiviati · no fill sintetici
             </p>
           </Row>
 
