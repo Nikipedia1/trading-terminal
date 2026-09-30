@@ -111,11 +111,17 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   if (auth instanceof Response) return auth
 
   const meta = await readMeta(context.env.WORKSPACE_KV, id)
-  if (meta && meta.ownerId !== auth.user.id && auth.user.role !== 'admin') {
+  const raw = await context.env.WORKSPACE_KV.get(KEY_PREFIX + id)
+
+  // Orphan document without meta is not readable (closes legacy leak)
+  if (raw && !meta) {
+    if (auth.user.role !== 'admin') {
+      return bad('forbidden', 403, context.request)
+    }
+  } else if (meta && meta.ownerId !== auth.user.id && auth.user.role !== 'admin') {
     return bad('forbidden', 403, context.request)
   }
 
-  const raw = await context.env.WORKSPACE_KV.get(KEY_PREFIX + id)
   if (!raw) return bad('workspace not found', 404, context.request)
 
   return new Response(raw, {
