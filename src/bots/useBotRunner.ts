@@ -1,21 +1,17 @@
 /**
- * Tick enabled bots → risk gate + sentiment → paper orders.
- *
- * P0 fixes:
- *  - Stable effect deps (enabled ids + last candle time + price), not full bots[]
- *  - Read bots via getState() to avoid re-entry from updateBot
- *  - One signal per bot per candle close (idempotency key)
- *  - dayPnl from paper fills (UTC day) before risk gate
+ * Multi-pair bot runner: primary chart via marketStore, other symbols via REST feed.
+ * Stable deps, dayPnl from fills, grid level tracking.
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePaperStore, positionUnrealizedPnl } from '@/trading/paper'
 import { useBotStore } from './botStore'
-import { evaluateBot } from './engine'
+import { evaluateBot, type CandleLike } from './engine'
 import { evaluateRisk, ensureDayRuntime } from './risk'
 import { computeSentiment, fetchFearGreed, type SentimentSnapshot } from './sentiment'
 import { ensureRisk } from './types'
+import { fetchSymbolFeed } from './symbolFeed'
 
 function utcDayKey(ts = Date.now()): string {
   return new Date(ts).toISOString().slice(0, 10)
@@ -25,7 +21,6 @@ function dayStartMs(key: string): number {
   return Date.parse(`${key}T00:00:00.000Z`)
 }
 
-/** Sum realized PnL from paper fills for current UTC day (optional symbol filter). */
 export function realizedDayPnlFromFills(
   fills: { time: number; realizedPnl: number; symbol: string }[],
   symbol?: string
@@ -71,6 +66,7 @@ export function useBotRunner() {
   const candles = useMarketStore((s) => s.candles)
   const ticker = useMarketStore((s) => s.ticker)
   const symbol = useMarketStore((s) => s.symbol)
+  const interval = useMarketStore((s) => s.interval)
   const fills = usePaperStore((s) => s.fills)
   const positions = usePaperStore((s) => s.positions)
   const account = usePaperStore((s) => s.account)
@@ -82,19 +78,51 @@ export function useBotRunner() {
   const enabledKey = useBotStore((s) =>
     s.bots
       .filter((b) => b.enabled)
-      .map((b) => b.id)
+      .map((b) => `${b.id}:${b.config.symbol}`)
       .sort()
       .join(',')
   )
 
   const lastCandleTime = candles.length ? candles[candles.length - 1].time : 0
   const lastPrice = ticker?.lastPrice ?? 0
-
   const sentiment = useMarketSentiment()
   const busy = useRef(false)
   const signalDone = useRef<Map<string, string>>(new Map())
   const lastEvalCandle = useRef<number>(0)
   const lastUiUpdate = useRef<Map<string, string>>(new Map())
+  const secondary = useRef<Map<string, { candles: CandleLike[]; price: number }>>(new Map())
+  const [, bump] = useState(0)
+
+  useEffect(() => {
+    if (!enabledKey) return
+    let alive = true
+    const bots = useBotStore.getState().bots.filter((b) => b.enabled)
+    const primary = symbol.toUpperCase()
+    const others = [
+      ...new Set(
+        bots
+          .map((b) => b.config.symbol.toUpperCase())
+          .filter((s) => s && s !== primary)
+      ),
+    ]
+
+    const load = async () => {
+      for (const sym of others) {
+        const feed = await fetchSymbolFeed(sym, interval || '1m')
+        if (!alive || !feed) continue
+        secondary.current.set(sym, feed)
+        markToMarket(sym, feed.price)
+        checkExits(sym, feed.price)
+      }
+      if (alive && others.length) bump((n) => n + 1)
+    }
+    void load()
+    const t = window.setInterval(load, 15_000)
+    return () => {
+      alive = false
+      window.clearInterval(t)
+    }
+  }, [enabledKey, symbol, interval, markToMarket, checkExits])
 
   useEffect(() => {
     if (!enabledKey) return
@@ -107,12 +135,16 @@ export function useBotRunner() {
 
   useEffect(() => {
     if (!enabledKey) return
-    const px = lastPrice
-    if (!px || !Number.isFinite(px) || px <= 0) return
-    if (!lastCandleTime) return
     if (busy.current) return
-    if (lastCandleTime === lastEvalCandle.current) return
-    lastEvalCandle.current = lastCandleTime
+
+    const primaryPx = lastPrice
+    const primarySym = symbol.toUpperCase()
+    const hasAnyPrice =
+      (primaryPx > 0 && Number.isFinite(primaryPx)) || secondary.current.size > 0
+    if (!hasAnyPrice) return
+
+    const evalKey = lastCandleTime || Date.now()
+    if (lastCandleTime) lastEvalCandle.current = lastCandleTime
 
     busy.current = true
     try {
@@ -129,7 +161,22 @@ export function useBotRunner() {
 
       for (const bot of bots) {
         const sym = bot.config.symbol.toUpperCase()
-        if (sym !== symbol.toUpperCase()) continue
+        let botCandles: CandleLike[] = candles as CandleLike[]
+        let px = primaryPx
+
+        if (sym !== primarySym) {
+          const feed = secondary.current.get(sym)
+          if (!feed || !feed.price) {
+            useBotStore.getState().updateBot(bot.id, {
+              lastSignal: `waiting feed ${sym}`,
+            })
+            continue
+          }
+          botCandles = feed.candles
+          px = feed.price
+        } else if (!px || px <= 0) {
+          continue
+        }
 
         const cooldownMs = (bot.config.cooldownSec || 60) * 1000
         const lastOrd = bot.runtime?.lastOrderAt ?? 0
@@ -138,7 +185,13 @@ export function useBotRunner() {
         let runtime = ensureDayRuntime(bot)
         runtime = { ...runtime, dayPnl }
 
-        const signal = evaluateBot(bot, candles, px)
+        if (bot.kind === 'grid' && runtime.gridCenter == null) {
+          runtime = { ...runtime, gridCenter: px, gridFilledLevels: [] }
+        }
+
+        const candleT =
+          botCandles.length > 0 ? botCandles[botCandles.length - 1].time : evalKey
+        const signal = evaluateBot(bot, botCandles, px)
         const sentLabel = sentiment
           ? ` · sent ${sentiment.label} (${sentiment.score.toFixed(2)})`
           : ''
@@ -160,7 +213,11 @@ export function useBotRunner() {
         if (!signal || signal.side === 'flat') continue
         if (Date.now() - lastOrd < cooldownMs && bot.kind !== 'dca') continue
 
-        const sigKey = `${signal.side}@${lastCandleTime}`
+        const level = signal.meta?.gridLevel
+        const sigKey =
+          level != null
+            ? `grid-${level}@${Math.floor(px)}`
+            : `${signal.side}@${candleT}`
         if (signalDone.current.get(bot.id) === sigKey) continue
 
         const openSame = positions.filter(
@@ -223,6 +280,16 @@ export function useBotRunner() {
 
         if (res.ok) {
           signalDone.current.set(bot.id, sigKey)
+          const filledLevels = [...(runtime.gridFilledLevels ?? [])]
+          if (level != null && !filledLevels.includes(level)) {
+            filledLevels.push(level)
+            const maxLevels =
+              bot.params.kind === 'grid' ? bot.params.grid.levels || 6 : 6
+            if (filledLevels.length >= maxLevels) {
+              filledLevels.length = 0
+              runtime = { ...runtime, gridCenter: px }
+            }
+          }
           const stats = bot.stats ?? {
             trades: 0,
             wins: 0,
@@ -231,7 +298,7 @@ export function useBotRunner() {
           }
           useBotStore.getState().updateBot(bot.id, {
             lastError: null,
-            lastSignal: `filled ${signal.side} @ ${px.toFixed(4)}`,
+            lastSignal: `filled ${signal.side} ${sym} @ ${px.toFixed(4)}`,
             lastTickAt: Date.now(),
             stats: { ...stats, trades: stats.trades + 1 },
             runtime: {
@@ -241,6 +308,9 @@ export function useBotRunner() {
               dayTrades: (runtime.dayTrades ?? 0) + 1,
               dayPnl: runtime.dayPnl,
               dayKey,
+              gridFilledLevels: filledLevels,
+              dcaCount:
+                bot.kind === 'dca' ? (runtime.dcaCount ?? 0) + 1 : runtime.dcaCount,
             },
           })
         } else {
