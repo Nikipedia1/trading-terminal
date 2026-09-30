@@ -16,3 +16,4 @@ export type {
   WorkspaceLoadResult,
 } from './types'
 export { WORKSPACE_VERSION } from './types'
+export { useCloudLayoutSync } from './useCloudLayoutSync'

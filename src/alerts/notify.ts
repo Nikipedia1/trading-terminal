@@ -1,6 +1,5 @@
 /**
- * Notification channels: sound, desktop Notification API, webhook.
- * Webhook URL stored locally only (Telegram/Discord compatible).
+ * Notification channels: sound, desktop Notification API, webhook + server relay.
  */
 
 const WEBHOOK_KEY = 'tt-alert-webhook:v1'
@@ -58,7 +57,6 @@ export function desktopNotify(title: string, body: string) {
   }
 }
 
-/** Fire-and-forget POST. Discord expects {content}; Telegram bot webhooks vary. */
 export async function webhookNotify(text: string): Promise<boolean> {
   const url = getWebhookUrl()
   if (!url) return false
@@ -79,11 +77,40 @@ export async function webhookNotify(text: string): Promise<boolean> {
 }
 
 export async function dispatchChannels(
-  opts: { sound: boolean; desktop: boolean; webhook: boolean },
+  opts: { sound: boolean; desktop: boolean; webhook: boolean; server?: boolean },
   title: string,
   body: string
 ) {
   if (opts.sound) playAlertSound()
   if (opts.desktop) desktopNotify(title, body)
   if (opts.webhook) void webhookNotify(`${title}\n${body}`)
+  if (opts.server) void serverWebhookDispatch(title, body)
+}
+
+export async function serverWebhookDispatch(title: string, body: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/alerts/webhook', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'dispatch', title, body }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function registerServerWebhook(url: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/alerts/webhook', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'register', url }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
 }
