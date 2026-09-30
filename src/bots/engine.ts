@@ -14,6 +14,7 @@ export interface CandleLike {
 export type Signal = {
   side: 'long' | 'short' | 'flat'
   reason: string
+  meta?: { gridLevel?: number; gridPrice?: number }
 }
 
 function closes(c: CandleLike[]): number[] {
@@ -83,12 +84,38 @@ export function evaluateBot(
   }
 
   if (kind === 'grid' && bot.params.kind === 'grid') {
+    const levels = Math.max(2, Math.min(40, bot.params.grid.levels || 6))
     const rangePct = bot.params.grid.rangePct / 100
     const center = bot.runtime?.gridCenter ?? lastPrice
-    const upper = center * (1 + rangePct / 2)
-    const lower = center * (1 - rangePct / 2)
-    if (lastPrice <= lower) return { side: 'long', reason: `Grid bid @ ${lower.toFixed(2)}` }
-    if (lastPrice >= upper) return { side: 'short', reason: `Grid ask @ ${upper.toFixed(2)}` }
+    const low = center * (1 - rangePct / 2)
+    const high = center * (1 + rangePct / 2)
+    const step = levels <= 1 ? 0 : (high - low) / (levels - 1)
+    const filled = new Set((bot.runtime?.gridFilledLevels as number[] | undefined) ?? [])
+    let bestBuy: { level: number; price: number } | null = null
+    let bestSell: { level: number; price: number } | null = null
+    for (let i = 0; i < levels; i++) {
+      const px = low + step * i
+      if (px < center * 0.999 && lastPrice <= px * 1.0005 && !filled.has(i)) {
+        if (!bestBuy || px > bestBuy.price) bestBuy = { level: i, price: px }
+      }
+      if (px > center * 1.001 && lastPrice >= px * 0.9995 && !filled.has(i)) {
+        if (!bestSell || px < bestSell.price) bestSell = { level: i, price: px }
+      }
+    }
+    if (bestBuy) {
+      return {
+        side: 'long',
+        reason: `Grid L${bestBuy.level} buy @ ${bestBuy.price.toFixed(4)}`,
+        meta: { gridLevel: bestBuy.level, gridPrice: bestBuy.price },
+      }
+    }
+    if (bestSell) {
+      return {
+        side: 'short',
+        reason: `Grid L${bestSell.level} sell @ ${bestSell.price.toFixed(4)}`,
+        meta: { gridLevel: bestSell.level, gridPrice: bestSell.price },
+      }
+    }
     return null
   }
 
