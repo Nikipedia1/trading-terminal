@@ -1,6 +1,11 @@
 /**
- * BotScheduler – ticks outside React render cycle.
- * Idempotent signals: action@candleTime fingerprint.
+ * BotScheduler – engine outside React.
+ *
+ * Stability:
+ *  - Idempotency: signalId = botId:action:candleCloseTime (once per closed bar)
+ *  - Hard cooldown: min ms between any order for the same bot
+ *  - Debounce: skip tick if (lastPrice, candleCloseTime) unchanged since last run
+ *  - dayPnl from paper fills (UTC day) before risk gate
  */
 
 import { useBotStore } from './botStore'
@@ -13,6 +18,9 @@ import { createLogger } from '@/lib/logger'
 import { makeInstrumentKey, getInstrumentSnapshot } from '@/data/instrumentRegistry'
 
 const log = createLogger('BotScheduler')
+
+/** Minimum gap between orders for the same bot (ms). */
+export const BOT_HARD_COOLDOWN_MS = 15_000
 
 export interface SchedulerDeps {
   getPrimaryCandles: () => CandleLike[]
@@ -64,23 +72,38 @@ export function realizedDayPnlFromFills(
   return sum
 }
 
+export function makeSignalId(
+  botId: string,
+  action: string,
+  candleCloseTime: number
+): string {
+  return `${botId}:${action}:${candleCloseTime}`
+}
+
 export class BotScheduler {
   private timer: ReturnType<typeof setInterval> | null = null
   private busy = false
-  private lastSignal = new Map<string, string>()
+  private executedSignals = new Map<string, number>()
+  private lastOrderAt = new Map<string, number>()
+  private lastMarketFp = ''
   private deps: SchedulerDeps
   private tickMs: number
+  private cooldownMs: number
 
-  constructor(deps: SchedulerDeps, tickMs = 5_000) {
+  constructor(
+    deps: SchedulerDeps,
+    opts?: { tickMs?: number; cooldownMs?: number }
+  ) {
     this.deps = deps
-    this.tickMs = tickMs
+    this.tickMs = opts?.tickMs ?? 5_000
+    this.cooldownMs = opts?.cooldownMs ?? BOT_HARD_COOLDOWN_MS
   }
 
   start() {
     if (this.timer) return
     void this.tick()
     this.timer = setInterval(() => void this.tick(), this.tickMs)
-    log.info('started')
+    log.info('started', { tickMs: this.tickMs, cooldownMs: this.cooldownMs })
   }
 
   stop() {
@@ -89,6 +112,11 @@ export class BotScheduler {
       this.timer = null
     }
     log.info('stopped')
+  }
+
+  async forceTick() {
+    this.lastMarketFp = ''
+    await this.tick()
   }
 
   async tick() {
@@ -103,6 +131,13 @@ export class BotScheduler {
     }
   }
 
+  private pruneSignals(now: number) {
+    const maxAge = 6 * 60 * 60_000
+    for (const [id, at] of this.executedSignals) {
+      if (now - at > maxAge) this.executedSignals.delete(id)
+    }
+  }
+
   private async runOnce() {
     const store = useBotStore.getState()
     const enabled = store.bots.filter((b) => b.enabled)
@@ -112,8 +147,20 @@ export class BotScheduler {
     const primaryIv = this.deps.getPrimaryInterval()
     const primaryCandles = this.deps.getPrimaryCandles()
     const primaryPrice = this.deps.getPrimaryPrice()
+    const candleCloseTime = primaryCandles.length
+      ? primaryCandles[primaryCandles.length - 1]!.time
+      : 0
+    const marketFp = `${primarySym}|${candleCloseTime}|${primaryPrice ?? ''}`
+
+    if (marketFp === this.lastMarketFp && candleCloseTime > 0) {
+      return
+    }
+    this.lastMarketFp = marketFp
+
     const sentiment = this.deps.getSentiment()
     const fills = this.deps.getFills()
+    const now = Date.now()
+    this.pruneSignals(now)
 
     for (const bot of enabled) {
       const cfg = bot.config
@@ -122,7 +169,9 @@ export class BotScheduler {
       let mark = primaryPrice
 
       if (sym !== primarySym) {
-        const snap = getInstrumentSnapshot(makeInstrumentKey('binance', sym, primaryIv))
+        const snap = getInstrumentSnapshot(
+          makeInstrumentKey('binance', sym, primaryIv)
+        )
         if (snap?.candles?.length) {
           candles = snap.candles as CandleLike[]
           mark = snap.lastPrice
@@ -131,7 +180,7 @@ export class BotScheduler {
           if (!feed?.candles?.length) {
             store.updateBot(bot.id, {
               lastSignal: `no feed for ${sym}`,
-              lastTickAt: Date.now(),
+              lastTickAt: now,
             })
             continue
           }
@@ -146,28 +195,48 @@ export class BotScheduler {
       this.deps.checkExits(sym, mark)
 
       const last = candles[candles.length - 1]!
-      const candleTime = last.time
+      const barTime = last.time
+
       const dayPnl = realizedDayPnlFromFills(fills, sym)
       const runtime = ensureDayRuntime({
         ...bot,
         runtime: { ...bot.runtime, dayPnl },
       })
-      store.updateBot(bot.id, { runtime })
+      if (
+        bot.runtime?.dayPnl !== runtime.dayPnl ||
+        bot.runtime?.dayKey !== runtime.dayKey
+      ) {
+        store.updateBot(bot.id, { runtime })
+      }
 
-      const signal = evaluateBot(bot, candles, sentiment)
+      const signal = evaluateBot({ ...bot, runtime }, candles, sentiment)
       if (!signal || signal.action === 'hold') continue
 
-      const fp = `${signal.action}@${candleTime}`
-      if (this.lastSignal.get(bot.id) === fp) continue
+      const signalId = makeSignalId(bot.id, signal.action, barTime)
+      if (this.executedSignals.has(signalId)) continue
+
+      const lastOrd = this.lastOrderAt.get(bot.id) ?? 0
+      if (now - lastOrd < this.cooldownMs) {
+        store.updateBot(bot.id, {
+          lastSignal: `cooldown ${Math.ceil((this.cooldownMs - (now - lastOrd)) / 1000)}s`,
+          lastTickAt: now,
+        })
+        continue
+      }
 
       if (signal.action === 'close_long' || signal.action === 'close_short') {
         const side = signal.action === 'close_long' ? 'long' : 'short'
         this.deps.closeSide(sym, side, mark)
-        this.lastSignal.set(bot.id, fp)
+        this.executedSignals.set(signalId, now)
+        this.lastOrderAt.set(bot.id, now)
         store.updateBot(bot.id, {
-          lastSignal: signal.action,
-          lastTickAt: Date.now(),
-          runtime: { ...runtime, dayTrades: (runtime.dayTrades ?? 0) + 1 },
+          lastSignal: `${signal.action} [${signalId}]`,
+          lastTickAt: now,
+          runtime: {
+            ...runtime,
+            dayTrades: (runtime.dayTrades ?? 0) + 1,
+            lastOrderAt: now,
+          },
         })
         continue
       }
@@ -190,8 +259,9 @@ export class BotScheduler {
       if (!decision.ok || decision.qty <= 0) {
         store.updateBot(bot.id, {
           lastSignal: decision.reason || 'risk blocked',
-          lastTickAt: Date.now(),
+          lastTickAt: now,
         })
+        this.executedSignals.set(signalId, now)
         continue
       }
 
@@ -205,11 +275,16 @@ export class BotScheduler {
         stopLossPct: decision.stopLossPct,
         markPrice: mark,
       })
-      this.lastSignal.set(bot.id, fp)
+      this.executedSignals.set(signalId, now)
+      this.lastOrderAt.set(bot.id, now)
       store.updateBot(bot.id, {
         lastSignal: `${signal.action} qty=${decision.qty}`,
-        lastTickAt: Date.now(),
-        runtime: { ...runtime, dayTrades: (runtime.dayTrades ?? 0) + 1 },
+        lastTickAt: now,
+        runtime: {
+          ...runtime,
+          dayTrades: (runtime.dayTrades ?? 0) + 1,
+          lastOrderAt: now,
+        },
       })
     }
   }
