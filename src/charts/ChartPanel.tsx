@@ -9,6 +9,7 @@ import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu } from './OrderflowMenu'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
+import { useMarketStore } from '@/stores/marketStore'
 import { useOrderflowStore } from '@/stores/orderflowStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
@@ -32,6 +33,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const setPrimaryPanel = useLayoutStore((s) => s.setPrimaryPanel)
   const isPrimary = primaryPanelId === id
+  const setMarketSymbol = useMarketStore((s) => s.setSymbol)
 
   const ofState = useOrderflowStore((s) => s.get(id))
   const patchOf = useOrderflowStore((s) => s.patch)
@@ -45,9 +47,14 @@ export function ChartPanel({ config }: ChartPanelProps) {
     detachChartPanel({ symbol, interval, exchange })
   }
 
+  const onSymbolChange = (raw: string) => {
+    const next = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    updatePanel(id, { symbol: next })
+    if (isPrimary) setMarketSymbol(next)
+  }
+
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
-      {/* Header – symbol chip is the primary visual anchor */}
       <div className="panel-drag-handle flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b border-terminal-border bg-[#0b0e11] shrink-0 cursor-move select-none min-h-[40px]">
         <SymbolBadge symbol={symbol} size="md" showName />
 
@@ -55,7 +62,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           className="bg-[#12161c] border border-[#f0b90b]/50 rounded px-1.5 py-0.5 text-xs w-[7.5rem] font-mono font-semibold text-[#eaecef]"
           value={symbol}
           list={`panel-symbols-${id}`}
-          onChange={(e) => updatePanel(id, { symbol: e.target.value.toUpperCase() })}
+          onChange={(e) => onSymbolChange(e.target.value)}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           title="Full trading pair"
@@ -153,10 +160,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
       <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0 overflow-x-auto">
         <DrawingToolbar panelId={id} symbol={symbol} />
-        <OrderflowMenu
-          state={ofState}
-          onChange={(next) => patchOf(id, next)}
-        />
+        <OrderflowMenu state={ofState} onChange={(next) => patchOf(id, next)} />
         <button
           type="button"
           className="text-xxs px-1 text-terminal-muted hover:text-terminal-text"
