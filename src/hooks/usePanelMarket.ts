@@ -32,6 +32,8 @@ export function usePanelMarket(
 
   const unsubRef = useRef<(() => void) | null>(null)
   const mountedRef = useRef(true)
+  /** Bumps on every symbol/interval/exchange change so stale WS callbacks are ignored */
+  const genRef = useRef(0)
 
   const stopLive = useCallback(() => {
     unsubRef.current?.()
@@ -42,19 +44,20 @@ export function usePanelMarket(
     stopLive()
     if (!mountedRef.current) return
 
+    const gen = ++genRef.current
     const client = getExchangeClient(exchange)
+    const sym = symbol.toUpperCase()
 
-    setState((s) => ({
-      ...s,
+    setState({
+      candles: [],
       status: 'connecting',
       lastError: null,
-      candles: [],
-      statusDetail: 'loading history',
-    }))
+      statusDetail: `loading ${sym}`,
+    })
 
     try {
-      const candles = await client.getKlines(symbol, interval, HISTORY_LIMIT)
-      if (!mountedRef.current) return
+      const candles = await client.getKlines(sym, interval, HISTORY_LIMIT)
+      if (!mountedRef.current || gen !== genRef.current) return
 
       setState({
         candles,
@@ -64,10 +67,10 @@ export function usePanelMarket(
       })
 
       unsubRef.current = client.subscribeKlines(
-        symbol,
+        sym,
         interval,
         (candle) => {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || gen !== genRef.current) return
           setState((prev) => {
             const next = [...prev.candles]
             const last = next[next.length - 1]
@@ -87,8 +90,7 @@ export function usePanelMarket(
           })
         },
         (err) => {
-          if (!mountedRef.current) return
-          // Keep last candles visible; show error – never invent data
+          if (!mountedRef.current || gen !== genRef.current) return
           setState((s) => ({
             ...s,
             status: 'error',
@@ -97,17 +99,22 @@ export function usePanelMarket(
           }))
         },
         (status, detail) => {
-          if (!mountedRef.current) return
+          if (!mountedRef.current || gen !== genRef.current) return
           setState((s) => ({
             ...s,
             status,
             statusDetail: detail,
-            lastError: status === 'error' ? s.lastError : status === 'connected' ? null : s.lastError,
+            lastError:
+              status === 'error'
+                ? s.lastError
+                : status === 'connected'
+                  ? null
+                  : s.lastError,
           }))
         }
       )
     } catch (err: any) {
-      if (!mountedRef.current) return
+      if (!mountedRef.current || gen !== genRef.current) return
       setState({
         candles: [],
         status: 'error',
