@@ -23,6 +23,8 @@ import { AdminPanel } from '@/auth'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import type { WidgetKind } from '@/types'
+import { EmptyState } from '@/ui/EmptyState'
+import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -53,6 +55,14 @@ function LargeTradesWidget() {
 }
 
 function WidgetBody({ kind }: { kind: WidgetKind }) {
+  return (
+    <ErrorBoundary name={kind}>
+      <WidgetBodyInner kind={kind} />
+    </ErrorBoundary>
+  )
+}
+
+function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
   switch (kind) {
     case 'paper':
       return <PaperTradingPanel />
@@ -158,9 +168,29 @@ export function PanelGrid({ width }: PanelGridProps) {
 
   return (
     <div className="relative h-full w-full overflow-auto bg-[#0b0e11]">
+      {panels.length === 0 && widgets.length === 0 ? (
+        <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+          <div className="pointer-events-auto">
+            <EmptyState
+              title="Empty desk"
+              description="Add a chart panel or widget to start. Drag to rearrange anytime."
+              action={
+                <button
+                  type="button"
+                  className="text-[11px] px-3 py-1.5 rounded bg-[#f0b90b] text-[#0b0e11] font-medium"
+                  onClick={() => addPanel()}
+                >
+                  Add chart panel
+                </button>
+              }
+            />
+          </div>
+        </div>
+      ) : null}
       <div ref={menuRef} className="absolute top-1 right-2 z-20 flex gap-1">
         <button
           type="button"
+          data-tour="add-panel"
           onClick={() => addPanel()}
           className="px-2 py-0.5 text-xs bg-[#1e2329] text-[#eaecef] border border-[#2b3139] rounded hover:border-[#5e6673]"
           title="Add chart panel"
