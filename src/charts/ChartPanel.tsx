@@ -3,7 +3,7 @@
  * Full pair (BTCUSDT) always shown as yellow chip in the header.
  */
 
-import { type MouseEvent, useEffect } from 'react'
+import { type MouseEvent, useEffect, useState } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu } from './OrderflowMenu'
@@ -44,7 +44,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
   const { candles, status, lastError } = usePanelMarket(symbol, interval, exchange)
 
-  // Ensure stable orderflow entry so toggles re-render ChartContainer
   useEffect(() => {
     const st = useOrderflowStore.getState()
     if (!st.byPanel[id]) st.set(id, defaultOrderflowState())
@@ -55,8 +54,19 @@ export function ChartPanel({ config }: ChartPanelProps) {
     detachChartPanel({ symbol, interval, exchange })
   }
 
-  const onSymbolChange = (raw: string) => {
+  const [symbolDraft, setSymbolDraft] = useState(symbol)
+  useEffect(() => {
+    setSymbolDraft(symbol)
+  }, [symbol])
+
+  const commitSymbol = (raw: string) => {
     const next = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (!next || next.length < 4) return
+    if (next === symbol) {
+      setSymbolDraft(next)
+      return
+    }
+    setSymbolDraft(next)
     updatePanel(id, { symbol: next })
     if (isPrimary) setMarketSymbol(next)
   }
@@ -68,12 +78,20 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
         <input
           className="bg-[#12161c] border border-[#f0b90b]/50 rounded px-1.5 py-0.5 text-xs w-[7.5rem] font-mono font-semibold text-[#eaecef]"
-          value={symbol}
+          value={symbolDraft}
           list={`panel-symbols-${id}`}
-          onChange={(e) => onSymbolChange(e.target.value)}
+          onChange={(e) => setSymbolDraft(e.target.value.toUpperCase())}
+          onBlur={(e) => commitSymbol(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitSymbol(e.currentTarget.value)
+              e.currentTarget.blur()
+            }
+          }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          title="Full trading pair"
+          title="Full trading pair — Enter or blur to apply"
           aria-label="Symbol"
         />
         <datalist id={`panel-symbols-${id}`}>
