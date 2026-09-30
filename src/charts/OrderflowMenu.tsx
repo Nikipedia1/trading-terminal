@@ -53,9 +53,11 @@ export interface OrderflowState {
 
 interface OrderflowMenuProps {
   state: OrderflowState
-  exchange: ExchangeId
+  /** Used for L2 granularity notes; defaults to binance */
+  exchange?: ExchangeId
   onChange: (patch: Partial<OrderflowState>) => void
-  onPrintToggle: () => void
+  /** Optional; defaults to toggling state.print via onChange */
+  onPrintToggle?: () => void
 }
 
 function Toggle({
@@ -115,12 +117,13 @@ function Row({
 
 export function OrderflowMenu({
   state,
-  exchange,
+  exchange = 'binance',
   onChange,
   onPrintToggle,
 }: OrderflowMenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const togglePrint = onPrintToggle ?? (() => onChange({ print: !state.print }))
 
   useEffect(() => {
     if (!open) return
@@ -164,14 +167,15 @@ export function OrderflowMenu({
 
       {open && (
         <div
-          className="absolute left-0 top-full mt-1 z-50 w-[300px] max-h-[min(70vh,520px)] overflow-y-auto bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
+          className="absolute left-0 top-full mt-1 z-[200] w-[300px] max-h-[min(70vh,520px)] overflow-y-auto bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-2xl p-2"
           onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="text-[10px] text-[#5e6673] uppercase tracking-wider px-0.5 mb-1">
             Strumenti orderflow
           </div>
 
-          <Row label="Deep Print" on={state.print} onToggle={onPrintToggle}>
+          <Row label="Deep Print" on={state.print} onToggle={togglePrint}>
             <p className="text-[9px] text-[#5e6673] leading-snug">
               SELL|PX|BUY|Δ · buy% + sell% live · imbalance + stacked (≥3)
             </p>
@@ -367,7 +371,7 @@ export function OrderflowMenu({
             onToggle={() => onChange({ dom: !state.dom })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Ladder: agg 1/5/10 tick · min size · flash pull/refill.{" "}
+              Ladder: agg 1/5/10 tick · min size · flash pull/refill.{' '}
               {L2_GRANULARITY_NOTES[exchange]}
             </p>
           </Row>
