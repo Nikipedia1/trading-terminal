@@ -1,26 +1,36 @@
 /**
- * Series Manager – candles, volume, delta histogram, optional CVD line + markers.
+ * Candlestick + volume + delta/CVD series management.
+ * Last price line/label reactive (TradingView-like).
  */
 
-import {
-  type IChartApi,
-  type ISeriesApi,
-  type CandlestickData,
-  type HistogramData,
-  type LineData,
-  type Time,
-  type SeriesMarker,
+import type {
+  IChartApi,
+  ISeriesApi,
+  CandlestickData,
+  HistogramData,
+  LineData,
+  Time,
+  SeriesMarker,
 } from 'lightweight-charts'
 import type { Candle } from '@/types'
 import type { CandleStyle } from '@/stores/chartStyleStore'
-import { DEFAULT_CHART_STYLE, hexToRgba } from '@/stores/chartStyleStore'
+import { DEFAULT_CHART_STYLE } from '@/stores/chartStyleStore'
 import type { CandleDeltaBar } from '@/analysis/deepPrint/types'
-import type { DivergenceMarker } from '@/analysis/deltaPrint/divergence'
-import type { AbsorptionMarker } from '@/analysis/deltaPrint/absorption'
+import type { DivergenceMarker, AbsorptionMarker } from '@/analysis/deltaPrint'
 
+const CVD_COLOR = '#f0b90b'
 const DELTA_UP = 'rgba(14, 203, 129, 0.85)'
 const DELTA_DOWN = 'rgba(246, 70, 93, 0.85)'
-const CVD_COLOR = 'rgba(240, 185, 11, 0.9)'
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = parseInt(full, 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  return `rgba(${r},${g},${b},${alpha})`
+}
 
 export class SeriesManager {
   private chart: IChartApi | null = null
@@ -42,6 +52,12 @@ export class SeriesManager {
       borderDownColor: this.candleStyle.downBorder,
       wickUpColor: this.candleStyle.upWick,
       wickDownColor: this.candleStyle.downWick,
+      lastValueVisible: true,
+      priceLineVisible: true,
+      priceLineWidth: 1,
+      priceLineStyle: 2,
+      priceLineColor: this.candleStyle.upBody,
+      crosshairMarkerVisible: true,
     })
 
     this.volumeSeries = chart.addHistogramSeries({
@@ -137,6 +153,13 @@ export class SeriesManager {
 
     this.candleSeries.setData(candleData)
     this.volumeSeries.setData(volumeData)
+    if (candles.length > 0) {
+      const last = candles[candles.length - 1]
+      const bull = last.close >= last.open
+      this.candleSeries.applyOptions({
+        priceLineColor: bull ? this.candleStyle.upBody : this.candleStyle.downBody,
+      })
+    }
   }
 
   updateCandle(candle: Candle) {
@@ -158,6 +181,11 @@ export class SeriesManager {
       high: candle.high,
       low: candle.low,
       close: candle.close,
+    })
+
+    const bull = candle.close >= candle.open
+    this.candleSeries.applyOptions({
+      priceLineColor: bull ? this.candleStyle.upBody : this.candleStyle.downBody,
     })
 
     const upVol = hexToRgba(this.candleStyle.upBody, 0.4)
@@ -202,6 +230,10 @@ export class SeriesManager {
     this.candleSeries?.setMarkers(markers)
   }
 
+  clearCandleMarkers() {
+    this.candleSeries?.setMarkers([])
+  }
+
   setDivergenceMarkers(markers: DivergenceMarker[]) {
     if (!this.candleSeries) return
     const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
@@ -219,19 +251,10 @@ export class SeriesManager {
     const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
       time: m.time as Time,
       position: 'inBar',
-      color: 'rgba(240, 185, 11, 0.9)',
+      color: m.kind === 'absorption' ? '#f0b90b' : '#848e9c',
       shape: 'circle',
-      text: 'ABS',
+      text: m.kind === 'absorption' ? 'Abs' : 'Agg',
     }))
-    // Merge with existing is not tracked; caller should combine if needed
     this.candleSeries.setMarkers(seriesMarkers)
-  }
-
-  clearCandleMarkers() {
-    this.candleSeries?.setMarkers([])
-  }
-
-  clearDivergenceMarkers() {
-    this.clearCandleMarkers()
   }
 }
