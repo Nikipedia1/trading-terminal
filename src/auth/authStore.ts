@@ -1,9 +1,10 @@
 /**
  * Client auth – session via HttpOnly cookie (credentials: include).
- * No session token in localStorage (XSS-safe). Memory user only.
+ * Binds userScopedStorage namespace so paper/bots/journal don't collide across accounts.
  */
 
 import { create } from 'zustand'
+import { setStorageUserId } from '@/lib/userScopedStorage'
 
 export type AuthRole = 'user' | 'admin'
 
@@ -87,11 +88,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     clearLegacyToken()
     const res = await api<{ user: AuthUser }>('/api/auth/me')
     if (!res.ok) {
-      // B9: local Vite without Pages Functions → soft-dev session
       const isDev =
         typeof import.meta !== 'undefined' &&
         Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV)
       if (isDev && (res.status === 0 || res.status === 404)) {
+        setStorageUserId('dev-local')
         set({
           user: {
             id: 'dev-local',
@@ -104,9 +105,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         })
         return
       }
+      setStorageUserId(null)
       set({ user: null, status: 'guest' })
       return
     }
+    setStorageUserId(res.data.user.id)
     set({ user: res.data.user, status: 'authenticated', error: null })
   },
 
@@ -118,10 +121,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     })
     set({ busy: false })
     if (!res.ok) {
+      setStorageUserId(null)
       set({ error: res.error, status: 'guest', user: null })
       return false
     }
     clearLegacyToken()
+    setStorageUserId(res.data.user.id)
     set({
       user: res.data.user,
       status: 'authenticated',
@@ -138,10 +143,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     })
     set({ busy: false })
     if (!res.ok) {
+      setStorageUserId(null)
       set({ error: res.error, status: 'guest', user: null })
       return false
     }
     clearLegacyToken()
+    setStorageUserId(res.data.user.id)
     set({
       user: res.data.user,
       status: 'authenticated',
@@ -153,6 +160,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     await api('/api/auth/logout', { method: 'POST' })
     clearLegacyToken()
+    setStorageUserId(null)
     set({ user: null, status: 'guest', error: null })
   },
 }))
