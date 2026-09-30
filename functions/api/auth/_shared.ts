@@ -172,38 +172,55 @@ export async function getUserById(
   }
 }
 
+/** Persist user. Index is best-effort; listUsers uses KV list as source of truth. */
 export async function saveUser(kv: KVNamespace, user: UserRecord): Promise<void> {
   const body = JSON.stringify(user)
   await kv.put(userKeyEmail(user.email), body)
   await kv.put(userKeyId(user.id), body)
-  const idxRaw = await kv.get(USERS_INDEX)
-  let ids: string[] = []
   try {
-    ids = idxRaw ? (JSON.parse(idxRaw) as string[]) : []
+    const idxRaw = await kv.get(USERS_INDEX)
+    let ids: string[] = []
+    try {
+      ids = idxRaw ? (JSON.parse(idxRaw) as string[]) : []
+    } catch {
+      ids = []
+    }
+    if (!ids.includes(user.id)) {
+      ids.push(user.id)
+      await kv.put(USERS_INDEX, JSON.stringify(ids))
+    }
   } catch {
-    ids = []
-  }
-  if (!ids.includes(user.id)) {
-    ids.push(user.id)
-    await kv.put(USERS_INDEX, JSON.stringify(ids))
+    /* index secondary */
   }
 }
 
+/** Race-safe: list auth:user:id:* keys */
 export async function listUsers(kv: KVNamespace): Promise<UserRecord[]> {
-  const idxRaw = await kv.get(USERS_INDEX)
-  if (!idxRaw) return []
-  let ids: string[] = []
-  try {
-    ids = JSON.parse(idxRaw) as string[]
-  } catch {
-    return []
-  }
   const out: UserRecord[] = []
-  for (const id of ids) {
-    const u = await getUserById(kv, id)
-    if (u) out.push(u)
-  }
-  return out
+  let cursor: string | undefined
+  do {
+    const page = await kv.list({
+      prefix: 'auth:user:id:',
+      limit: 100,
+      cursor,
+    })
+    for (const key of page.keys) {
+      const raw = await kv.get(key.name)
+      if (!raw) continue
+      try {
+        out.push(JSON.parse(raw) as UserRecord)
+      } catch {
+        /* skip */
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor
+  } while (cursor)
+  const seen = new Set<string>()
+  return out.filter((u) => {
+    if (seen.has(u.id)) return false
+    seen.add(u.id)
+    return true
+  })
 }
 
 export function publicUser(u: UserRecord) {
@@ -310,4 +327,40 @@ export async function requireAdmin(
   if (r instanceof Response) return r
   if (r.user.role !== 'admin') return bad('forbidden', 403, request)
   return r
+}
+
+/** Sliding window rate limit via KV. */
+export async function checkRateLimit(
+  kv: KVNamespace,
+  key: string,
+  limit: number,
+  windowSec: number
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  const k = `auth:rl:${key}`
+  const raw = await kv.get(k)
+  const now = Date.now()
+  let hits: number[] = []
+  try {
+    hits = raw ? (JSON.parse(raw) as number[]) : []
+  } catch {
+    hits = []
+  }
+  const cutoff = now - windowSec * 1000
+  hits = hits.filter((t) => t > cutoff)
+  if (hits.length >= limit) {
+    const oldest = hits[0] ?? now
+    const retryAfterSec = Math.max(1, Math.ceil((oldest + windowSec * 1000 - now) / 1000))
+    return { ok: false, retryAfterSec }
+  }
+  hits.push(now)
+  await kv.put(k, JSON.stringify(hits), { expirationTtl: windowSec + 60 })
+  return { ok: true }
+}
+
+export function clientIp(request: Request): string {
+  return (
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    'unknown'
+  )
 }
