@@ -18,7 +18,7 @@ import { IndicatorSeriesManager } from './indicator-series'
 import { IndicatorPanes } from './IndicatorPanes'
 import { IndicatorValuesHud } from './IndicatorValuesHud'
 import { CoordinateBridge } from './coordinate-bridge'
-import { attachFreePan } from './free-pan'
+import { attachFreePan, unlockPriceScale } from './free-pan'
 import {
   publishSync,
   subscribeSyncGroup,
@@ -310,9 +310,13 @@ export function ChartContainer({
     seriesMgrRef.current?.resetPriceScale()
     bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
     const chart = chartRef.current
-    if (chart) {
+    const series = seriesMgrRef.current?.getCandleSeries() as
+      | ISeriesApi<'Candlestick'>
+      | null
+      | undefined
+    if (chart && series) {
       try {
-        chart.priceScale('right').applyOptions({ autoScale: true })
+        unlockPriceScale(chart, series)
         chart.timeScale().resetTimeScale()
       } catch {
         /* */
@@ -329,21 +333,23 @@ export function ChartContainer({
       return
     }
 
-    // historyKey embeds instrument so BTC bars cannot stick under SOL
     const historyKey = `${instrumentKey}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       seriesMgrRef.current.setCandles(candles)
       seriesMgrRef.current.resetPriceScale()
       const chart = chartRef.current
-      if (chart) {
+      const series = seriesMgrRef.current.getCandleSeries() as
+        | ISeriesApi<'Candlestick'>
+        | null
+      if (chart && series) {
         try {
-          chart.priceScale('right').applyOptions({ autoScale: true })
+          unlockPriceScale(chart, series)
           chart.timeScale().fitContent()
           requestAnimationFrame(() => {
             if (instrumentKeyRef.current !== instrumentKey) return
             try {
-              chart.priceScale('right').applyOptions({ autoScale: true })
+              unlockPriceScale(chart, series)
               chart.timeScale().fitContent()
             } catch {
               /* */
