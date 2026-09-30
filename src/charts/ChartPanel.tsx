@@ -243,6 +243,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
           deepDomEnabled={ofState.dom}
           deepDomConfig={ofState.domCfg}
           footprintEnabled={ofState.footprint}
+          gammaEnabled={!!ofState.gamma}
+          gammaConfig={ofState.gammaCfg}
           replayEnabled={ofState.replay}
           isPrimary={isPrimary}
         />
