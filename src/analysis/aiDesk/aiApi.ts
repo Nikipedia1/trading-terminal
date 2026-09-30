@@ -1,5 +1,6 @@
 /**
- * AI API providers – user-selected, keys in localStorage only.
+ * AI API providers – user keys in sessionStorage only (not localStorage).
+ * Cleared when the tab closes. Never send keys to our backend.
  * OpenAI-compatible chat completions + local fallback.
  */
 
@@ -92,21 +93,50 @@ export const DEFAULT_AI_SETTINGS: AiApiSettings = {
 
 export function loadAiSettings(): AiApiSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY)
+    let raw = sessionStorage.getItem(SETTINGS_KEY)
+    if (!raw) {
+      raw = localStorage.getItem(SETTINGS_KEY)
+      if (raw) {
+        sessionStorage.setItem(SETTINGS_KEY, raw)
+        localStorage.removeItem(SETTINGS_KEY)
+      }
+    }
     if (!raw) return { ...DEFAULT_AI_SETTINGS }
     const parsed = JSON.parse(raw) as Partial<AiApiSettings>
-    return { ...DEFAULT_AI_SETTINGS, ...parsed }
+    return {
+      ...DEFAULT_AI_SETTINGS,
+      ...parsed,
+      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey.slice(0, 256) : '',
+    }
   } catch {
     return { ...DEFAULT_AI_SETTINGS }
   }
 }
 
 export function saveAiSettings(s: AiApiSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
+  try {
+    const safe = {
+      ...s,
+      apiKey: (s.apiKey || '').slice(0, 256),
+    }
+    sessionStorage.setItem(SETTINGS_KEY, JSON.stringify(safe))
+    localStorage.removeItem(SETTINGS_KEY)
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clearAiSettings() {
+  try {
+    sessionStorage.removeItem(SETTINGS_KEY)
+    localStorage.removeItem(SETTINGS_KEY)
+  } catch {
+    /* */
+  }
 }
 
 function providerMeta(id: AiProviderId): AiProviderMeta {
-  return AI_PROVIDERS.find((p) => p.id === id) ?? AI_PROVIDERS[0]
+  return AI_PROVIDERS.find((p) => p.id === id) ?? AI_PROVIDERS[0]!
 }
 
 function buildSystemPrompt(
@@ -118,102 +148,59 @@ function buildSystemPrompt(
     'You are a crypto market desk assistant inside a trading terminal.',
     'Use ONLY the market context provided. Do not invent prices.',
     'Be concise. Italian or English matching the user.',
-    'Not financial advice. Structure, levels, risk framing only.',
-    `Active analysis mode: ${mode}`,
   ]
-  if (report?.last) {
-    lines.push(
-      `Context: ${report.symbol} ${report.interval}`,
-      `Last ${report.last.close} bias ${report.bias} rangePos ${report.rangePos.toFixed(0)}%`,
-      `Supports: ${report.supports.join(', ') || '—'}`,
-      `Resistances: ${report.resistances.join(', ') || '—'}`,
-      ...report.summary
-    )
+  if (report) {
+    lines.push(`TA: ${JSON.stringify(report).slice(0, 2000)}`)
   }
   if (smc) {
-    lines.push('SMC:', ...smc.summary)
-    const openFvg = smc.fvgs.filter((z) => !z.mitigated).slice(-3)
-    for (const z of openFvg) {
-      lines.push(`FVG ${z.kind} ${z.bottom}-${z.top}`)
-    }
-    for (const ob of smc.orderBlocks.slice(-3)) {
-      lines.push(`OB ${ob.kind} ${ob.bottom}-${ob.top}`)
-    }
-    if (smc.volumeProfile) {
-      const vp = smc.volumeProfile
-      lines.push(`VP POC ${vp.poc} VAL ${vp.val} VAH ${vp.vah}`)
-    }
+    lines.push(`SMC: ${JSON.stringify(smc).slice(0, 2000)}`)
   }
+  lines.push(`Mode: ${mode}`)
   return lines.join('\n')
 }
 
-export async function callAiChat(
+export async function runAiChat(
   userMessage: string,
-  settings: AiApiSettings,
   mode: AiMode,
+  settings: AiApiSettings,
   report: TaReport | null,
   smc: SmcReport | null
-): Promise<{ text: string; source: string }> {
-  // Always allow local
+): Promise<string> {
   if (settings.provider === 'local') {
-    const { text } = answerMessage(userMessage, report, mode, smc)
-    return { text, source: 'local' }
+    return answerMessage(userMessage, mode, report, smc)
   }
-
   const meta = providerMeta(settings.provider)
-  const baseUrl =
+  const base =
     settings.provider === 'custom'
       ? settings.customBaseUrl.replace(/\/$/, '')
-      : meta.baseUrl.replace(/\/$/, '')
+      : meta.baseUrl
+  if (!base) throw new Error('Missing base URL')
+  if (meta.needsKey && !settings.apiKey.trim()) throw new Error('API key required')
 
-  if (!baseUrl) {
-    throw new Error('Imposta Custom Base URL (es. https://api.example.com/v1)')
-  }
-  if (meta.needsKey && !settings.apiKey.trim()) {
-    throw new Error(`API key richiesta per ${meta.label}`)
-  }
-
-  const model =
-    settings.model.trim() ||
-    meta.defaultModel ||
-    'gpt-4o-mini'
-
-  const system = buildSystemPrompt(mode, report, smc)
-  const url = `${baseUrl}/chat/completions`
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${settings.apiKey.trim()}`,
-  }
-  if (settings.provider === 'openrouter') {
-    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : ''
-    headers['X-Title'] = 'Trading Terminal'
-  }
-
-  const res = await fetch(url, {
+  const model = settings.model.trim() || meta.defaultModel
+  const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.apiKey.trim()}`,
+    },
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: system },
+        { role: 'system', content: buildSystemPrompt(mode, report, smc) },
         { role: 'user', content: userMessage },
       ],
-      temperature: 0.4,
-      max_tokens: 900,
+      temperature: 0.3,
     }),
   })
-
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`API ${res.status}: ${body.slice(0, 200) || res.statusText}`)
+    const t = await res.text().catch(() => '')
+    throw new Error(`AI HTTP ${res.status}: ${t.slice(0, 200)}`)
   }
-
   const data = (await res.json()) as {
     choices?: { message?: { content?: string } }[]
   }
   const text = data.choices?.[0]?.message?.content?.trim()
-  if (!text) throw new Error('Risposta API vuota')
-
-  return { text, source: `${meta.label} · ${model}` }
+  if (!text) throw new Error('Empty AI response')
+  return text
 }
