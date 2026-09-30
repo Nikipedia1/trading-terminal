@@ -267,12 +267,26 @@ export function extractToken(request: Request): string | null {
   return m?.[1] ?? null
 }
 
-export function sessionCookie(token: string, maxAge = SESSION_TTL_SEC): string {
-  return `tt_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`
+export function sessionCookie(
+  token: string,
+  request?: Request,
+  maxAge = SESSION_TTL_SEC
+): string {
+  const url = request ? new URL(request.url) : null
+  const secure =
+    url?.protocol === 'https:' ||
+    request?.headers.get('X-Forwarded-Proto') === 'https'
+  const flags = secure ? 'HttpOnly; Secure; SameSite=Lax' : 'HttpOnly; SameSite=Lax'
+  return `tt_session=${token}; Path=/; ${flags}; Max-Age=${maxAge}`
 }
 
-export function clearSessionCookie(): string {
-  return 'tt_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0'
+export function clearSessionCookie(request?: Request): string {
+  const url = request ? new URL(request.url) : null
+  const secure =
+    url?.protocol === 'https:' ||
+    request?.headers.get('X-Forwarded-Proto') === 'https'
+  const flags = secure ? 'HttpOnly; Secure; SameSite=Lax' : 'HttpOnly; SameSite=Lax'
+  return `tt_session=; Path=/; ${flags}; Max-Age=0`
 }
 
 export async function requireUser(
