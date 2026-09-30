@@ -64,7 +64,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const token = await createSession(env.WORKSPACE_KV, user)
 
   return json(
-    { user: publicUser(user), token },
+    { user: publicUser(user) },
     201,
     request,
     { 'Set-Cookie': sessionCookie(token, request) }
