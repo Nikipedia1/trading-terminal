@@ -1,12 +1,7 @@
 /**
  * Cloudflare Pages Function – workspace CRUD on KV.
  * Auth required for PUT/DELETE; GET requires owner match when meta exists.
- * Legacy workspaces without meta remain readable until claimed on next PUT.
- *
- * Routes:
- *   GET  /api/workspace/:id
- *   PUT  /api/workspace/:id   body: WorkspaceDocument JSON
- *   DELETE /api/workspace/:id
+ * Maintains user:ws:{userId} index for listing.
  */
 
 import {
@@ -21,10 +16,38 @@ import {
 const MAX_BYTES = 900_000
 const KEY_PREFIX = 'ws:'
 const META_PREFIX = 'wsmeta:'
+const USER_WS_PREFIX = 'user:ws:'
 
 interface WorkspaceMeta {
   ownerId: string
   updatedAt: number
+}
+
+async function addUserWorkspace(kv: KVNamespace, userId: string, id: string) {
+  const key = USER_WS_PREFIX + userId
+  const raw = await kv.get(key)
+  let ids: string[] = []
+  try {
+    ids = raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    ids = []
+  }
+  if (!ids.includes(id)) {
+    ids.push(id)
+    await kv.put(key, JSON.stringify(ids.slice(-50)))
+  }
+}
+
+async function removeUserWorkspace(kv: KVNamespace, userId: string, id: string) {
+  const key = USER_WS_PREFIX + userId
+  const raw = await kv.get(key)
+  if (!raw) return
+  try {
+    const ids = (JSON.parse(raw) as string[]).filter((x) => x !== id)
+    await kv.put(key, JSON.stringify(ids))
+  } catch {
+    /* */
+  }
 }
 
 function json(data: unknown, status = 200, request: Request): Response {
@@ -153,10 +176,12 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   }
 
   await context.env.WORKSPACE_KV.put(KEY_PREFIX + id, body)
+  const ownerId = meta?.ownerId ?? auth.user.id
   await writeMeta(context.env.WORKSPACE_KV, id, {
-    ownerId: meta?.ownerId ?? auth.user.id,
+    ownerId,
     updatedAt: Date.now(),
   })
+  await addUserWorkspace(context.env.WORKSPACE_KV, ownerId, id)
 
   return json({ ok: true, id }, 200, context.request)
 }
@@ -178,5 +203,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
 
   await context.env.WORKSPACE_KV.delete(KEY_PREFIX + id)
   await context.env.WORKSPACE_KV.delete(META_PREFIX + id)
+  if (meta) await removeUserWorkspace(context.env.WORKSPACE_KV, meta.ownerId, id)
+  else await removeUserWorkspace(context.env.WORKSPACE_KV, auth.user.id, id)
   return json({ ok: true }, 200, context.request)
 }
