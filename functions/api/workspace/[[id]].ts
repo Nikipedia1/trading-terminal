@@ -1,6 +1,7 @@
 /**
  * Cloudflare Pages Function – workspace CRUD on KV.
- * Free tier: no auth beyond opaque workspace id (treat id as a secret link).
+ * Auth required for PUT/DELETE; GET requires owner match when meta exists.
+ * Legacy workspaces without meta remain readable until claimed on next PUT.
  *
  * Routes:
  *   GET  /api/workspace/:id
@@ -8,21 +9,22 @@
  *   DELETE /api/workspace/:id
  */
 
-export interface Env {
-  WORKSPACE_KV: KVNamespace
-}
+import {
+  type Env,
+  requireUser,
+  cors,
+  extractToken,
+  getSession,
+  getUserById,
+} from '../auth/_shared'
 
 const MAX_BYTES = 900_000
 const KEY_PREFIX = 'ws:'
+const META_PREFIX = 'wsmeta:'
 
-function corsHeaders(request: Request): HeadersInit {
-  const origin = request.headers.get('Origin') || '*'
-  return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': '86400',
-  }
+interface WorkspaceMeta {
+  ownerId: string
+  updatedAt: number
 }
 
 function json(data: unknown, status = 200, request: Request): Response {
@@ -30,7 +32,8 @@ function json(data: unknown, status = 200, request: Request): Response {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      ...corsHeaders(request),
+      'Cache-Control': 'no-store',
+      ...cors(request),
     },
   })
 }
@@ -49,10 +52,44 @@ function parseId(
   return id
 }
 
+async function readMeta(
+  kv: KVNamespace,
+  id: string
+): Promise<WorkspaceMeta | null> {
+  const raw = await kv.get(META_PREFIX + id)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as WorkspaceMeta
+  } catch {
+    return null
+  }
+}
+
+async function writeMeta(
+  kv: KVNamespace,
+  id: string,
+  meta: WorkspaceMeta
+): Promise<void> {
+  await kv.put(META_PREFIX + id, JSON.stringify(meta))
+}
+
+async function optionalUserId(
+  env: Env,
+  request: Request
+): Promise<{ userId: string; role: string } | null> {
+  if (!env.WORKSPACE_KV) return null
+  const token = extractToken(request)
+  const sess = await getSession(env.WORKSPACE_KV, token)
+  if (!sess || !token) return null
+  const user = await getUserById(env.WORKSPACE_KV, sess.userId)
+  if (!user || user.disabled) return null
+  return { userId: user.id, role: user.role }
+}
+
 export const onRequestOptions: PagesFunction<Env> = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders(context.request),
+    headers: cors(context.request),
   })
 }
 
@@ -60,11 +97,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const id = parseId(context)
   if (!id) return bad('invalid workspace id', 400, context.request)
   if (!context.env.WORKSPACE_KV) {
-    return bad(
-      'WORKSPACE_KV not bound – create KV namespace and update wrangler.toml',
-      503,
-      context.request
-    )
+    return bad('WORKSPACE_KV not bound', 503, context.request)
+  }
+
+  const meta = await readMeta(context.env.WORKSPACE_KV, id)
+  if (meta) {
+    const auth = await optionalUserId(context.env, context.request)
+    if (!auth) return bad('unauthorized', 401, context.request)
+    if (auth.userId !== meta.ownerId && auth.role !== 'admin') {
+      return bad('forbidden', 403, context.request)
+    }
   }
 
   const raw = await context.env.WORKSPACE_KV.get(KEY_PREFIX + id)
@@ -75,7 +117,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
-      ...corsHeaders(context.request),
+      ...cors(context.request),
     },
   })
 }
@@ -84,11 +126,15 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   const id = parseId(context)
   if (!id) return bad('invalid workspace id', 400, context.request)
   if (!context.env.WORKSPACE_KV) {
-    return bad(
-      'WORKSPACE_KV not bound – create KV namespace and update wrangler.toml',
-      503,
-      context.request
-    )
+    return bad('WORKSPACE_KV not bound', 503, context.request)
+  }
+
+  const auth = await requireUser(context.env, context.request)
+  if (auth instanceof Response) return auth
+
+  const meta = await readMeta(context.env.WORKSPACE_KV, id)
+  if (meta && meta.ownerId !== auth.user.id && auth.user.role !== 'admin') {
+    return bad('forbidden', 403, context.request)
   }
 
   let body: string
@@ -98,35 +144,21 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     return bad('unreadable body', 400, context.request)
   }
   if (!body || body.length > MAX_BYTES) {
-    return bad(`body missing or exceeds ${MAX_BYTES} bytes`, 413, context.request)
+    return bad('body empty or too large', 400, context.request)
   }
-
-  let parsed: { version?: number }
   try {
-    parsed = JSON.parse(body)
+    JSON.parse(body)
   } catch {
-    return bad('body must be JSON', 400, context.request)
-  }
-  if (parsed.version !== 1) {
-    return bad('unsupported workspace version (expected 1)', 400, context.request)
+    return bad('invalid json', 400, context.request)
   }
 
-  const doc = {
-    ...parsed,
-    id,
+  await context.env.WORKSPACE_KV.put(KEY_PREFIX + id, body)
+  await writeMeta(context.env.WORKSPACE_KV, id, {
+    ownerId: meta?.ownerId ?? auth.user.id,
     updatedAt: Date.now(),
-  }
-  const payload = JSON.stringify(doc)
-  if (payload.length > MAX_BYTES) {
-    return bad('workspace too large', 413, context.request)
-  }
+  })
 
-  await context.env.WORKSPACE_KV.put(KEY_PREFIX + id, payload)
-  return json(
-    { ok: true, id, updatedAt: doc.updatedAt, bytes: payload.length },
-    200,
-    context.request
-  )
+  return json({ ok: true, id }, 200, context.request)
 }
 
 export const onRequestDelete: PagesFunction<Env> = async (context) => {
@@ -135,6 +167,16 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   if (!context.env.WORKSPACE_KV) {
     return bad('WORKSPACE_KV not bound', 503, context.request)
   }
+
+  const auth = await requireUser(context.env, context.request)
+  if (auth instanceof Response) return auth
+
+  const meta = await readMeta(context.env.WORKSPACE_KV, id)
+  if (meta && meta.ownerId !== auth.user.id && auth.user.role !== 'admin') {
+    return bad('forbidden', 403, context.request)
+  }
+
   await context.env.WORKSPACE_KV.delete(KEY_PREFIX + id)
-  return json({ ok: true, id }, 200, context.request)
+  await context.env.WORKSPACE_KV.delete(META_PREFIX + id)
+  return json({ ok: true }, 200, context.request)
 }
