@@ -128,6 +128,12 @@ export class SeriesManager {
     this.clearDelta()
     this.clearCvd()
     this.clearCandleMarkers()
+    this.chart?.priceScale('right').applyOptions({ autoScale: true })
+  }
+
+  /** Hard reset price scale to fit current series (symbol change). */
+  resetPriceScale() {
+    this.chart?.priceScale('right').applyOptions({ autoScale: true })
   }
 
   setCandles(candles: Candle[]) {
@@ -160,6 +166,7 @@ export class SeriesManager {
         priceLineColor: bull ? this.candleStyle.upBody : this.candleStyle.downBody,
       })
     }
+    this.chart?.priceScale('right').applyOptions({ autoScale: true })
   }
 
   updateCandle(candle: Candle) {
