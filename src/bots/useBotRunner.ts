@@ -119,8 +119,16 @@ function buildDeps(sentimentRef: MutableRefObject<SentimentSnapshot | null>) {
         stopLoss: sl,
         postOnly: args.postOnly,
       })
-      if (res.ok) return { ok: true, orderId: res.orderId }
-      return { ok: false, error: 'error' in res ? res.error : 'order failed' }
+      if (res.ok) {
+        return {
+          ok: true,
+          orderId: 'orderId' in res ? (res as { orderId?: string }).orderId : undefined,
+        }
+      }
+      return {
+        ok: false,
+        error: 'error' in res ? String((res as { error?: string }).error) : 'order failed',
+      }
     },
     cancelOrder: (orderId: string) => {
       usePaperStore.getState().cancelOrder(orderId)
@@ -138,10 +146,14 @@ function buildDeps(sentimentRef: MutableRefObject<SentimentSnapshot | null>) {
       usePaperStore.getState().checkExits(symbol, price)
     },
     applyFunding: (marks: Record<string, number>) => {
-      usePaperStore.getState().applyFunding(marks)
+      const s = usePaperStore.getState() as {
+        applyFunding?: (m: Record<string, number>) => void
+      }
+      s.applyFunding?.(marks)
     },
     recordEquity: () => {
-      usePaperStore.getState().recordEquity()
+      const s = usePaperStore.getState() as { recordEquity?: () => void }
+      s.recordEquity?.()
     },
     getSentiment: () => sentimentRef.current,
   }
