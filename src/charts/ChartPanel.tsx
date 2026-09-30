@@ -7,6 +7,7 @@ import { type MouseEvent } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
 import { OrderflowMenu } from './OrderflowMenu'
+import { ChartPanelHud } from './ChartHud'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
@@ -88,6 +89,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
             </option>
           ))}
         </select>
+
+        <ChartPanelHud interval={interval} exchange={exchange} symbol={symbol} />
 
         <select
           className="bg-[#12161c] border border-terminal-border rounded px-1 py-0.5 text-xxs text-[#eaecef] max-w-[9rem]"
