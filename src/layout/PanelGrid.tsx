@@ -268,18 +268,16 @@ export function PanelGrid({ width }: PanelGridProps) {
 
       <GridLayout
         className="layout"
-        width={width}
-        gridConfig={{
-          cols: COLS,
-          rowHeight: ROW_HEIGHT,
-          margin: [4, 4] as [number, number],
-          containerPadding: [4, 4] as [number, number],
-        }}
         layout={layout}
+        cols={COLS}
+        rowHeight={ROW_HEIGHT}
+        width={width}
         onLayoutChange={onLayoutChange}
-        draggableHandle=".widget-drag-handle"
+        draggableHandle=".panel-drag-handle"
         compactType="vertical"
         preventCollision={false}
+        margin={[4, 4]}
+        containerPadding={[4, 4]}
         resizeHandles={['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n']}
       >
         {layout.map((item) => {
