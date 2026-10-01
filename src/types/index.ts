@@ -95,6 +95,7 @@ export type WidgetKind =
   | 'backtest'
   | 'livekeys'
   | 'plugins'
+  | 'micro'
 
 export interface WidgetPanelConfig {
   id: string
