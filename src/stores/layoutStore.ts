@@ -37,6 +37,7 @@ export const WIDGET_META: Record<
   backtest: { title: 'Backtest', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   livekeys: { title: 'Live Keys', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
   plugins: { title: 'Plugins', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  micro: { title: 'Microstructure', minW: 3, minH: 6, defaultW: 3, defaultH: 10 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
