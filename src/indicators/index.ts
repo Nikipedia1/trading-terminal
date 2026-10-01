@@ -10,3 +10,4 @@ export type {
 export { INDICATOR_CATALOG, DEFAULT_INDICATOR_PARAMS, PRICE_SOURCES } from './types'
 export * from './compute'
 export * from './compute-extra'
+export * from './compute-deep'
