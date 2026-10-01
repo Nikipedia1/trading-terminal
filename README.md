@@ -75,6 +75,34 @@ npm run test:watch  # interactive watch mode
 
 GitHub Codespaces: open the repo → Create codespace → after `postCreateCommand` finishes, run `npm test` in the terminal.
 
+## Changelog (feat – multi-level OFI / MLOFI)
+
+**Commit:** `ae3e9f9`
+
+### Added
+- `src/analysis/microstructure/ofi.ts`
+  - `LnQuote`, `BookSideLevel`, `MultiLevelWeight`
+  - `multiLevelOfiContribution` / `multiLevelOfiSeries` / `multiLevelOfi`
+  - `multiLevelDepthImbalance`, `lnQuoteFromLevels`, `topOfLn`
+  - weights: `equal` | `harmonic` | `linear` (default equal)
+- `src/analysis/microstructure/__tests__/ofi.test.ts` – L1 + multi-level unit tests
+- `MicroSnapshot`: `multiOfiCum`, `multiOfiStep`, `multiLevels`, `multiDepthImb`
+- `FORMULAS.md` – OFI L1 + MLOFI sections
+
+### Changed
+- `engine.ts` – tracks multi-level OFI alongside L1 (default top-5 levels)
+- `MicrostructurePanel.tsx` – surfaces multi-L metrics
+- `index.ts` – re-exports multi-level API
+
+### Untouched
+- L1 OFI API & behaviour (fully backward-compatible)
+- OrderBookWidget, VirtualizedTape, useVirtualWindow
+- charts, drawings, indicators, stores, data feeds, paper trading
+
+### Constraints
+- Real L2 only; missing levels contribute 0 (never invent sizes/prices)
+- Configurable depth via `startMicroEngine(..., { multiLevels: N })`
+
 ## Changelog (Step 6 – shared data layer)
 
 ### Added
