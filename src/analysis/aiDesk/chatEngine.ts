@@ -1,9 +1,10 @@
 /**
- * Local AI desk chat – answers from live TA + SMC context + mode.
+ * Local AI desk chat – answers from live TA + SMC + Liquidity context + mode.
  */
 
 import type { TaReport } from './taEngine'
 import type { SmcReport } from './smcEngine'
+import type { LiquidityReport } from './liquidityEngine'
 
 export type AiMode =
   | 'technical'
@@ -34,6 +35,11 @@ export interface DrawOptions {
   orderBlock: boolean
   bos: boolean
   volumeProfile: boolean
+  /** Liquidity autodraw */
+  highLow: boolean
+  imbalance: boolean
+  balance: boolean
+  positionBias: boolean
 }
 
 export const DEFAULT_DRAW_OPTS: DrawOptions = {
@@ -46,6 +52,10 @@ export const DEFAULT_DRAW_OPTS: DrawOptions = {
   orderBlock: true,
   bos: true,
   volumeProfile: true,
+  highLow: true,
+  imbalance: true,
+  balance: true,
+  positionBias: true,
 }
 
 function fmt(n: number, d = 4) {
@@ -57,7 +67,8 @@ export function answerMessage(
   userText: string,
   report: TaReport | null,
   mode: AiMode,
-  smc: SmcReport | null = null
+  smc: SmcReport | null = null,
+  liq: LiquidityReport | null = null
 ): { text: string; suggestDraw: boolean } {
   const q = userText.trim().toLowerCase()
   const r = report
@@ -77,10 +88,14 @@ export function answerMessage(
   const wantsFib = /\b(fib|retracement|ritracci)\b/.test(q)
   const wantsEntry = /\b(entry|ingresso|long|short|buy|sell)\b/.test(q)
   const wantsRisk = /\b(risk|stop|sl|tp|rr|rischio|position)\b/.test(q)
-  const wantsFvg = /\b(fvg|fair value|gap|imbalance)\b/.test(q)
+  const wantsFvg = /\b(fvg|fair value|gap)\b/.test(q)
   const wantsOb = /\b(order\s*block|ob\b|blocco)\b/.test(q)
   const wantsVp = /\b(volume\s*profile|poc|vah|val|vp\b)\b/.test(q)
   const wantsBos = /\b(bos|choch|structure|struttura|break)\b/.test(q)
+  const wantsLiq =
+    /\b(liquidit|imbalance|balance|high\s*\/?\s*low|highlow|posizione|long\s*short)\b/.test(
+      q
+    )
   const wantsHelp = /\b(help|aiuto|comandi|cosa puoi)\b/.test(q)
 
   if (wantsHelp || q === '?' || q === 'help') {
@@ -88,14 +103,12 @@ export function answerMessage(
       text: [
         'Posso rispondere su:',
         '• bias / trend / S/R / fib',
-        '• **FVG** (fair value gaps)',
-        '• **Order Block**',
-        '• **BOS / CHoCH**',
-        '• **Volume Profile** (POC, VAH, VAL)',
+        '• **FVG** · **Order Block** · **BOS/CHoCH** · **Volume Profile**',
+        '• **High/Low** · **Imbalance** · **Balance** · **Long/Short** (liquidity)',
         '• entry / risk framing',
-        '• “disegna” → applica sul chart',
+        '• “disegna” → Auto-draw sul chart',
         '',
-        `Modalità: **${mode}** — attiva le checkbox Draw options.`,
+        `Modalità: **${mode}** — checkbox Draw options.`,
       ].join('\n'),
       suggestDraw: false,
     }
@@ -122,7 +135,9 @@ export function answerMessage(
       parts.push('[SMC] FVG · Order Block · BOS/CHoCH · Volume Profile')
       break
     case 'draw':
-      parts.push('[DRAW] Opzioni: S/R, trend, fib, FVG, OB, BOS, VP.')
+      parts.push(
+        '[DRAW] S/R, trend, fib, FVG, OB, BOS, VP, High/Low, Imbalance, Balance, Long/Short.'
+      )
       break
     default:
       parts.push(`[TA] ${r.symbol} ${r.interval}`)
@@ -193,6 +208,18 @@ export function answerMessage(
     }
   }
 
+  if (liq && (wantsLiq || wantsEntry || mode === 'scalp' || mode === 'smc' || mode === 'draw')) {
+    parts.push('— Liquidity —')
+    parts.push(...liq.summary)
+    if (liq.bias === 'long') {
+      parts.push('Pressione **LONG** (book+tape). Conferma con struttura TA/SMC.')
+    } else if (liq.bias === 'short') {
+      parts.push('Pressione **SHORT** (book+tape). Conferma con struttura TA/SMC.')
+    } else {
+      parts.push('Book/tape **neutrali** — attendi sbilanciamento.')
+    }
+  }
+
   if (wantsEntry || mode === 'scalp' || mode === 'swing') {
     if (r.bias === 'bullish' && r.supports[0]) {
       parts.push(
@@ -224,12 +251,13 @@ export function answerMessage(
 
   if (wantsDraw || mode === 'draw' || mode === 'smc') {
     parts.push(
-      'Per disegnare: attiva checkbox (FVG, OB, VP, …) e **Auto-draw**, o scrivi “disegna”.'
+      'Per disegnare: checkbox (FVG, High/Low, Long/Short, …) + **Auto-draw**, o scrivi “disegna”.'
     )
   }
 
   if (parts.length <= 1) parts.push(...r.summary)
   if (smc) parts.push(...smc.summary)
+  if (liq && !wantsLiq) parts.push(...liq.summary.slice(0, 2))
 
   parts.push('_Non è consulenza finanziaria. Dati dalle candele live._')
 
