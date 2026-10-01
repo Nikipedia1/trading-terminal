@@ -1,6 +1,6 @@
 /**
  * Live microstructure engine – subscribes to shared feeds only.
- * Publishes rolling OFI / depth imbalance / VPIN from real data.
+ * Publishes rolling OFI / multi-level OFI / depth imbalance / VPIN from real data.
  */
 
 import { subscribeTradeFeed, subscribeOrderBookFeed } from '@/data/shared'
@@ -8,10 +8,15 @@ import type { AggressorTrade, OrderBookSnapshot } from '@/data/shared'
 import type { ExchangeId } from '@/types'
 import {
   type L1Quote,
+  type LnQuote,
   ofiContribution,
   depthImbalance,
   weightedMid,
   relativeSpreadBps,
+  multiLevelOfiContribution,
+  multiLevelDepthImbalance,
+  lnQuoteFromLevels,
+  topOfLn,
 } from './ofi'
 import {
   type SignedTrade,
@@ -25,15 +30,24 @@ const MAX_QUOTES = 2_000
 const MAX_TRADES = 8_000
 const DEFAULT_BUCKET_VOL = 50 // base asset units – adaptive below
 const VPIN_WINDOW = 50
+const DEFAULT_MULTI_LEVELS = 5
 
 export interface MicroSnapshot {
   exchange: ExchangeId
   symbol: string
-  /** Cumulative OFI since subscribe */
+  /** Cumulative L1 OFI since subscribe */
   ofiCum: number
-  /** Last step OFI contribution */
+  /** Last step L1 OFI contribution */
   ofiStep: number
+  /** Cumulative multi-level OFI (top-N) */
+  multiOfiCum: number
+  /** Last step multi-level OFI */
+  multiOfiStep: number
+  /** Levels used for multi-level metrics */
+  multiLevels: number
   depthImb: number
+  /** Multi-level depth imbalance [-1, 1] */
+  multiDepthImb: number
   mid: number | null
   microPrice: number | null
   spreadBps: number | null
@@ -53,31 +67,28 @@ export interface MicroEngineHandle {
   getSnapshot: () => MicroSnapshot
 }
 
-function topQuote(book: OrderBookSnapshot): L1Quote | null {
-  const b = book.bids[0]
-  const a = book.asks[0]
-  if (!b || !a || b.price <= 0 || a.price <= 0) return null
-  return {
-    bidPrice: b.price,
-    bidSize: b.qty,
-    askPrice: a.price,
-    askSize: a.qty,
-    time: book.updatedAt,
-  }
+function buildLn(book: OrderBookSnapshot, levels: number): LnQuote | null {
+  if (!book.bids.length || !book.asks.length) return null
+  return lnQuoteFromLevels(book.bids, book.asks, levels, book.updatedAt)
 }
 
 export function startMicroEngine(
   exchange: ExchangeId,
   symbol: string,
   onUpdate: MicroListener,
-  opts?: { vpinBucketVol?: number; vpinWindow?: number }
+  opts?: { vpinBucketVol?: number; vpinWindow?: number; multiLevels?: number }
 ): MicroEngineHandle {
   const sym = symbol.toUpperCase()
+  const multiLevels = opts?.multiLevels ?? DEFAULT_MULTI_LEVELS
   const quotes: L1Quote[] = []
+  const lnQuotes: LnQuote[] = []
   const signed: SignedTrade[] = []
   let ofiCum = 0
   let ofiStep = 0
+  let multiOfiCum = 0
+  let multiOfiStep = 0
   let lastQuote: L1Quote | null = null
+  let lastLn: LnQuote | null = null
   let buckets: VolumeBucket[] = []
   let bucketVol = opts?.vpinBucketVol ?? DEFAULT_BUCKET_VOL
   const vpinWindow = opts?.vpinWindow ?? VPIN_WINDOW
@@ -85,12 +96,17 @@ export function startMicroEngine(
 
   const emit = () => {
     const q = lastQuote
+    const ln = lastLn
     const snap: MicroSnapshot = {
       exchange,
       symbol: sym,
       ofiCum,
       ofiStep,
+      multiOfiCum,
+      multiOfiStep,
+      multiLevels,
       depthImb: q ? depthImbalance(q) : 0,
+      multiDepthImb: ln ? multiLevelDepthImbalance(ln, multiLevels) : 0,
       mid: q ? (q.bidPrice + q.askPrice) / 2 : null,
       microPrice: q ? weightedMid(q) : null,
       spreadBps: q ? relativeSpreadBps(q) : null,
@@ -108,15 +124,26 @@ export function startMicroEngine(
   const bookSub = subscribeOrderBookFeed(exchange, sym, {
     onBook: (snap) => {
       if (!snap.ready) return
-      const q = topQuote(snap)
+      const ln = buildLn(snap, multiLevels)
+      if (!ln) return
+      const q = topOfLn(ln)
       if (!q) return
+
       if (lastQuote) {
         ofiStep = ofiContribution(lastQuote, q)
         ofiCum += ofiStep
       }
+      if (lastLn) {
+        multiOfiStep = multiLevelOfiContribution(lastLn, ln, multiLevels, 'equal')
+        multiOfiCum += multiOfiStep
+      }
+
       lastQuote = q
+      lastLn = ln
       quotes.push(q)
+      lnQuotes.push(ln)
       if (quotes.length > MAX_QUOTES) quotes.splice(0, quotes.length - MAX_QUOTES)
+      if (lnQuotes.length > MAX_QUOTES) lnQuotes.splice(0, lnQuotes.length - MAX_QUOTES)
       ready = true
       emit()
     },
@@ -158,12 +185,17 @@ export function startMicroEngine(
     },
     getSnapshot: () => {
       const q = lastQuote
+      const ln = lastLn
       return {
         exchange,
         symbol: sym,
         ofiCum,
         ofiStep,
+        multiOfiCum,
+        multiOfiStep,
+        multiLevels,
         depthImb: q ? depthImbalance(q) : 0,
+        multiDepthImb: ln ? multiLevelDepthImbalance(ln, multiLevels) : 0,
         mid: q ? (q.bidPrice + q.askPrice) / 2 : null,
         microPrice: q ? weightedMid(q) : null,
         spreadBps: q ? relativeSpreadBps(q) : null,

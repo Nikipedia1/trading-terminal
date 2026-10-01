@@ -80,3 +80,48 @@ CVD[t] = Σ barDelta[i] for i ≤ t   (from first bar in series)
 ## Value area
 
 Standard: sort buckets by volume, expand from POC alternating high/low until ≥ vaTarget (0.68/0.70/0.80) of total volume.
+
+## Order Flow Imbalance (OFI) – Cont, Kukanov & Stoikov 2014
+
+L1 (best quotes only):
+
+```
+e_n (bid):
+  if bidPrice ↑ → +curr.bidSize
+  if bidPrice same → +(curr.bidSize − prev.bidSize)
+  if bidPrice ↓ → −prev.bidSize
+
+e_n (ask):
+  if askPrice ↓ → −curr.askSize
+  if askPrice same → −(curr.askSize − prev.askSize)
+  if askPrice ↑ → +prev.askSize
+
+OFI_step = e_bid + e_ask
+OFI_cum  = Σ OFI_step over interval
+```
+
+## Multi-level OFI (MLOFI)
+
+Same Cont rules applied independently at each of the top N levels (default N=5),
+then summed (equal weight, or optional harmonic/linear decay):
+
+```
+for k = 0 .. N-1:
+  contrib_k = levelBidContribution(prev.bids[k], curr.bids[k])
+            + levelAskContribution(prev.asks[k], curr.asks[k])
+  weight_k  = 1                    # equal
+            | 1/(k+1)              # harmonic
+            | (N−k)/N              # linear
+MLOFI_step = Σ weight_k · contrib_k
+MLOFI_cum  = Σ MLOFI_step
+```
+
+Missing levels contribute 0 — never invent sizes/prices.
+
+Multi-level depth imbalance:
+
+```
+bidTot = Σ size over top N bids
+askTot = Σ size over top N asks
+multiDepthImb = (bidTot − askTot) / (bidTot + askTot)   ∈ [-1, 1]
+```
