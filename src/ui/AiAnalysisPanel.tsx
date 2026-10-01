@@ -1,5 +1,5 @@
 /**
- * AI Desk – modes, SMC, chat, auto-draw, selectable AI API.
+ * AI Desk – modes, SMC, liquidity, chat, auto-draw, selectable AI API.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -12,6 +12,11 @@ import {
   smcToDrawings,
   type SmcReport,
 } from '@/analysis/aiDesk/smcEngine'
+import {
+  analyzeLiquidity,
+  liquidityToDrawings,
+  type LiquidityReport,
+} from '@/analysis/aiDesk/liquidityEngine'
 import {
   AI_MODES,
   DEFAULT_DRAW_OPTS,
@@ -40,9 +45,9 @@ let msgSeq = 0
 function filterClassic(all: Drawing[], opts: DrawOptions): Drawing[] {
   return all.filter((d) => {
     if (d.tool === 'horizontal') {
-      if (d.style.color === '#0ecb81') return opts.support
-      if (d.style.color === '#f6465d') return opts.resistance
-      return opts.support || opts.resistance
+      if (d.style.color === '#0ecb81') return opts.support || opts.highLow
+      if (d.style.color === '#f6465d') return opts.resistance || opts.highLow
+      return opts.support || opts.resistance || opts.highLow
     }
     if (d.tool === 'trendline') return opts.trend
     if (d.tool === 'fib_retracement') return opts.fib
@@ -54,13 +59,26 @@ function filterClassic(all: Drawing[], opts: DrawOptions): Drawing[] {
   })
 }
 
-const QUICK = ['Bias', 'FVG', 'Order block', 'Volume profile', 'BOS', 'Disegna', 'Help']
+const QUICK = [
+  'Bias',
+  'FVG',
+  'Order block',
+  'Volume profile',
+  'BOS',
+  'High/Low',
+  'Imbalance',
+  'Long/Short',
+  'Disegna',
+  'Help',
+]
 
 export function AiAnalysisPanel() {
   const candles = useMarketStore((s) => s.candles)
   const symbol = useMarketStore((s) => s.symbol)
   const interval = useMarketStore((s) => s.interval)
   const ticker = useMarketStore((s) => s.ticker)
+  const orderBook = useMarketStore((s) => s.orderBook)
+  const trades = useMarketStore((s) => s.trades)
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const addDrawing = useDrawingStore((s) => s.addDrawing)
   const clearDrawings = useDrawingStore((s) => s.clearDrawings)
@@ -78,7 +96,7 @@ export function AiAnalysisPanel() {
     {
       id: ++msgSeq,
       role: 'sys',
-      text: 'AI Desk · scegli API (Local / Grok / OpenAI / …) e mode. Chiave salvata solo in questo browser.',
+      text: 'AI Desk · API + mode. Analyze include Liquidity (High/Low, imbalance, long/short). Auto-draw sul chart.',
     },
   ])
   const [input, setInput] = useState('')
@@ -102,11 +120,19 @@ export function AiAnalysisPanel() {
   const ensure = useCallback(() => {
     const r = analyzeCandles(candles, symbol, interval)
     const s = analyzeSmc(candles)
-    return { r, s }
-  }, [candles, symbol, interval])
+    const l = analyzeLiquidity(
+      candles,
+      orderBook,
+      trades,
+      ticker?.highPrice,
+      ticker?.lowPrice,
+      ticker?.lastPrice
+    )
+    return { r, s, l }
+  }, [candles, symbol, interval, orderBook, trades, ticker])
 
   const applyDraw = useCallback(
-    (r: TaReport, s: SmcReport) => {
+    (r: TaReport, s: SmcReport, l: LiquidityReport) => {
       loadFromStorage(primaryPanelId, symbol)
       const classic = filterClassic(reportToDrawings(r, 'AI'), opts)
       const smcDraws = smcToDrawings(s, {
@@ -116,17 +142,31 @@ export function AiAnalysisPanel() {
         volumeProfile: opts.volumeProfile,
         onlyUnmitigatedFvg: true,
       })
-      const all = [...classic, ...smcDraws]
+      const anchor =
+        candles.length > 0
+          ? candles[candles.length - 1]!.time
+          : Math.floor(Date.now() / 1000)
+      const liqDraws = liquidityToDrawings(
+        l,
+        {
+          highLow: opts.highLow,
+          imbalance: opts.imbalance,
+          balance: opts.balance,
+          positionBias: opts.positionBias,
+        },
+        anchor
+      )
+      const all = [...classic, ...smcDraws, ...liqDraws]
       for (const d of all) addDrawing(primaryPanelId, symbol, d)
       return all.length
     },
-    [opts, primaryPanelId, symbol, addDrawing, loadFromStorage]
+    [opts, primaryPanelId, symbol, addDrawing, loadFromStorage, candles]
   )
 
   const onAutoDraw = useCallback(() => {
-    const { r, s } = ensure()
-    const n = applyDraw(r, s)
-    push('sys', `Auto-draw: ${n} oggetti su ${symbol}`)
+    const { r, s, l } = ensure()
+    const n = applyDraw(r, s, l)
+    push('sys', `Auto-draw: ${n} oggetti su ${symbol} (TA+SMC+Liquidity)`)
   }, [ensure, applyDraw, push, symbol])
 
   const onClear = useCallback(() => {
@@ -135,12 +175,19 @@ export function AiAnalysisPanel() {
   }, [clearDrawings, primaryPanelId, symbol, push])
 
   const onAnalyze = useCallback(() => {
-    const { r, s } = ensure()
+    const { r, s, l } = ensure()
     push(
       'ai',
-      [`**${r.symbol}** ${r.interval} · bias **${r.bias}**`, ...r.summary, '', '— SMC —', ...s.summary].join(
-        '\n'
-      )
+      [
+        `**${r.symbol}** ${r.interval} · bias **${r.bias}**`,
+        ...r.summary,
+        '',
+        '— SMC —',
+        ...s.summary,
+        '',
+        '— Liquidity —',
+        ...l.summary,
+      ].join('\n')
     )
   }, [ensure, push])
 
@@ -152,26 +199,26 @@ export function AiAnalysisPanel() {
       push('user', text)
       setBusy(true)
       try {
-        const { r, s } = ensure()
-        const { text: reply, source } = await callAiChat(text, api, mode, r, s)
+        const { r, s, l } = ensure()
+        const { text: reply, source } = await callAiChat(text, api, mode, r, s, l)
         push('ai', reply)
         push('sys', `via ${source}`)
         if (/\b(disegn|draw|traccia)\b/i.test(text)) {
-          const n = applyDraw(r, s)
+          const n = applyDraw(r, s, l)
           push('sys', `Draw: ${n} oggetti`)
         }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'API error'
         push('sys', `Errore API: ${msg}`)
-        // fallback local
         try {
-          const { r, s } = ensure()
+          const { r, s, l } = ensure()
           const { text: reply } = await callAiChat(
             text,
             { ...api, provider: 'local' },
             mode,
             r,
-            s
+            s,
+            l
           )
           push('ai', `(fallback local)\n${reply}`)
         } catch {
@@ -203,7 +250,6 @@ export function AiAnalysisPanel() {
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px]">
-      {/* API selector */}
       <div className="shrink-0 px-2 pt-2 pb-1 border-b border-[#1e2329] space-y-1">
         <div className="flex items-center justify-between">
           <button
@@ -269,28 +315,12 @@ export function AiAnalysisPanel() {
                     className="w-full bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-1 font-mono text-[10px] text-[#eaecef]"
                   />
                 )}
-                {meta.docs && (
-                  <a
-                    href={meta.docs}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[9px] text-[#5b8def] hover:underline"
-                  >
-                    Get API key →
-                  </a>
-                )}
               </>
-            )}
-            {api.provider === 'local' && (
-              <p className="text-[9px] text-[#5e6673] leading-snug">
-                Motore locale su candele/SMC. Per Grok/OpenAI incolla la key sopra.
-              </p>
             )}
           </div>
         )}
       </div>
 
-      {/* Mode */}
       <div className="shrink-0 px-2 pt-1.5 pb-1 border-b border-[#1e2329]">
         <div className="text-[9px] text-[#848e9c] uppercase tracking-wider mb-1">Mode</div>
         <div className="flex flex-wrap gap-1">
@@ -315,7 +345,6 @@ export function AiAnalysisPanel() {
         </div>
       </div>
 
-      {/* Draw options */}
       <div className="shrink-0 px-2 py-1.5 border-b border-[#1e2329] space-y-1.5">
         <div className="flex items-center justify-between">
           <button
@@ -341,6 +370,10 @@ export function AiAnalysisPanel() {
                 ['orderBlock', 'Order Block'],
                 ['bos', 'BOS/CHoCH'],
                 ['volumeProfile', 'Vol Profile'],
+                ['highLow', 'High/Low'],
+                ['imbalance', 'Imbalance'],
+                ['balance', 'Balance'],
+                ['positionBias', 'Long/Short'],
                 ['label', 'Label'],
               ] as const
             ).map(([key, label]) => (
