@@ -6,6 +6,7 @@
 
 import type { TaReport } from './taEngine'
 import type { SmcReport } from './smcEngine'
+import type { LiquidityReport } from './liquidityEngine'
 import type { AiMode } from './chatEngine'
 import { answerMessage } from './chatEngine'
 
@@ -142,7 +143,8 @@ function providerMeta(id: AiProviderId): AiProviderMeta {
 function buildSystemPrompt(
   mode: AiMode,
   report: TaReport | null,
-  smc: SmcReport | null
+  smc: SmcReport | null,
+  liq: LiquidityReport | null = null
 ): string {
   const lines = [
     'You are a crypto market desk assistant inside a trading terminal.',
@@ -155,24 +157,30 @@ function buildSystemPrompt(
   if (smc) {
     lines.push(`SMC: ${JSON.stringify(smc).slice(0, 2000)}`)
   }
+  if (liq) {
+    lines.push(
+      `Liquidity: ${JSON.stringify(liq.summary).slice(0, 800)} bias=${liq.bias} score=${liq.score}`
+    )
+  }
   lines.push(`Mode: ${mode}`)
   return lines.join('\n')
 }
 
 /**
  * Primary API used by AiAnalysisPanel.
- * callAiChat(message, settings, mode, ta, smc) → { text, source }
+ * callAiChat(message, settings, mode, ta, smc, liq?) → { text, source }
  */
 export async function callAiChat(
   userMessage: string,
   settings: AiApiSettings,
   mode: AiMode,
   report: TaReport | null,
-  smc: SmcReport | null
+  smc: SmcReport | null,
+  liq: LiquidityReport | null = null
 ): Promise<{ text: string; source: string }> {
   if (settings.provider === 'local') {
-    const text = answerMessage(userMessage, mode, report, smc)
-    return { text, source: 'local' }
+    const res = answerMessage(userMessage, report, mode, smc, liq)
+    return { text: res.text, source: 'local' }
   }
   const meta = providerMeta(settings.provider)
   const base =
@@ -192,7 +200,7 @@ export async function callAiChat(
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: buildSystemPrompt(mode, report, smc) },
+        { role: 'system', content: buildSystemPrompt(mode, report, smc, liq) },
         { role: 'user', content: userMessage },
       ],
       temperature: 0.3,
@@ -216,8 +224,9 @@ export async function runAiChat(
   mode: AiMode,
   settings: AiApiSettings,
   report: TaReport | null,
-  smc: SmcReport | null
+  smc: SmcReport | null,
+  liq: LiquidityReport | null = null
 ): Promise<string> {
-  const r = await callAiChat(userMessage, settings, mode, report, smc)
+  const r = await callAiChat(userMessage, settings, mode, report, smc, liq)
   return r.text
 }
