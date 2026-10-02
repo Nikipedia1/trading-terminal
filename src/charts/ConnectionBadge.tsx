@@ -42,6 +42,11 @@ export function ConnectionBadge({
         }`}
       />
       {LABELS[status]}
+      {detail && (status === 'connecting' || status === 'reconnecting') && (
+        <span className="opacity-70 max-w-[9rem] truncate hidden sm:inline">
+          · {detail}
+        </span>
+      )}
     </span>
   )
 }
