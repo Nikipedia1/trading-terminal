@@ -66,6 +66,7 @@ import {
 } from '@/analysis/footprint'
 import { ReplayBar } from '@/analysis/replay'
 import { PaperPositionLines } from '@/trading/paper'
+import { LOAD_MORE_THRESHOLD } from '@/data/klines/history'
 
 function intervalToSeconds(interval: Interval): number {
   const m: Record<string, number> = {
@@ -324,36 +325,52 @@ export function ChartContainer({
     const historyKey = `${instrumentKey}|${first}|${candles.length}|${last}`
     const prev = prevBarsMetaRef.current
 
-    // Prepend detection: older first bar + more bars, same last bar (history page)
+    // Prepend: older first + more bars; tolerate concurrent live last-bar updates
+    const prevFirstStillInSeries =
+      prev.first != null && candles.some((c) => c.time === prev.first)
     const isPrepend =
       prev.len > 0 &&
       prev.first != null &&
-      prev.last != null &&
       candles.length > prev.len &&
       first < prev.first &&
-      last === prev.last
+      prevFirstStillInSeries
+
+    // Live path: same series head, only tail grows / last bar mutates
+    const isLiveTail =
+      prev.len > 0 &&
+      prev.first != null &&
+      first === prev.first &&
+      (last ?? 0) >= (prev.last ?? 0)
 
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
       const chart = chartRef.current
-      const logicalBefore =
-        isPrepend && chart
+
+      if (isPrepend) {
+        const logicalBefore = chart
           ? chart.timeScale().getVisibleLogicalRange()
           : null
-      const added = isPrepend ? candles.length - prev.len : 0
-
-      seriesMgrRef.current.setCandles(candles)
-
-      if (isPrepend && chart && logicalBefore && added > 0) {
-        // Keep viewport stable: shift logical range by bars prepended
-        try {
-          chart.timeScale().setVisibleLogicalRange({
-            from: logicalBefore.from + added,
-            to: logicalBefore.to + added,
-          })
-        } catch { /* */ }
+        const added = candles.length - prev.len
+        seriesMgrRef.current.setCandles(candles)
+        if (chart && logicalBefore && added > 0) {
+          try {
+            chart.timeScale().setVisibleLogicalRange({
+              from: logicalBefore.from + added,
+              to: logicalBefore.to + added,
+            })
+          } catch { /* */ }
+        }
         loadMoreBusyRef.current = false
+      } else if (isLiveTail) {
+        // New bar or in-bar update: never fitContent (keeps user pan/zoom)
+        if (candles.length === prev.len) {
+          seriesMgrRef.current.updateCandle(candles[candles.length - 1])
+        } else {
+          seriesMgrRef.current.setCandles(candles)
+        }
       } else {
+        // Instrument change / first load
+        seriesMgrRef.current.setCandles(candles)
         seriesMgrRef.current.resetPriceScale()
         const series = seriesMgrRef.current.getCandleSeries() as
           | ISeriesApi<'Candlestick'>
@@ -393,29 +410,53 @@ export function ChartContainer({
     const chart = chartRef.current
     if (!chart || !onLoadMoreHistory) return
 
-    const onLogical = (range: { from: number; to: number } | null) => {
-      if (!range) return
+    let debounceTimer: number | null = null
+    let safetyTimer: number | null = null
+
+    const triggerLoad = () => {
       if (!hasMoreRef.current) return
       if (loadingMoreRef.current || loadMoreBusyRef.current) return
-      // Trigger when left edge is within ~15 bars of the series start
-      if (range.from > 15) return
       const fn = onLoadMoreRef.current
       if (!fn) return
       loadMoreBusyRef.current = true
+      // Safety: release busy if prepend path never runs (error / empty page)
+      if (safetyTimer != null) window.clearTimeout(safetyTimer)
+      safetyTimer = window.setTimeout(() => {
+        loadMoreBusyRef.current = false
+      }, 12_000)
       Promise.resolve(fn())
         .then((n) => {
           if (!n || (typeof n === 'number' && n <= 0)) {
             loadMoreBusyRef.current = false
+            if (safetyTimer != null) {
+              window.clearTimeout(safetyTimer)
+              safetyTimer = null
+            }
           }
-          // busy cleared after prepend path updates candles
         })
         .catch(() => {
           loadMoreBusyRef.current = false
+          if (safetyTimer != null) {
+            window.clearTimeout(safetyTimer)
+            safetyTimer = null
+          }
         })
+    }
+
+    const onLogical = (range: { from: number; to: number } | null) => {
+      if (!range) return
+      if (!hasMoreRef.current) return
+      if (loadingMoreRef.current || loadMoreBusyRef.current) return
+      // Prefetch when left edge is within threshold bars of series start
+      if (range.from > LOAD_MORE_THRESHOLD) return
+      if (debounceTimer != null) window.clearTimeout(debounceTimer)
+      debounceTimer = window.setTimeout(triggerLoad, 180)
     }
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(onLogical)
     return () => {
+      if (debounceTimer != null) window.clearTimeout(debounceTimer)
+      if (safetyTimer != null) window.clearTimeout(safetyTimer)
       try {
         chart.timeScale().unsubscribeVisibleLogicalRangeChange(onLogical)
       } catch { /* */ }
@@ -642,7 +683,15 @@ export function ChartContainer({
         {loadingMore && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
             <div className="px-2.5 py-1 rounded bg-[#0b0e11]/90 border border-[#f0b90b]/40 text-[11px] text-[#f0b90b] font-medium shadow">
-              Loading older bars…
+              Loading older bars… · {candles.length.toLocaleString()} loaded
+            </div>
+          </div>
+        )}
+
+        {!hasMoreHistory && candles.length > 500 && !loadingMore && (
+          <div className="absolute top-2 left-2 z-10 pointer-events-none">
+            <div className="px-1.5 py-0.5 rounded bg-[#0b0e11]/80 border border-[#2b3139] text-[10px] text-[#5e6673]">
+              History limit · {candles.length.toLocaleString()} bars
             </div>
           </div>
         )}
