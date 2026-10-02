@@ -38,7 +38,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const setMarketSymbol = useMarketStore((s) => s.setSymbol)
 
   const ofRaw = useOrderflowStore((s) => s.byPanel[id])
-  // Merge defaults so missing keys (deltaCfg, gammaCfg, …) never crash toggles
   const ofState = { ...defaultOrderflowState(), ...(ofRaw ?? {}) }
   const patchOf = useOrderflowStore((s) => s.patch)
 
@@ -46,20 +45,33 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
 
-  const { candles, status, lastError, loadMoreHistory, hasMoreHistory, loadingMore } = usePanelMarket(symbol, interval, exchange)
+  const {
+    candles,
+    status,
+    lastError,
+    statusDetail,
+    loadMoreHistory,
+    hasMoreHistory,
+    loadingMore,
+  } = usePanelMarket(symbol, interval, exchange)
 
   useEffect(() => {
     const st = useOrderflowStore.getState()
     if (!st.byPanel[id]) st.set(id, defaultOrderflowState())
   }, [id])
 
+  const onDetach = (e: MouseEvent) => {
+    e.stopPropagation()
+    detachChartPanel({ symbol, interval, exchange })
+  }
+
   const [symbolDraft, setSymbolDraft] = useState(symbol)
   useEffect(() => {
     setSymbolDraft(symbol)
   }, [symbol])
 
-  const commitSymbol = () => {
-    const next = symbolDraft.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const commitSymbol = (raw: string) => {
+    const next = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
     if (!next || next.length < 4) return
     if (next === symbol) {
       setSymbolDraft(next)
@@ -73,66 +85,104 @@ export function ChartPanel({ config }: ChartPanelProps) {
   return (
     <div className="h-full w-full flex flex-col bg-terminal-panel border border-terminal-border rounded-sm overflow-hidden">
       <div className="panel-drag-handle flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b border-terminal-border bg-[#0b0e11] shrink-0 cursor-move select-none min-h-[40px]">
-        <SymbolBadge symbol={symbol} />
+        <SymbolBadge symbol={symbol} size="md" showName />
+
         <input
-          className="bg-transparent text-[#f0b90b] text-xs font-semibold w-24 outline-none border-b border-transparent focus:border-[#f0b90b]/40"
+          className="bg-[#12161c] border border-[#f0b90b]/50 rounded px-1.5 py-0.5 text-xs w-[7.5rem] font-mono font-semibold text-[#eaecef]"
           value={symbolDraft}
-          onChange={(e) => setSymbolDraft(e.target.value)}
-          onBlur={commitSymbol}
+          list={`panel-symbols-${id}`}
+          onChange={(e) => setSymbolDraft(e.target.value.toUpperCase())}
+          onBlur={(e) => commitSymbol(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') commitSymbol()
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitSymbol(e.currentTarget.value)
+              e.currentTarget.blur()
+            }
           }}
           onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          title="Full trading pair — Enter or blur to apply"
+          aria-label="Symbol"
         />
+        <datalist id={`panel-symbols-${id}`}>
+          {SYMBOL_PRESETS.map((pr) => (
+            <option key={pr.symbol} value={pr.symbol}>
+              {formatSymbolOption(pr.symbol)}
+            </option>
+          ))}
+        </datalist>
+
         <select
-          className="text-xxs bg-[#1e2329] text-terminal-text border border-terminal-border rounded px-1 py-0.5"
+          className="bg-[#12161c] border border-terminal-border rounded px-1 py-0.5 text-xxs text-[#eaecef]"
           value={interval}
           onChange={(e) => updatePanel(id, { interval: e.target.value as Interval })}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {INTERVALS.map((iv) => (
-            <option key={iv} value={iv}>
-              {iv}
+          {INTERVALS.map((i) => (
+            <option key={i} value={i}>
+              {i}
             </option>
           ))}
         </select>
+
+        <ChartPanelHud interval={interval} exchange={exchange} symbol={symbol} />
+
         <select
-          className="text-xxs bg-[#1e2329] text-terminal-text border border-terminal-border rounded px-1 py-0.5"
+          className="bg-[#12161c] border border-terminal-border rounded px-1 py-0.5 text-xxs text-[#eaecef] max-w-[9rem]"
           value={exchange}
           onChange={(e) => updatePanel(id, { exchange: e.target.value as ExchangeId })}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {SUPPORTED_EXCHANGES.map((ex) => (
             <option key={ex} value={ex}>
-              {EXCHANGE_LABELS[ex]}
+              {EXCHANGE_LABELS[ex] ?? ex}
             </option>
           ))}
         </select>
-        <ConnectionBadge status={status} />
-        <ChartPanelHud symbol={symbol} candles={candles} />
+
+        <select
+          className="bg-[#12161c] border border-terminal-border rounded px-1 py-0.5 text-xxs text-[#eaecef]"
+          title="Sync group"
+          value={syncGroup ?? ''}
+          onChange={(e) => updatePanel(id, { syncGroup: e.target.value || null })}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <option value="">No sync</option>
+          <option value="A">Sync A</option>
+          <option value="B">Sync B</option>
+          <option value="C">Sync C</option>
+        </select>
+
         <button
           type="button"
-          className={`text-xxs px-1.5 py-0.5 rounded border ${isPrimary ? 'text-[#f0b90b] border-[#f0b90b]/40' : 'text-terminal-muted border-terminal-border'}`}
+          className={`text-xxs px-1.5 py-0.5 rounded ${
+            isPrimary
+              ? 'bg-terminal-blue/30 text-terminal-blue'
+              : 'text-terminal-muted hover:text-terminal-text'
+          }`}
+          title="Primary panel"
           onClick={(e) => {
             e.stopPropagation()
             setPrimaryPanel(id)
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          primary
+          ★
         </button>
+
         <button
           type="button"
-          className="text-xxs px-1.5 py-0.5 rounded text-terminal-muted hover:text-terminal-text"
-          title="Detach"
-          onClick={(e) => {
-            e.stopPropagation()
-            detachChartPanel(id)
-          }}
+          className="text-xxs px-1.5 py-0.5 rounded text-terminal-muted hover:text-[#f0b90b]"
+          title="Open on second monitor"
+          onClick={onDetach}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          detach
+          ⧉
         </button>
+
+        <ConnectionBadge status={status} detail={statusDetail} />
+
         <button
           type="button"
           className="ml-auto text-xxs px-1.5 py-0.5 rounded text-terminal-red/80 hover:text-terminal-red"
@@ -190,9 +240,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
           candles={candles}
           status={status}
           lastError={lastError}
-          onLoadMoreHistory={loadMoreHistory}
-          hasMoreHistory={hasMoreHistory}
-          loadingMore={loadingMore}
           syncGroup={syncGroup}
           deepPrintEnabled={ofState.print}
           deltaEnabled={!!ofState.delta}
@@ -208,6 +255,9 @@ export function ChartPanel({ config }: ChartPanelProps) {
           gammaConfig={ofState.gammaCfg}
           replayEnabled={ofState.replay}
           isPrimary={isPrimary}
+          onLoadMoreHistory={loadMoreHistory}
+          hasMoreHistory={hasMoreHistory}
+          loadingMore={loadingMore}
         />
       </div>
     </div>
