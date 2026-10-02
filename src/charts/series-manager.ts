@@ -3,6 +3,7 @@
  * Reactive price scale for every instrument (adaptive precision + autoScale).
  */
 
+import { LastPriceAnimationMode } from 'lightweight-charts'
 import type {
   IChartApi,
   ISeriesApi,
@@ -73,6 +74,7 @@ export class SeriesManager {
       wickUpColor: this.candleStyle.upWick,
       wickDownColor: this.candleStyle.downWick,
       lastValueVisible: true,
+      lastPriceAnimation: LastPriceAnimationMode.OnDataUpdate,
       priceLineVisible: true,
       priceLineWidth: 1,
       priceLineStyle: 2,
@@ -152,10 +154,6 @@ export class SeriesManager {
     this.resetPriceScale()
   }
 
-  /**
-   * Full unlock of the right price scale (all instruments).
-   * Clears free-pan autoscaleInfoProvider lock + forces autoScale.
-   */
   resetPriceScale() {
     this.candleSeries?.applyOptions({
       autoscaleInfoProvider: undefined,
@@ -165,7 +163,6 @@ export class SeriesManager {
     })
   }
 
-  /** Apply adaptive priceFormat from a reference price (last close). */
   applyPriceFormatFor(refPrice: number) {
     const fmt = inferPriceFormat(refPrice)
     this.candleSeries?.applyOptions({ priceFormat: fmt })
@@ -295,9 +292,9 @@ export class SeriesManager {
     const seriesMarkers: SeriesMarker<Time>[] = markers.map((m) => ({
       time: m.time as Time,
       position: 'inBar',
-      color: m.kind === 'absorption' ? '#f0b90b' : '#848e9c',
+      color: m.kind.startsWith('absorption') ? '#f0b90b' : '#848e9c',
       shape: 'circle',
-      text: m.kind === 'absorption' ? 'Abs' : 'Agg',
+      text: m.kind.startsWith('absorption') ? 'Abs' : 'Agg',
     }))
     this.candleSeries.setMarkers(seriesMarkers)
   }
