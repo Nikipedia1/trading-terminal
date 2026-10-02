@@ -46,96 +46,69 @@ export class BinanceClient implements ExchangeClient {
 
   // ─── REST ───────────────────────────────────────────────────────────────
 
-  async getKlines(symbol: string, interval: Interval, limit = 500, endTimeMs?: number): Promise<Candle[]> {
+  async getKlines(
+    symbol: string,
+    interval: Interval,
+    limit = 500,
+    endTimeMs?: number
+  ): Promise<Candle[]> {
     const lim = Math.min(Math.max(limit, 1), 1000)
-    let url = `${REST_BASE}/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${toBinanceInterval(interval)}&limit=${lim}`
-    if (endTimeMs != null && Number.isFinite(endTimeMs)) {
-      url += `&endTime=${Math.floor(endTimeMs)}`
+    let url =
+      `${REST_BASE}/api/v3/klines?symbol=${symbol.toUpperCase()}` +
+      `&interval=${toBinanceInterval(interval)}&limit=${lim}`
+    if (endTimeMs != null) url += `&endTime=${endTimeMs}`
+    const res = await fetch(url)
+    if (!res.ok) {
+      throw createError('REST_KLINES', `Binance klines HTTP ${res.status}`)
     }
-    try {
-      const res = await fetch(url)
-      if (!res.ok) {
-        const body = await res.text()
-        if (res.status === 429) {
-          throw createError('RATE_LIMIT', `Binance rate limit (429). Weight budget ~1200/min per IP. ${body}`)
-        }
-        if (res.status === 400) {
-          throw createError('BAD_SYMBOL', `Binance rejected request (invalid symbol/interval?): ${body}`)
-        }
-        throw createError('REST_KLINES', `HTTP ${res.status}: ${body}`)
-      }
-      const raw: any[][] = await res.json()
-      if (!Array.isArray(raw) || raw.length === 0) {
-        throw createError('EMPTY_KLINES', `No klines returned for ${symbol} ${interval}`)
-      }
-      return raw.map((k) => ({
-        time: Math.floor(k[0] / 1000),
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5]),
-      }))
-    } catch (err: any) {
-      if (err.code) throw err
-      throw createError('REST_KLINES', err.message || 'Unknown error fetching klines')
-    }
-  }
-
-  async getOrderBook(symbol: string, limit = 20): Promise<OrderBook> {
-    const url = `${REST_BASE}/api/v3/depth?symbol=${symbol.toUpperCase()}&limit=${limit}`
-    try {
-      const res = await fetch(url)
-      if (!res.ok) {
-        const body = await res.text()
-        if (res.status === 429) {
-          throw createError('RATE_LIMIT', `Binance rate limit (429). ${body}`)
-        }
-        throw createError('REST_DEPTH', `HTTP ${res.status}: ${body}`)
-      }
-      const raw = await res.json()
-      return {
-        symbol: symbol.toUpperCase(),
-        lastUpdateId: raw.lastUpdateId,
-        bids: (raw.bids || []).map((b: string[]) => [parseFloat(b[0]), parseFloat(b[1])] as [number, number]),
-        asks: (raw.asks || []).map((a: string[]) => [parseFloat(a[0]), parseFloat(a[1])] as [number, number]),
-      }
-    } catch (err: any) {
-      if (err.code) throw err
-      throw createError('REST_DEPTH', err.message || 'Unknown error fetching depth')
-    }
+    const raw = await res.json()
+    return (raw as any[]).map((k) => ({
+      time: Math.floor(k[0] / 1000),
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume: parseFloat(k[5]),
+    }))
   }
 
   async getTicker(symbol: string): Promise<Ticker> {
     const url = `${REST_BASE}/api/v3/ticker/24hr?symbol=${symbol.toUpperCase()}`
-    try {
-      const res = await fetch(url)
-      if (!res.ok) {
-        const body = await res.text()
-        if (res.status === 429) {
-          throw createError('RATE_LIMIT', `Binance rate limit (429). ${body}`)
-        }
-        throw createError('REST_TICKER', `HTTP ${res.status}: ${body}`)
-      }
-      const raw = await res.json()
-      return {
-        symbol: raw.symbol,
-        lastPrice: parseFloat(raw.lastPrice),
-        bidPrice: parseFloat(raw.bidPrice),
-        askPrice: parseFloat(raw.askPrice),
-        volume24h: parseFloat(raw.volume),
-        quoteVolume24h: parseFloat(raw.quoteVolume),
-        priceChangePercent: parseFloat(raw.priceChangePercent),
-        high24h: parseFloat(raw.highPrice),
-        low24h: parseFloat(raw.lowPrice),
-      }
-    } catch (err: any) {
-      if (err.code) throw err
-      throw createError('REST_TICKER', err.message || 'Unknown error fetching ticker')
+    const res = await fetch(url)
+    if (!res.ok) throw createError('REST_TICKER', `Binance ticker HTTP ${res.status}`)
+    const t = await res.json()
+    return {
+      symbol: t.symbol,
+      lastPrice: parseFloat(t.lastPrice),
+      bidPrice: parseFloat(t.bidPrice),
+      askPrice: parseFloat(t.askPrice),
+      priceChangePercent: parseFloat(t.priceChangePercent),
+      highPrice: parseFloat(t.highPrice),
+      lowPrice: parseFloat(t.lowPrice),
+      volume: parseFloat(t.volume),
+      quoteVolume: parseFloat(t.quoteVolume),
     }
   }
 
-  // ─── WebSocket ──────────────────────────────────────────────────────────
+  async getOrderBook(symbol: string, limit = 20): Promise<OrderBook> {
+    const url =
+      `${REST_BASE}/api/v3/depth?symbol=${symbol.toUpperCase()}&limit=${limit}`
+    const res = await fetch(url)
+    if (!res.ok) throw createError('REST_DEPTH', `Binance depth HTTP ${res.status}`)
+    const d = await res.json()
+    return {
+      symbol: symbol.toUpperCase(),
+      lastUpdateId: d.lastUpdateId,
+      bids: (d.bids || []).map(
+        (b: string[]) => [parseFloat(b[0]), parseFloat(b[1])] as [number, number]
+      ),
+      asks: (d.asks || []).map(
+        (a: string[]) => [parseFloat(a[0]), parseFloat(a[1])] as [number, number]
+      ),
+    }
+  }
+
+  // ─── WS ─────────────────────────────────────────────────────────────────
 
   subscribeKlines(
     symbol: string,
@@ -150,14 +123,14 @@ export class BinanceClient implements ExchangeClient {
     onStatus?.('connecting', 'opening kline stream')
 
     const ws = new ReconnectingWebSocket(url, {
-      onOpen: () => {
-        this.status = 'connected'
-        onStatus?.('connected', 'kline stream live')
+      onStatus: (s, detail) => {
+        this.status = s
+        onStatus?.(s, detail ?? (s === 'connected' ? 'kline stream live' : undefined))
       },
       onMessage: (data) => {
         try {
-          const msg = JSON.parse(data)
-          const k = msg.k
+          const msg = typeof data === 'string' ? JSON.parse(data) : data
+          const k = msg?.k
           if (!k) return
           const candle: Candle = {
             time: Math.floor(k.t / 1000),
@@ -172,16 +145,12 @@ export class BinanceClient implements ExchangeClient {
           onError(createError('WS_PARSE', e.message || 'kline parse error'))
         }
       },
-      onError: () => {
+      onError: (message) => {
         this.status = 'error'
-        onError(createError('WS_ERROR', 'Binance kline WebSocket error'))
-        onStatus?.('error', 'kline socket error')
-      },
-      onClose: () => {
-        this.status = 'disconnected'
-        onStatus?.('disconnected', 'kline socket closed')
+        onError(createError('WS_ERROR', message || 'Binance kline WebSocket error'))
       },
     })
+    void ws.connect()
 
     return () => {
       ws.close()
@@ -198,10 +167,11 @@ export class BinanceClient implements ExchangeClient {
     const stream = `${symbol.toLowerCase()}@trade`
     const url = `${WS_BASE}/ws/${stream}`
     const ws = new ReconnectingWebSocket(url, {
-      onOpen: () => onStatus?.('connected', 'trade stream live'),
+      onStatus: (s, detail) =>
+        onStatus?.(s, detail ?? (s === 'connected' ? 'trade stream live' : undefined)),
       onMessage: (data) => {
         try {
-          const msg = JSON.parse(data)
+          const msg = typeof data === 'string' ? JSON.parse(data) : data
           onTrade({
             id: String(msg.t),
             time: Math.floor(msg.T / 1000),
@@ -214,9 +184,10 @@ export class BinanceClient implements ExchangeClient {
           onError(createError('WS_PARSE', e.message || 'trade parse error'))
         }
       },
-      onError: () => onError(createError('WS_ERROR', 'Binance trade WebSocket error')),
-      onClose: () => onStatus?.('disconnected', 'trade socket closed'),
+      onError: (message) =>
+        onError(createError('WS_ERROR', message || 'Binance trade WebSocket error')),
     })
+    void ws.connect()
     return () => ws.close()
   }
 
@@ -229,23 +200,29 @@ export class BinanceClient implements ExchangeClient {
     const stream = `${symbol.toLowerCase()}@depth20@100ms`
     const url = `${WS_BASE}/ws/${stream}`
     const ws = new ReconnectingWebSocket(url, {
-      onOpen: () => onStatus?.('connected', 'depth stream live'),
+      onStatus: (s, detail) =>
+        onStatus?.(s, detail ?? (s === 'connected' ? 'depth stream live' : undefined)),
       onMessage: (data) => {
         try {
-          const msg = JSON.parse(data)
+          const msg = typeof data === 'string' ? JSON.parse(data) : data
           onUpdate({
             symbol: symbol.toUpperCase(),
             lastUpdateId: msg.lastUpdateId ?? msg.u,
-            bids: (msg.bids || []).map((b: string[]) => [parseFloat(b[0]), parseFloat(b[1])] as [number, number]),
-            asks: (msg.asks || []).map((a: string[]) => [parseFloat(a[0]), parseFloat(a[1])] as [number, number]),
+            bids: (msg.bids || []).map(
+              (b: string[]) => [parseFloat(b[0]), parseFloat(b[1])] as [number, number]
+            ),
+            asks: (msg.asks || []).map(
+              (a: string[]) => [parseFloat(a[0]), parseFloat(a[1])] as [number, number]
+            ),
           })
         } catch (e: any) {
           onError(createError('WS_PARSE', e.message || 'depth parse error'))
         }
       },
-      onError: () => onError(createError('WS_ERROR', 'Binance depth WebSocket error')),
-      onClose: () => onStatus?.('disconnected', 'depth socket closed'),
+      onError: (message) =>
+        onError(createError('WS_ERROR', message || 'Binance depth WebSocket error')),
     })
+    void ws.connect()
     return () => ws.close()
   }
 }
