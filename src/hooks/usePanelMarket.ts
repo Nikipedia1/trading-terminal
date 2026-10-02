@@ -1,22 +1,28 @@
 /**
- * Per-panel market data: REST history → live WS with reconnect status.
+ * Per-panel market data: REST history (paginated beyond 1000) → live WS.
  * Real data only – never mocks.
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Candle, Interval, ConnectionStatus, MarketError, ExchangeId } from '@/types'
 import { getExchangeClient } from '@/data/exchanges/registry'
-
-/** Max bars from REST (Binance/KuCoin public limit ≈ 1000). */
-const HISTORY_LIMIT = 1000
-/** Max bars kept in memory while streaming. */
-const LIVE_BUFFER_MAX = 1500
+import {
+  PAGE_LIMIT,
+  MAX_BARS_IN_MEMORY,
+  mergeCandlesOlder,
+  appendLiveCandle,
+  fetchKlinesPage,
+} from '@/data/klines/history'
 
 interface PanelMarketState {
   candles: Candle[]
   status: ConnectionStatus
   lastError: MarketError | null
   statusDetail?: string
+  /** True while a deeper-history page is in flight */
+  loadingMore: boolean
+  /** False when exchange returned a short page (no older data) */
+  hasMoreHistory: boolean
 }
 
 export function usePanelMarket(
@@ -30,10 +36,11 @@ export function usePanelMarket(
     candles: [],
     status: 'disconnected',
     lastError: null,
+    loadingMore: false,
+    hasMoreHistory: true,
   })
 
   // Clear stale candles in the same render as the instrument change
-  // (avoids one frame of BTC data on SOL locking the price scale)
   const [seenKey, setSeenKey] = useState(instrumentKey)
   if (seenKey !== instrumentKey) {
     setSeenKey(instrumentKey)
@@ -42,13 +49,19 @@ export function usePanelMarket(
       status: 'connecting',
       lastError: null,
       statusDetail: `loading ${symbol.toUpperCase()}`,
+      loadingMore: false,
+      hasMoreHistory: true,
     })
   }
 
   const unsubRef = useRef<(() => void) | null>(null)
   const mountedRef = useRef(true)
-  /** Bumps on every symbol/interval/exchange change so stale WS callbacks are ignored */
   const genRef = useRef(0)
+  const loadingMoreRef = useRef(false)
+  const hasMoreRef = useRef(true)
+  const candlesRef = useRef<Candle[]>([])
+  candlesRef.current = state.candles
+  hasMoreRef.current = state.hasMoreHistory
 
   const stopLive = useCallback(() => {
     unsubRef.current?.()
@@ -62,23 +75,31 @@ export function usePanelMarket(
     const gen = ++genRef.current
     const client = getExchangeClient(exchange)
     const sym = symbol.toUpperCase()
+    const pageSize = PAGE_LIMIT[exchange] ?? 1000
+    loadingMoreRef.current = false
+    hasMoreRef.current = true
 
     setState({
       candles: [],
       status: 'connecting',
       lastError: null,
       statusDetail: `loading ${sym}`,
+      loadingMore: false,
+      hasMoreHistory: true,
     })
 
     try {
-      const candles = await client.getKlines(sym, interval, HISTORY_LIMIT)
+      const candles = await fetchKlinesPage(client, sym, interval, { limit: pageSize })
       if (!mountedRef.current || gen !== genRef.current) return
 
+      hasMoreRef.current = candles.length >= pageSize
       setState({
         candles,
         status: 'connecting',
         lastError: null,
         statusDetail: 'opening websocket',
+        loadingMore: false,
+        hasMoreHistory: candles.length >= pageSize,
       })
 
       unsubRef.current = client.subscribeKlines(
@@ -86,23 +107,13 @@ export function usePanelMarket(
         interval,
         (candle) => {
           if (!mountedRef.current || gen !== genRef.current) return
-          setState((prev) => {
-            const next = [...prev.candles]
-            const last = next[next.length - 1]
-            if (last && last.time === candle.time) {
-              next[next.length - 1] = candle
-            } else if (!last || candle.time > last.time) {
-              next.push(candle)
-              if (next.length > LIVE_BUFFER_MAX) next.shift()
-            }
-            return {
-              ...prev,
-              candles: next,
-              status: 'connected',
-              lastError: null,
-              statusDetail: undefined,
-            }
-          })
+          setState((prev) => ({
+            ...prev,
+            candles: appendLiveCandle(prev.candles, candle),
+            status: 'connected',
+            lastError: null,
+            statusDetail: undefined,
+          }))
         },
         (err) => {
           if (!mountedRef.current || gen !== genRef.current) return
@@ -142,9 +153,96 @@ export function usePanelMarket(
               timestamp: Date.now(),
             },
         statusDetail: err.message,
+        loadingMore: false,
+        hasMoreHistory: false,
       })
     }
   }, [symbol, interval, exchange, stopLive])
+
+  /**
+   * Load one older page (before current oldest bar). Safe to call from scroll handler.
+   * Returns number of bars prepended (0 if none / busy / exhausted).
+   */
+  const loadMoreHistory = useCallback(async (): Promise<number> => {
+    if (!mountedRef.current) return 0
+    if (loadingMoreRef.current || !hasMoreRef.current) return 0
+    const current = candlesRef.current
+    if (current.length === 0) return 0
+    if (current.length >= MAX_BARS_IN_MEMORY) {
+      hasMoreRef.current = false
+      setState((s) => ({ ...s, hasMoreHistory: false }))
+      return 0
+    }
+
+    const oldest = current[0]
+    if (!oldest) return 0
+
+    loadingMoreRef.current = true
+    setState((s) => ({ ...s, loadingMore: true, statusDetail: 'loading older history' }))
+
+    const gen = genRef.current
+    const client = getExchangeClient(exchange)
+    const sym = symbol.toUpperCase()
+    const pageSize = PAGE_LIMIT[exchange] ?? 1000
+
+    try {
+      const older = await fetchKlinesPage(client, sym, interval, {
+        limit: pageSize,
+        beforeTimeSec: oldest.time,
+      })
+      if (!mountedRef.current || gen !== genRef.current) {
+        loadingMoreRef.current = false
+        return 0
+      }
+
+      // Drop any bar >= oldest (safety against inclusive endTime)
+      const strictlyOlder = older.filter((c) => c.time < oldest.time)
+      if (strictlyOlder.length === 0) {
+        hasMoreRef.current = false
+        loadingMoreRef.current = false
+        setState((s) => ({
+          ...s,
+          loadingMore: false,
+          hasMoreHistory: false,
+          statusDetail: undefined,
+        }))
+        return 0
+      }
+
+      const beforeLen = current.length
+      const merged = mergeCandlesOlder(current, strictlyOlder)
+      const added = merged.length - beforeLen
+      const stillMore = strictlyOlder.length >= pageSize * 0.9
+
+      hasMoreRef.current = stillMore
+      loadingMoreRef.current = false
+      setState((s) => ({
+        ...s,
+        candles: merged,
+        loadingMore: false,
+        hasMoreHistory: stillMore,
+        statusDetail: undefined,
+      }))
+      return Math.max(0, added)
+    } catch (err: any) {
+      loadingMoreRef.current = false
+      if (!mountedRef.current || gen !== genRef.current) return 0
+      setState((s) => ({
+        ...s,
+        loadingMore: false,
+        statusDetail: err?.message || 'history page failed',
+        lastError: err?.code
+          ? err
+          : {
+              code: 'LOAD_MORE_HIST',
+              message: err?.message || 'Failed to load older history',
+              exchange,
+              timestamp: Date.now(),
+            },
+      }))
+      return 0
+    }
+  }, [symbol, interval, exchange])
 
   useEffect(() => {
     mountedRef.current = true
@@ -160,6 +258,9 @@ export function usePanelMarket(
     status: state.status,
     lastError: state.lastError,
     statusDetail: state.statusDetail,
+    loadingMore: state.loadingMore,
+    hasMoreHistory: state.hasMoreHistory,
+    loadMoreHistory,
     reload: loadAndStart,
   }
 }
