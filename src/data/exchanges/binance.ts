@@ -46,9 +46,12 @@ export class BinanceClient implements ExchangeClient {
 
   // ─── REST ───────────────────────────────────────────────────────────────
 
-  async getKlines(symbol: string, interval: Interval, limit = 500): Promise<Candle[]> {
+  async getKlines(symbol: string, interval: Interval, limit = 500, endTimeMs?: number): Promise<Candle[]> {
     const lim = Math.min(Math.max(limit, 1), 1000)
-    const url = `${REST_BASE}/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${toBinanceInterval(interval)}&limit=${lim}`
+    let url = `${REST_BASE}/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${toBinanceInterval(interval)}&limit=${lim}`
+    if (endTimeMs != null && Number.isFinite(endTimeMs)) {
+      url += `&endTime=${Math.floor(endTimeMs)}`
+    }
     try {
       const res = await fetch(url)
       if (!res.ok) {
@@ -94,18 +97,12 @@ export class BinanceClient implements ExchangeClient {
       return {
         symbol: symbol.toUpperCase(),
         lastUpdateId: raw.lastUpdateId,
-        bids: raw.bids.map(([p, q]: [string, string]) => ({
-          price: parseFloat(p),
-          qty: parseFloat(q),
-        })),
-        asks: raw.asks.map(([p, q]: [string, string]) => ({
-          price: parseFloat(p),
-          qty: parseFloat(q),
-        })),
+        bids: (raw.bids || []).map((b: string[]) => [parseFloat(b[0]), parseFloat(b[1])] as [number, number]),
+        asks: (raw.asks || []).map((a: string[]) => [parseFloat(a[0]), parseFloat(a[1])] as [number, number]),
       }
     } catch (err: any) {
       if (err.code) throw err
-      throw createError('REST_DEPTH', err.message || 'Unknown error fetching order book')
+      throw createError('REST_DEPTH', err.message || 'Unknown error fetching depth')
     }
   }
 
@@ -124,12 +121,13 @@ export class BinanceClient implements ExchangeClient {
       return {
         symbol: raw.symbol,
         lastPrice: parseFloat(raw.lastPrice),
-        priceChange: parseFloat(raw.priceChange),
+        bidPrice: parseFloat(raw.bidPrice),
+        askPrice: parseFloat(raw.askPrice),
+        volume24h: parseFloat(raw.volume),
+        quoteVolume24h: parseFloat(raw.quoteVolume),
         priceChangePercent: parseFloat(raw.priceChangePercent),
-        highPrice: parseFloat(raw.highPrice),
-        lowPrice: parseFloat(raw.lowPrice),
-        volume: parseFloat(raw.volume),
-        quoteVolume: parseFloat(raw.quoteVolume),
+        high24h: parseFloat(raw.highPrice),
+        low24h: parseFloat(raw.lowPrice),
       }
     } catch (err: any) {
       if (err.code) throw err
@@ -139,31 +137,6 @@ export class BinanceClient implements ExchangeClient {
 
   // ─── WebSocket ──────────────────────────────────────────────────────────
 
-  private subscribeStream(
-    stream: string,
-    onData: (data: any) => void,
-    onError: (err: MarketError) => void,
-    onStatus?: StatusCallback
-  ): () => void {
-    const url = `${WS_BASE}/ws/${stream}`
-    const rws = new ReconnectingWebSocket(url, {
-      minBackoffMs: 1000,
-      maxBackoffMs: 30_000,
-      onStatus: (s, detail) => {
-        this.status = s
-        onStatus?.(s, detail)
-      },
-      onMessage: (data) => {
-        onData(data)
-      },
-      onError: (msg) => {
-        onError(createError('WS_ERROR', msg))
-      },
-    })
-    void rws.connect()
-    return () => rws.close()
-  }
-
   subscribeKlines(
     symbol: string,
     interval: Interval,
@@ -172,26 +145,48 @@ export class BinanceClient implements ExchangeClient {
     onStatus?: StatusCallback
   ): () => void {
     const stream = `${symbol.toLowerCase()}@kline_${toBinanceInterval(interval)}`
-    return this.subscribeStream(
-      stream,
-      (data) => {
-        if (data.e !== 'kline') return
-        const k = data.k
-        onCandle(
-          {
+    const url = `${WS_BASE}/ws/${stream}`
+    this.status = 'connecting'
+    onStatus?.('connecting', 'opening kline stream')
+
+    const ws = new ReconnectingWebSocket(url, {
+      onOpen: () => {
+        this.status = 'connected'
+        onStatus?.('connected', 'kline stream live')
+      },
+      onMessage: (data) => {
+        try {
+          const msg = JSON.parse(data)
+          const k = msg.k
+          if (!k) return
+          const candle: Candle = {
             time: Math.floor(k.t / 1000),
             open: parseFloat(k.o),
             high: parseFloat(k.h),
             low: parseFloat(k.l),
             close: parseFloat(k.c),
             volume: parseFloat(k.v),
-          },
-          k.x === true
-        )
+          }
+          onCandle(candle, !!k.x)
+        } catch (e: any) {
+          onError(createError('WS_PARSE', e.message || 'kline parse error'))
+        }
       },
-      onError,
-      onStatus
-    )
+      onError: () => {
+        this.status = 'error'
+        onError(createError('WS_ERROR', 'Binance kline WebSocket error'))
+        onStatus?.('error', 'kline socket error')
+      },
+      onClose: () => {
+        this.status = 'disconnected'
+        onStatus?.('disconnected', 'kline socket closed')
+      },
+    })
+
+    return () => {
+      ws.close()
+      this.status = 'disconnected'
+    }
   }
 
   subscribeTrades(
@@ -200,23 +195,29 @@ export class BinanceClient implements ExchangeClient {
     onError: (err: MarketError) => void,
     onStatus?: StatusCallback
   ): () => void {
-    const stream = `${symbol.toLowerCase()}@aggTrade`
-    return this.subscribeStream(
-      stream,
-      (data) => {
-        if (data.e !== 'aggTrade') return
-        onTrade({
-          id: String(data.a),
-          time: data.T,
-          price: parseFloat(data.p),
-          qty: parseFloat(data.q),
-          isBuyerMaker: data.m,
-          symbol: data.s,
-        })
+    const stream = `${symbol.toLowerCase()}@trade`
+    const url = `${WS_BASE}/ws/${stream}`
+    const ws = new ReconnectingWebSocket(url, {
+      onOpen: () => onStatus?.('connected', 'trade stream live'),
+      onMessage: (data) => {
+        try {
+          const msg = JSON.parse(data)
+          onTrade({
+            id: String(msg.t),
+            time: Math.floor(msg.T / 1000),
+            price: parseFloat(msg.p),
+            qty: parseFloat(msg.q),
+            isBuyerMaker: !!msg.m,
+            symbol: symbol.toUpperCase(),
+          })
+        } catch (e: any) {
+          onError(createError('WS_PARSE', e.message || 'trade parse error'))
+        }
       },
-      onError,
-      onStatus
-    )
+      onError: () => onError(createError('WS_ERROR', 'Binance trade WebSocket error')),
+      onClose: () => onStatus?.('disconnected', 'trade socket closed'),
+    })
+    return () => ws.close()
   }
 
   subscribeDepth(
@@ -226,26 +227,26 @@ export class BinanceClient implements ExchangeClient {
     onStatus?: StatusCallback
   ): () => void {
     const stream = `${symbol.toLowerCase()}@depth20@100ms`
-    return this.subscribeStream(
-      stream,
-      (data) => {
-        if (!data.bids || !data.asks) return
-        onUpdate({
-          symbol: symbol.toUpperCase(),
-          lastUpdateId: data.lastUpdateId ?? 0,
-          bids: data.bids.map(([p, q]: [string, string]) => ({
-            price: parseFloat(p),
-            qty: parseFloat(q),
-          })),
-          asks: data.asks.map(([p, q]: [string, string]) => ({
-            price: parseFloat(p),
-            qty: parseFloat(q),
-          })),
-        })
+    const url = `${WS_BASE}/ws/${stream}`
+    const ws = new ReconnectingWebSocket(url, {
+      onOpen: () => onStatus?.('connected', 'depth stream live'),
+      onMessage: (data) => {
+        try {
+          const msg = JSON.parse(data)
+          onUpdate({
+            symbol: symbol.toUpperCase(),
+            lastUpdateId: msg.lastUpdateId ?? msg.u,
+            bids: (msg.bids || []).map((b: string[]) => [parseFloat(b[0]), parseFloat(b[1])] as [number, number]),
+            asks: (msg.asks || []).map((a: string[]) => [parseFloat(a[0]), parseFloat(a[1])] as [number, number]),
+          })
+        } catch (e: any) {
+          onError(createError('WS_PARSE', e.message || 'depth parse error'))
+        }
       },
-      onError,
-      onStatus
-    )
+      onError: () => onError(createError('WS_ERROR', 'Binance depth WebSocket error')),
+      onClose: () => onStatus?.('disconnected', 'depth socket closed'),
+    })
+    return () => ws.close()
   }
 }
 
