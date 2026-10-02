@@ -148,6 +148,10 @@ export interface ChartContainerProps {
   gammaConfig?: GammaConfig
   replayEnabled?: boolean
   isPrimary?: boolean
+  /** Paginated history: load older bars when user scrolls left */
+  onLoadMoreHistory?: () => Promise<number> | number | void
+  hasMoreHistory?: boolean
+  loadingMore?: boolean
 }
 
 export function ChartContainer({
@@ -174,6 +178,9 @@ export function ChartContainer({
   gammaConfig = DEFAULT_GAMMA_CONFIG,
   replayEnabled = false,
   isPrimary = false,
+  onLoadMoreHistory,
+  hasMoreHistory = false,
+  loadingMore = false,
 }: ChartContainerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -185,6 +192,18 @@ export function ChartContainer({
   const [bridge, setBridge] = useState<CoordinateBridge | null>(null)
   const lastHistoryKeyRef = useRef<string>('')
   const applyingRemoteRef = useRef(false)
+  const prevBarsMetaRef = useRef<{ len: number; first: number | null; last: number | null }>({
+    len: 0,
+    first: null,
+    last: null,
+  })
+  const loadMoreBusyRef = useRef(false)
+  const onLoadMoreRef = useRef(onLoadMoreHistory)
+  onLoadMoreRef.current = onLoadMoreHistory
+  const hasMoreRef = useRef(hasMoreHistory)
+  hasMoreRef.current = hasMoreHistory
+  const loadingMoreRef = useRef(loadingMore)
+  loadingMoreRef.current = loadingMore
 
   const chartStyle = useChartStyleStore((s) => s.style)
   const focusRequest = useChartFocusStore((s) => s.request)
@@ -276,6 +295,8 @@ export function ChartContainer({
 
   useEffect(() => {
     lastHistoryKeyRef.current = ''
+    prevBarsMetaRef.current = { len: 0, first: null, last: null }
+    loadMoreBusyRef.current = false
     seriesMgrRef.current?.clearCandles()
     seriesMgrRef.current?.resetPriceScale()
     bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
@@ -294,37 +315,112 @@ export function ChartContainer({
     if (candles.length === 0) {
       seriesMgrRef.current.clearCandles()
       lastHistoryKeyRef.current = ''
+      prevBarsMetaRef.current = { len: 0, first: null, last: null }
       bridgeRef.current?.setDataTimes([], intervalToSeconds(interval))
       return
     }
-    const historyKey = `${instrumentKey}|${candles[0].time}|${candles.length}|${candles[candles.length - 1]?.time}`
+    const first = candles[0].time
+    const last = candles[candles.length - 1]?.time
+    const historyKey = `${instrumentKey}|${first}|${candles.length}|${last}`
+    const prev = prevBarsMetaRef.current
+
+    // Prepend detection: older first bar + more bars, same last bar (history page)
+    const isPrepend =
+      prev.len > 0 &&
+      prev.first != null &&
+      prev.last != null &&
+      candles.length > prev.len &&
+      first < prev.first &&
+      last === prev.last
+
     if (historyKey !== lastHistoryKeyRef.current) {
       lastHistoryKeyRef.current = historyKey
-      seriesMgrRef.current.setCandles(candles)
-      seriesMgrRef.current.resetPriceScale()
       const chart = chartRef.current
-      const series = seriesMgrRef.current.getCandleSeries() as ISeriesApi<'Candlestick'> | null
-      if (chart && series) {
+      const logicalBefore =
+        isPrepend && chart
+          ? chart.timeScale().getVisibleLogicalRange()
+          : null
+      const added = isPrepend ? candles.length - prev.len : 0
+
+      seriesMgrRef.current.setCandles(candles)
+
+      if (isPrepend && chart && logicalBefore && added > 0) {
+        // Keep viewport stable: shift logical range by bars prepended
         try {
-          unlockPriceScale(chart, series)
-          chart.timeScale().fitContent()
-          requestAnimationFrame(() => {
-            if (instrumentKeyRef.current !== instrumentKey) return
-            try {
-              unlockPriceScale(chart, series)
-              chart.timeScale().fitContent()
-            } catch { /* */ }
+          chart.timeScale().setVisibleLogicalRange({
+            from: logicalBefore.from + added,
+            to: logicalBefore.to + added,
           })
         } catch { /* */ }
+        loadMoreBusyRef.current = false
+      } else {
+        seriesMgrRef.current.resetPriceScale()
+        const series = seriesMgrRef.current.getCandleSeries() as
+          | ISeriesApi<'Candlestick'>
+          | null
+        if (chart && series) {
+          try {
+            unlockPriceScale(chart, series)
+            chart.timeScale().fitContent()
+            requestAnimationFrame(() => {
+              if (instrumentKeyRef.current !== instrumentKey) return
+              try {
+                unlockPriceScale(chart, series)
+                chart.timeScale().fitContent()
+              } catch { /* */ }
+            })
+          } catch { /* */ }
+        }
       }
+
+      prevBarsMetaRef.current = { len: candles.length, first, last: last ?? null }
     } else {
       seriesMgrRef.current.updateCandle(candles[candles.length - 1])
+      prevBarsMetaRef.current = {
+        len: candles.length,
+        first,
+        last: last ?? null,
+      }
     }
     bridgeRef.current?.setDataTimes(
       candles.map((c) => c.time),
       intervalToSeconds(interval)
     )
   }, [candles, interval, instrumentKey])
+
+  // Load older history when user scrolls near the left edge (stable viewport)
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart || !onLoadMoreHistory) return
+
+    const onLogical = (range: { from: number; to: number } | null) => {
+      if (!range) return
+      if (!hasMoreRef.current) return
+      if (loadingMoreRef.current || loadMoreBusyRef.current) return
+      // Trigger when left edge is within ~15 bars of the series start
+      if (range.from > 15) return
+      const fn = onLoadMoreRef.current
+      if (!fn) return
+      loadMoreBusyRef.current = true
+      Promise.resolve(fn())
+        .then((n) => {
+          if (!n || (typeof n === 'number' && n <= 0)) {
+            loadMoreBusyRef.current = false
+          }
+          // busy cleared after prepend path updates candles
+        })
+        .catch(() => {
+          loadMoreBusyRef.current = false
+        })
+    }
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onLogical)
+    return () => {
+      try {
+        chart.timeScale().unsubscribeVisibleLogicalRangeChange(onLogical)
+      } catch { /* */ }
+    }
+  }, [mainChart, onLoadMoreHistory, instrumentKey])
 
   useEffect(() => {
     const ind = indicatorMgrRef.current
@@ -540,6 +636,14 @@ export function ChartContainer({
         {status === 'connecting' && candles.length === 0 && !lastError && (
           <div className="absolute inset-0 flex items-center justify-center text-terminal-muted text-sm z-10">
             Loading {symbol}…
+          </div>
+        )}
+
+        {loadingMore && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+            <div className="px-2.5 py-1 rounded bg-[#0b0e11]/90 border border-[#f0b90b]/40 text-[11px] text-[#f0b90b] font-medium shadow">
+              Loading older bars…
+            </div>
           </div>
         )}
       </div>
