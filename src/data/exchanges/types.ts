@@ -12,7 +12,8 @@ export type StatusCallback = (status: ConnectionStatus, detail?: string) => void
 
 export interface ExchangeClient {
   readonly name: string
-  getKlines(symbol: string, interval: Interval, limit?: number): Promise<Candle[]>
+  /** limit = page size; endTimeMs = exclusive upper bound (ms) for older pages */
+  getKlines(symbol: string, interval: Interval, limit?: number, endTimeMs?: number): Promise<Candle[]>
   getOrderBook(symbol: string, limit?: number): Promise<OrderBook>
   getTicker(symbol: string): Promise<Ticker>
   subscribeKlines(
