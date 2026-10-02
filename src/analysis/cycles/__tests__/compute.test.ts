@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import type { Candle } from '@/types'
-import { dominantPeriod, computeCycleModel, schaffTrendCycle, weekdaySeasonality } from '../compute'
+import {
+  dominantPeriod,
+  computeCycleModel,
+  schaffTrendCycle,
+  weekdaySeasonality,
+  cycleAmplitude,
+} from '../compute'
 
 function synth(n: number, period: number): Candle[] {
   const out: Candle[] = []
@@ -29,19 +35,39 @@ describe('dominantPeriod', () => {
     expect(period).toBeLessThanOrEqual(24)
     expect(strength).toBeGreaterThan(0.1)
   })
+
+  it('can find secondary away from primary', () => {
+    const closes = synth(250, 20).map((c) => c.close)
+    const p1 = dominantPeriod(closes, 8, 60)
+    const p2 = dominantPeriod(closes, 8, 60, p1.period)
+    expect(p2.period).not.toBe(p1.period)
+  })
 })
 
 describe('computeCycleModel', () => {
-  it('returns ready model on enough bars', () => {
+  it('returns ready model with projections on enough bars', () => {
     const m = computeCycleModel(synth(120, 16))
     expect(m.ready).toBe(true)
     expect(m.period).toBeGreaterThan(0)
     expect(m.wave.length).toBeGreaterThan(10)
+    expect(m.ampUpper.length).toBeGreaterThan(10)
+    expect(m.nextHighTime).not.toBeNull()
+    expect(m.nextLowTime).not.toBeNull()
+    expect(m.barsToNextTurn).not.toBeNull()
   })
 
   it('empty on few bars', () => {
     const m = computeCycleModel(synth(10, 5))
     expect(m.ready).toBe(false)
+  })
+})
+
+describe('cycleAmplitude', () => {
+  it('produces non-negative values', () => {
+    const cycle = Array.from({ length: 50 }, (_, i) => Math.sin(i / 5) * 3)
+    const amp = cycleAmplitude(cycle, 16)
+    expect(amp.every((v) => v >= 0)).toBe(true)
+    expect(amp[amp.length - 1]).toBeGreaterThan(0)
   })
 })
 

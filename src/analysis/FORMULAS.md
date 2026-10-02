@@ -55,7 +55,7 @@ strong = |delta| ≥ 35% of max |delta| in window
 
 aggression_buy  = strong ∧ delta>0 ∧ closePos ≥ 2/3
 aggression_sell = strong ∧ delta<0 ∧ closePos ≤ 1/3
-absorption_buy  = strong ∧ delta>0 ∧ closePos ≤ 0.5   # buy volume, price held low
+absorption_buy  = strong ∧ delta>0 ∧ closePos ≤ 0.5
 absorption_sell = strong ∧ delta<0 ∧ closePos ≥ 0.5
 ```
 
@@ -109,9 +109,7 @@ then summed (equal weight, or optional harmonic/linear decay):
 for k = 0 .. N-1:
   contrib_k = levelBidContribution(prev.bids[k], curr.bids[k])
             + levelAskContribution(prev.asks[k], curr.asks[k])
-  weight_k  = 1                    # equal
-            | 1/(k+1)              # harmonic
-            | (N−k)/N              # linear
+  weight_k  = 1 | 1/(k+1) | (N−k)/N
 MLOFI_step = Σ weight_k · contrib_k
 MLOFI_cum  = Σ MLOFI_step
 ```
@@ -130,7 +128,7 @@ multiDepthImb = (bidTot − askTot) / (bidTot + askTot)   ∈ [-1, 1]
 
 Never invent bars. Empty / short series → empty model (`ready: false`).
 
-### Dominant period (autocorrelation)
+### Dominant + secondary period (autocorrelation)
 
 ```
 detrend = close − SMA(close, maxPeriod/2)
@@ -138,6 +136,9 @@ for lag ∈ [minPeriod, maxPeriod]:
   corr(lag) = Σ (det[i]−μ)(det[i−lag]−μ) / Σ (det−μ)²
 dominantPeriod = argmax corr(lag)
 strength = clamp(corr(dominantPeriod), 0, 1)
+
+# Secondary: same search excluding ±25% neighbourhood of primary lag
+secondaryPeriod = argmax corr(lag)  for lag outside exclude band
 ```
 
 Fixed period override when `fixedPeriod ≥ minPeriod`.
@@ -151,7 +152,10 @@ Fixed period override when `fixedPeriod ≥ minPeriod`.
 
 hp[i] = 0.5(1+α)(close[i]−close[i−1]) + α·hp[i−1]
 cycle[i] = 0.5(1−α)(hp[i]−hp[i−1]) + β(1+α)·cycle[i−1] − α·cycle[i−2]
+wave = SMA(close, period) + cycle
 ```
+
+Secondary wave uses `secondaryPeriod` the same way.
 
 ### Phase
 
@@ -163,11 +167,32 @@ phaseDeg = atan2(im, re) · 180/π   ∈ [0, 360)
 
 Cycle-high marks ≈ phase crossing 0°; cycle-low ≈ crossing 180°.
 
+### Amplitude envelope (RMS)
+
+```
+win = max(3, floor(period / 2))
+amp[i] = √( mean( cycle[j]² for j ∈ [i−win+1, i] ) )
+ampUpper = trend + amp
+ampLower = trend − amp
+```
+
+### Projected turning points
+
+Uses real last bar time + measured bar duration only (no synthetic prices):
+
+```
+barsToHigh = (360 − phaseDeg) / 360 · period
+barsToLow  = (180 − phaseDeg) / 360 · period   # wrapped
+nextHighTime = lastTime + barsToHigh · barDurationSec
+nextLowTime  = lastTime + barsToLow  · barDurationSec
+barsToNextTurn = min(barsToHigh, barsToLow)
+```
+
 ### Schaff Trend Cycle (STC)
 
 ```
 macd = EMA(close, 23) − EMA(close, 50)
-st1  = 100 · stoch(macd, cycleLen)     # cycleLen ≈ period/2
+st1  = 100 · stoch(macd, cycleLen)
 pf   = smooth(st1, factor 0.5)
 STC  = smooth( 100 · stoch(pf, cycleLen), factor 0.5 )   ∈ [0, 100]
 ```
