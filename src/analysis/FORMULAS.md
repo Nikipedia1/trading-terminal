@@ -125,3 +125,59 @@ bidTot = Σ size over top N bids
 askTot = Σ size over top N asks
 multiDepthImb = (bidTot − askTot) / (bidTot + askTot)   ∈ [-1, 1]
 ```
+
+## Cyclic analysis (real OHLCV only)
+
+Never invent bars. Empty / short series → empty model (`ready: false`).
+
+### Dominant period (autocorrelation)
+
+```
+detrend = close − SMA(close, maxPeriod/2)
+for lag ∈ [minPeriod, maxPeriod]:
+  corr(lag) = Σ (det[i]−μ)(det[i−lag]−μ) / Σ (det−μ)²
+dominantPeriod = argmax corr(lag)
+strength = clamp(corr(dominantPeriod), 0, 1)
+```
+
+Fixed period override when `fixedPeriod ≥ minPeriod`.
+
+### Bandpass cycle (Ehlers-inspired 2-pole)
+
+```
+β = cos(2π / period)
+γ = 1 / cos(2π · bandwidth / period)   # bandwidth ≈ 0.35
+α = γ − √(γ² − 1)
+
+hp[i] = 0.5(1+α)(close[i]−close[i−1]) + α·hp[i−1]
+cycle[i] = 0.5(1−α)(hp[i]−hp[i−1]) + β(1+α)·cycle[i−1] − α·cycle[i−2]
+```
+
+### Phase
+
+```
+re = cycle[i]
+im = cycle[i] − cycle[i−1]
+phaseDeg = atan2(im, re) · 180/π   ∈ [0, 360)
+```
+
+Cycle-high marks ≈ phase crossing 0°; cycle-low ≈ crossing 180°.
+
+### Schaff Trend Cycle (STC)
+
+```
+macd = EMA(close, 23) − EMA(close, 50)
+st1  = 100 · stoch(macd, cycleLen)     # cycleLen ≈ period/2
+pf   = smooth(st1, factor 0.5)
+STC  = smooth( 100 · stoch(pf, cycleLen), factor 0.5 )   ∈ [0, 100]
+```
+
+### Weekday seasonality (UTC)
+
+```
+for each bar i ≥ 1:
+  ret% = (close[i] − close[i−1]) / close[i−1] · 100
+  dow  = UTC weekday of bar time (0=Sun … 6=Sat)
+  bucket[dow].sum += ret%;  bucket[dow].n += 1
+avgPct[dow] = sum / n   (0 if n=0)
+```
