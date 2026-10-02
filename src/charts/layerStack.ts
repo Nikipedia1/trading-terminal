@@ -6,6 +6,7 @@
  *   L2 footprint cells                – denser orderflow grid
  *   L3 live bubbles (deep trades)     – high-frequency paints
  *   L4 deep print / DOM overlays
+ *   L4b cycles                        – bandpass wave + phase marks
  *   L5 drawings                       – interactive, topmost among data layers
  *   L6 chrome (HUD, errors)           – UI only
  *
@@ -18,6 +19,7 @@ export const LAYER_Z = {
   footprint: 'z-[5]',
   bubbles: 'z-[6]',
   deepPrint: 'z-[7]',
+  cycles: 'z-[7]',
   drawings: 'z-[8]',
   paperLines: 'z-[9]',
   chrome: 'z-[10]',
