@@ -12,6 +12,8 @@ import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
 import { useOrderflowStore, defaultOrderflowState } from '@/stores/orderflowStore'
+import { useCycleStore, defaultCycleConfig } from '@/stores/cycleStore'
+import { CycleMenu } from '@/analysis/cycles'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { DrawingToolbar } from '@/drawings/DrawingToolbar'
@@ -41,6 +43,10 @@ export function ChartPanel({ config }: ChartPanelProps) {
   const ofState = { ...defaultOrderflowState(), ...(ofRaw ?? {}) }
   const patchOf = useOrderflowStore((s) => s.patch)
 
+  const cycleRaw = useCycleStore((s) => s.byPanel[id])
+  const cycleCfg = { ...defaultCycleConfig(), ...(cycleRaw ?? {}) }
+  const patchCycle = useCycleStore((s) => s.patch)
+
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
   const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
   const stylePanelOpen = useChartStyleStore((s) => s.panelOpen)
@@ -58,6 +64,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
   useEffect(() => {
     const st = useOrderflowStore.getState()
     if (!st.byPanel[id]) st.set(id, defaultOrderflowState())
+    const cy = useCycleStore.getState()
+    if (!cy.byPanel[id]) cy.set(id, defaultCycleConfig())
   }, [id])
 
   const onDetach = (e: MouseEvent) => {
@@ -205,6 +213,11 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onChange={(next) => patchOf(id, next)}
           onPrintToggle={() => patchOf(id, { print: !ofState.print })}
         />
+        <CycleMenu
+          config={cycleCfg}
+          candles={candles}
+          onChange={(patch) => patchCycle(id, patch)}
+        />
         <button
           type="button"
           className={`text-xxs px-1.5 py-0.5 rounded border ${
@@ -254,6 +267,8 @@ export function ChartPanel({ config }: ChartPanelProps) {
           gammaEnabled={!!ofState.gamma}
           gammaConfig={ofState.gammaCfg}
           replayEnabled={ofState.replay}
+          cycleEnabled={!!cycleCfg.enabled}
+          cycleConfig={cycleCfg}
           isPrimary={isPrimary}
           onLoadMoreHistory={loadMoreHistory}
           hasMoreHistory={hasMoreHistory}
