@@ -30,6 +30,7 @@ import { BacktestPanel } from '@/bots/backtest/BacktestPanel'
 import { LiveKeysPanel } from '@/live/LiveKeysPanel'
 import { PluginIndicatorPanel } from '@/plugins/PluginIndicatorPanel'
 import { MicrostructurePanel } from '@/analysis/microstructure'
+import { Viz3DPanel } from '@/analysis/viz3d'
 import { useMobileLayout } from '@/layout/useMobileLayout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -106,12 +107,15 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <PluginIndicatorPanel />
     case 'micro':
       return <MicrostructurePanel />
+    case 'viz3d':
+      return <Viz3DPanel />
     default:
       return null
   }
 }
 
 const ADDABLE: WidgetKind[] = [
+  'viz3d',
   'admin',
   'bots',
   'wallet',
