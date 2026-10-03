@@ -14,6 +14,8 @@ export interface NewsItem {
   publishedAt: string | number
   /** Free-form tags (e.g. BTC, ETH, macro) from the API */
   tags: string[]
+  /** Optional body/snippet when available (RSS description) */
+  text?: string
 }
 
 export interface NewsApiResponse {
@@ -21,4 +23,20 @@ export interface NewsApiResponse {
   fetchedAt?: string
   sources?: string[]
   warnings?: string[]
+}
+
+export type NewsDirezione = 'rialzista' | 'ribassista' | 'neutra'
+export type NewsOrizzonte = 'minuti' | 'ore' | 'giorni'
+
+/** Response of POST /api/news-analyze – only these fields. */
+export interface NewsImpactAnalysis {
+  sintesi: string
+  asset_coinvolti: string[]
+  direzione: NewsDirezione
+  forza: number
+  orizzonte: NewsOrizzonte
+  meccanismo: string
+  rischi: string[]
+  livelli_da_osservare: string
+  confidenza: number
 }

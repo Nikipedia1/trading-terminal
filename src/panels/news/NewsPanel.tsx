@@ -1,17 +1,22 @@
 /**
  * News panel – live feed from GET /api/news (real RSS, no runtime mocks).
- * Poll every 45s; NEW badge on fresh items for 60s; pause when tab/panel hidden.
- * Asset tags from titles; click switches marketStore.symbol; active-symbol first.
- * Optional `items` prop is only for unit tests.
+ * Poll every 45s; NEW badge; pause when hidden; asset tags; click → symbol.
+ * "Analizza impatto" → POST /api/news-analyze (AI JSON card).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { NewsApiResponse, NewsAssetFilter, NewsItem } from './types'
+import type {
+  NewsApiResponse,
+  NewsAssetFilter,
+  NewsImpactAnalysis,
+  NewsItem,
+} from './types'
 import {
   enrichTags,
   matchesActiveSymbol,
   symbolFromTitle,
 } from './assetTags'
+import { ImpactCard } from './ImpactCard'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 
@@ -90,6 +95,7 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
   const firstLoadDoneRef = useRef(false)
   const visibleRef = useRef(true)
   const wasPausedRef = useRef(false)
+  const analyzeAbortRef = useRef<AbortController | null>(null)
 
   const activeSymbol = useMarketStore((s) => s.symbol)
   const setSymbol = useMarketStore((s) => s.setSymbol)
@@ -107,6 +113,13 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
   const [nowTick, setNowTick] = useState(() => Date.now())
+
+  /** Per-news AI analysis state */
+  const [analyses, setAnalyses] = useState<
+    Record<string, NewsImpactAnalysis | undefined>
+  >({})
+  const [analyzeLoadingId, setAnalyzeLoadingId] = useState<string | null>(null)
+  const [analyzeErrors, setAnalyzeErrors] = useState<Record<string, string>>({})
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -264,6 +277,12 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     return () => window.clearInterval(id)
   }, [newSince])
 
+  useEffect(() => {
+    return () => {
+      analyzeAbortRef.current?.abort()
+    }
+  }, [])
+
   const isNew = useCallback(
     (id: string) => {
       const t = newSince[id]
@@ -273,7 +292,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     [newSince, nowTick]
   )
 
-  /** Filter + pin headlines matching active chart symbol on top. */
   const visible = useMemo(() => {
     const filtered = feed.filter((n) => matchesFilter(n.tags ?? [], filter))
     const related: NewsItem[] = []
@@ -282,7 +300,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
       if (matchesActiveSymbol(n.tags ?? [], n.title, activeSymbol)) related.push(n)
       else rest.push(n)
     }
-    // both groups already newest-first from API
     return [...related, ...rest]
   }, [feed, filter, activeSymbol])
 
@@ -301,15 +318,61 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     (e: React.MouseEvent, item: NewsItem) => {
       const sym = symbolFromTitle(item.title, item.tags ?? [])
       if (sym && sym !== activeSymbol) {
-        // Modifier or middle-click: only open URL (default). Primary click: switch symbol + open.
         if (!e.metaKey && !e.ctrlKey && e.button === 0) {
           applySymbolFromNews(sym)
         }
       }
-      // always allow default navigation to article (target=_blank)
     },
     [activeSymbol, applySymbolFromNews]
   )
+
+  const analyzeImpact = useCallback(async (item: NewsItem) => {
+    analyzeAbortRef.current?.abort()
+    const ac = new AbortController()
+    analyzeAbortRef.current = ac
+    setAnalyzeLoadingId(item.id)
+    setAnalyzeErrors((prev) => {
+      const next = { ...prev }
+      delete next[item.id]
+      return next
+    })
+    try {
+      const res = await fetch('/api/news-analyze', {
+        method: 'POST',
+        signal: ac.signal,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: item.title,
+          text: item.text ?? '',
+          source: item.source,
+          url: item.url,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const msg =
+          typeof (data as { error?: string }).error === 'string'
+            ? (data as { error: string }).error
+            : `HTTP ${res.status}`
+        throw new Error(msg)
+      }
+      // Expect pure analysis object
+      const a = data as NewsImpactAnalysis
+      if (!a || typeof a.sintesi !== 'string') {
+        throw new Error('Risposta analisi non valida')
+      }
+      setAnalyses((prev) => ({ ...prev, [item.id]: a }))
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') return
+      const msg = e instanceof Error ? e.message : 'Analisi fallita'
+      setAnalyzeErrors((prev) => ({ ...prev, [item.id]: msg }))
+    } finally {
+      setAnalyzeLoadingId((cur) => (cur === item.id ? null : cur))
+    }
+  }, [])
 
   const activeBase = activeSymbol.replace(/USDT$/i, '').replace(/USD$/i, '')
 
@@ -399,6 +462,9 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
               const tags = n.tags ?? []
               const related = matchesActiveSymbol(tags, n.title, activeSymbol)
               const chartSym = symbolFromTitle(n.title, tags)
+              const analysis = analyses[n.id]
+              const analyzing = analyzeLoadingId === n.id
+              const aErr = analyzeErrors[n.id]
               return (
                 <li
                   key={n.id}
@@ -455,7 +521,31 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
                         </span>
                       ))}
                     </span>
+                    <button
+                      type="button"
+                      className="ml-auto text-[9px] px-1.5 py-0.5 rounded border border-[#f0b90b]/40 text-[#f0b90b] hover:bg-[#f0b90b]/10 disabled:opacity-40"
+                      disabled={analyzing}
+                      onClick={() => void analyzeImpact(n)}
+                      title="Analisi AI dell'impatto di mercato"
+                    >
+                      {analyzing ? 'Analisi…' : analysis ? 'Rianalizza' : 'Analizza impatto'}
+                    </button>
                   </div>
+                  {aErr && (
+                    <div className="mt-1 text-[10px] text-terminal-red leading-snug">{aErr}</div>
+                  )}
+                  {analysis && (
+                    <ImpactCard
+                      analysis={analysis}
+                      onClose={() =>
+                        setAnalyses((prev) => {
+                          const next = { ...prev }
+                          delete next[n.id]
+                          return next
+                        })
+                      }
+                    />
+                  )}
                 </li>
               )
             })}
