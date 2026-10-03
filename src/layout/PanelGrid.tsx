@@ -215,7 +215,7 @@ export function PanelGrid({ width }: PanelGridProps) {
   }
 
   return (
-    <div className="h-full w-full relative bg-[#0b0e11]">
+    <div className="h-full w-full relative bg-[#0b0e11] overflow-auto">
       <div className="absolute top-2 right-2 z-30" ref={menuRef}>
         <button
           type="button"
@@ -271,7 +271,7 @@ export function PanelGrid({ width }: PanelGridProps) {
         layout={layout}
         cols={COLS}
         rowHeight={ROW_HEIGHT}
-        width={width}
+        width={Math.max(width, 320)}
         onLayoutChange={onLayoutChange}
         draggableHandle=".panel-drag-handle"
         compactType="vertical"
