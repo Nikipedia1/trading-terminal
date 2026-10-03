@@ -1,6 +1,6 @@
-/** Build 3D models from real OHLCV candles + L2 book. Zero synthetic fills. */
+/** Build 3D models from real OHLCV + L2 + aggressor trades. Zero synthetic. */
 
-import type { Candle, OrderBook } from '@/types'
+import type { Candle, OrderBook, Trade } from '@/types'
 import type {
   Viz3DConfig,
   Viz3DModel,
@@ -8,7 +8,10 @@ import type {
   CandleColumn,
   BookBar,
   DomRow,
+  DomBubble,
+  Dom3DOptions,
 } from './types'
+import { DEFAULT_DOM3D_OPTIONS } from './types'
 
 function emptyModel(mode: Viz3DModel['mode'], note: string): Viz3DModel {
   return {
@@ -17,10 +20,12 @@ function emptyModel(mode: Viz3DModel['mode'], note: string): Viz3DModel {
     candles: [],
     book: [],
     dom: [],
+    bubbles: [],
     priceMin: 0,
     priceMax: 1,
     volMax: 1,
     mid: 0,
+    spread: 0,
     totalBid: 0,
     totalAsk: 0,
     ready: false,
@@ -34,9 +39,7 @@ export function buildCandleColumns(
   maxBars: number
 ): { cols: CandleColumn[]; priceMin: number; priceMax: number; volMax: number } {
   const slice = candles.slice(-Math.max(8, maxBars))
-  if (slice.length === 0) {
-    return { cols: [], priceMin: 0, priceMax: 1, volMax: 1 }
-  }
+  if (slice.length === 0) return { cols: [], priceMin: 0, priceMax: 1, volMax: 1 }
   let priceMin = Infinity
   let priceMax = -Infinity
   let volMax = 0
@@ -45,9 +48,7 @@ export function buildCandleColumns(
     priceMax = Math.max(priceMax, c.high)
     volMax = Math.max(volMax, c.volume)
   }
-  if (!(priceMax > priceMin)) {
-    priceMax = priceMin + 1
-  }
+  if (!(priceMax > priceMin)) priceMax = priceMin + 1
   const n = slice.length
   const cols: CandleColumn[] = slice.map((c, i) => ({
     tx: n <= 1 ? 0 : (i / (n - 1)) * 2 - 1,
@@ -73,9 +74,7 @@ export function buildVolumeTerrain(
   volMax: number
 } {
   const slice = candles.slice(-Math.max(8, maxBars))
-  if (slice.length === 0) {
-    return { cells: [], priceMin: 0, priceMax: 1, volMax: 1 }
-  }
+  if (slice.length === 0) return { cells: [], priceMin: 0, priceMax: 1, volMax: 1 }
   let priceMin = Infinity
   let priceMax = -Infinity
   for (const c of slice) {
@@ -88,7 +87,6 @@ export function buildVolumeTerrain(
   const n = slice.length
   const cells: TerrainCell[] = []
   let volMax = 0
-
   for (let i = 0; i < n; i++) {
     const c = slice[i]
     const tx = n <= 1 ? 0 : (i / (n - 1)) * 2 - 1
@@ -102,8 +100,7 @@ export function buildVolumeTerrain(
     for (let b = loBin; b <= hiBin; b++) {
       const price = priceMin + ((b + 0.5) / bins) * span
       const inBody = price >= bodyLo && price <= bodyHi
-      const weight = inBody ? 1.4 : 0.55
-      const volume = volPer * weight
+      const volume = volPer * (inBody ? 1.4 : 0.55)
       volMax = Math.max(volMax, volume)
       const ty = bins <= 1 ? 0 : (b / (bins - 1)) * 2 - 1
       cells.push({
@@ -117,9 +114,7 @@ export function buildVolumeTerrain(
       })
     }
   }
-  if (volMax > 0) {
-    for (const cell of cells) cell.h = cell.volume / volMax
-  }
+  if (volMax > 0) for (const cell of cells) cell.h = cell.volume / volMax
   return { cells, priceMin, priceMax, volMax: volMax || 1 }
 }
 
@@ -137,12 +132,7 @@ export function buildBookDepth(book: OrderBook | null, levels = 24): {
   let priceMin = Infinity
   let priceMax = -Infinity
   let volMax = 0
-  for (const l of bids) {
-    priceMin = Math.min(priceMin, l.price)
-    priceMax = Math.max(priceMax, l.price)
-    volMax = Math.max(volMax, l.qty)
-  }
-  for (const l of asks) {
+  for (const l of [...bids, ...asks]) {
     priceMin = Math.min(priceMin, l.price)
     priceMax = Math.max(priceMax, l.price)
     volMax = Math.max(volMax, l.qty)
@@ -173,41 +163,81 @@ export function buildBookDepth(book: OrderBook | null, levels = 24): {
   return { bars, priceMin, priceMax, volMax: volMax || 1 }
 }
 
-/** Classic DOM ladder from real L2 — aligned price rows, cum + imbalance. */
-export function buildDomLadder(
+function inferTick(book: OrderBook): number {
+  if (book.bids.length < 2) return 0.01
+  const diffs: number[] = []
+  for (let i = 0; i < Math.min(8, book.bids.length - 1); i++) {
+    diffs.push(Math.abs(book.bids[i].price - book.bids[i + 1].price))
+  }
+  diffs.sort((a, b) => a - b)
+  return diffs[0] || 0.01
+}
+
+function aggregateLevels(
+  levels: { price: number; qty: number }[],
+  tickMult: number,
+  baseTick: number
+): { price: number; qty: number }[] {
+  if (tickMult <= 1) return levels
+  const step = baseTick * tickMult
+  const map = new Map<number, number>()
+  for (const l of levels) {
+    const p = Math.round(l.price / step) * step
+    map.set(p, (map.get(p) ?? 0) + l.qty)
+  }
+  return Array.from(map.entries())
+    .map(([price, qty]) => ({ price, qty }))
+    .sort((a, b) => b.price - a.price)
+}
+
+/** Deep DOM walls + bubbles from real L2 + trades */
+export function buildDeepDom(
   book: OrderBook | null,
-  levels = 24
+  trades: Trade[],
+  opts: Dom3DOptions
 ): {
   rows: DomRow[]
+  bubbles: DomBubble[]
   priceMin: number
   priceMax: number
   volMax: number
   mid: number
+  spread: number
   totalBid: number
   totalAsk: number
 } {
-  if (!book || (book.bids.length === 0 && book.asks.length === 0)) {
-    return {
-      rows: [],
-      priceMin: 0,
-      priceMax: 1,
-      volMax: 1,
-      mid: 0,
-      totalBid: 0,
-      totalAsk: 0,
-    }
+  const empty = {
+    rows: [] as DomRow[],
+    bubbles: [] as DomBubble[],
+    priceMin: 0,
+    priceMax: 1,
+    volMax: 1,
+    mid: 0,
+    spread: 0,
+    totalBid: 0,
+    totalAsk: 0,
   }
-  const n = Math.max(8, Math.min(60, levels))
-  const bids = book.bids.slice(0, n)
-  const asks = book.asks.slice(0, n)
+  if (!book || (book.bids.length === 0 && book.asks.length === 0)) return empty
+
+  const tick = inferTick(book)
+  const n = Math.max(8, Math.min(60, opts.levels))
+  let bids = book.bids.slice(0, n * 2)
+  let asks = book.asks.slice(0, n * 2)
+  if (opts.tickAgg > 1) {
+    bids = aggregateLevels(bids, opts.tickAgg, tick)
+    asks = aggregateLevels(asks, opts.tickAgg, tick).sort((a, b) => a.price - b.price)
+  }
+  bids = bids.filter((l) => l.qty >= opts.minLevelSize).slice(0, n)
+  asks = asks.filter((l) => l.qty >= opts.minLevelSize).slice(0, n)
+
   const bestBid = bids[0]?.price ?? 0
   const bestAsk = asks[0]?.price ?? 0
   const mid =
     bestBid > 0 && bestAsk > 0
       ? (bestBid + bestAsk) / 2
       : bestBid || bestAsk || 0
+  const spread = bestBid > 0 && bestAsk > 0 ? bestAsk - bestBid : 0
 
-  // Union of prices (sorted low → high)
   const priceSet = new Map<number, { bid: number; ask: number }>()
   for (const l of bids) {
     const row = priceSet.get(l.price) ?? { bid: 0, ask: 0 }
@@ -220,17 +250,7 @@ export function buildDomLadder(
     priceSet.set(l.price, row)
   }
   const prices = Array.from(priceSet.keys()).sort((a, b) => a - b)
-  if (prices.length === 0) {
-    return {
-      rows: [],
-      priceMin: 0,
-      priceMax: 1,
-      volMax: 1,
-      mid,
-      totalBid: 0,
-      totalAsk: 0,
-    }
-  }
+  if (prices.length === 0) return empty
   const priceMin = prices[0]
   const priceMax = prices[prices.length - 1]
   let volMax = 0
@@ -243,24 +263,21 @@ export function buildDomLadder(
     totalAsk += r.ask
   }
   volMax = volMax || 1
+  const span = priceMax > priceMin ? priceMax - priceMin : 1
 
-  // Cumulative from mid outward (classic DOM)
   let cumBid = 0
   let cumAsk = 0
-  const bidPrices = prices.filter((p) => p <= mid).reverse()
-  const askPrices = prices.filter((p) => p >= mid)
   const cumBidMap = new Map<number, number>()
   const cumAskMap = new Map<number, number>()
-  for (const p of bidPrices) {
+  for (const p of prices.filter((x) => x <= mid).reverse()) {
     cumBid += priceSet.get(p)!.bid
     cumBidMap.set(p, cumBid)
   }
-  for (const p of askPrices) {
+  for (const p of prices.filter((x) => x >= mid)) {
     cumAsk += priceSet.get(p)!.ask
     cumAskMap.set(p, cumAsk)
   }
 
-  const span = priceMax > priceMin ? priceMax - priceMin : 1
   const rows: DomRow[] = prices.map((price) => {
     const r = priceSet.get(price)!
     const sum = r.bid + r.ask
@@ -274,15 +291,90 @@ export function buildDomLadder(
       cumBid: cumBidMap.get(price) ?? 0,
       cumAsk: cumAskMap.get(price) ?? 0,
       imbalance: sum > 0 ? r.bid / sum : 0.5,
+      flash: null,
     }
   })
 
+  // Cluster aggressor trades into bubbles
+  const bubbles: DomBubble[] = []
+  if (opts.showBubbles && trades.length > 0) {
+    type Acc = {
+      id: string
+      time: number
+      price: number
+      base: number
+      quote: number
+      buy: number
+      sell: number
+      count: number
+    }
+    const clusters: Acc[] = []
+    // trades are newest-first in marketStore
+    const ordered = [...trades].reverse()
+    for (const t of ordered) {
+      const quote = t.price * t.qty
+      if (quote < opts.minBubbleQuote) continue
+      const isBuy = !t.isBuyerMaker
+      const last = clusters[clusters.length - 1]
+      const samePrice =
+        last && Math.abs(last.price - t.price) / Math.max(t.price, 1e-9) < 1e-6
+      const sameTime =
+        last && Math.abs(last.time - t.time) * 1000 <= opts.clusterMs
+      if (last && samePrice && sameTime) {
+        last.base += t.qty
+        last.quote += quote
+        last.count += 1
+        if (isBuy) last.buy += t.qty
+        else last.sell += t.qty
+        last.time = t.time
+      } else {
+        clusters.push({
+          id: t.id || `${t.time}-${t.price}`,
+          time: t.time,
+          price: t.price,
+          base: t.qty,
+          quote,
+          buy: isBuy ? t.qty : 0,
+          sell: isBuy ? 0 : t.qty,
+          count: 1,
+        })
+      }
+    }
+    // Keep largest by quote
+    clusters.sort((a, b) => b.quote - a.quote)
+    const kept = clusters.slice(0, opts.maxBubbles)
+    const maxQ = Math.max(...kept.map((c) => c.quote), 1)
+    const tMin = Math.min(...kept.map((c) => c.time), 0)
+    const tMax = Math.max(...kept.map((c) => c.time), 1)
+    const tSpan = Math.max(1, tMax - tMin)
+    for (const c of kept) {
+      const ty =
+        priceMax > priceMin
+          ? ((c.price - priceMin) / (priceMax - priceMin)) * 2 - 1
+          : 0
+      bubbles.push({
+        id: c.id,
+        tx: ((c.time - tMin) / tSpan) * 2 - 1,
+        ty,
+        price: c.price,
+        time: c.time,
+        r: Math.sqrt(c.quote / maxQ) * opts.bubbleScale,
+        quoteQty: c.quote,
+        baseQty: c.base,
+        aggressor: c.buy >= c.sell ? 'buy' : 'sell',
+        clusterCount: c.count,
+      })
+    }
+  }
+
   return {
     rows,
+    bubbles,
     priceMin,
     priceMax,
     volMax,
     mid,
+    spread,
     totalBid,
     totalAsk,
   }
@@ -291,13 +383,28 @@ export function buildDomLadder(
 export function buildViz3DModel(
   candles: Candle[],
   book: OrderBook | null,
-  cfg: Viz3DConfig
+  cfg: Viz3DConfig,
+  trades: Trade[] = []
 ): Viz3DModel {
+  const domOpts = cfg.dom ?? DEFAULT_DOM3D_OPTIONS
+
   if (cfg.mode === 'dom_ladder') {
-    const { rows, priceMin, priceMax, volMax, mid, totalBid, totalAsk } =
-      buildDomLadder(book, cfg.domLevels)
-    if (rows.length === 0) {
-      return emptyModel('dom_ladder', 'Waiting for L2 DOM…')
+    const {
+      rows,
+      bubbles,
+      priceMin,
+      priceMax,
+      volMax,
+      mid,
+      spread,
+      totalBid,
+      totalAsk,
+    } = buildDeepDom(book, trades, {
+      ...domOpts,
+      levels: cfg.domLevels || domOpts.levels,
+    })
+    if (rows.length === 0 && bubbles.length === 0) {
+      return emptyModel('dom_ladder', 'Waiting for L2 / trades…')
     }
     const imb =
       totalBid + totalAsk > 0
@@ -309,15 +416,17 @@ export function buildViz3DModel(
       candles: [],
       book: [],
       dom: rows,
+      bubbles,
       priceMin,
       priceMax,
       volMax,
       mid,
+      spread,
       totalBid,
       totalAsk,
       ready: true,
-      barCount: rows.length,
-      note: `DOM 3D · ${rows.length} lv · bid ${totalBid.toFixed(2)} / ask ${totalAsk.toFixed(2)} · imb ${imb >= 0 ? '+' : ''}${imb.toFixed(1)}%`,
+      barCount: rows.length + bubbles.length,
+      note: `Deep DOM · ${rows.length} lv · ${bubbles.length} bubbles · imb ${imb >= 0 ? '+' : ''}${imb.toFixed(1)}%`,
     }
   }
 
@@ -326,19 +435,19 @@ export function buildViz3DModel(
       book,
       cfg.domLevels || 28
     )
-    if (bars.length === 0) {
-      return emptyModel('book_depth', 'Waiting for L2 book…')
-    }
+    if (bars.length === 0) return emptyModel('book_depth', 'Waiting for L2 book…')
     return {
       mode: 'book_depth',
       terrain: [],
       candles: [],
       book: bars,
       dom: [],
+      bubbles: [],
       priceMin,
       priceMax,
       volMax,
       mid: (priceMin + priceMax) / 2,
+      spread: 0,
       totalBid: 0,
       totalAsk: 0,
       ready: true,
@@ -347,9 +456,7 @@ export function buildViz3DModel(
     }
   }
 
-  if (candles.length < 4) {
-    return emptyModel(cfg.mode, 'Need more candles (≥4)')
-  }
+  if (candles.length < 4) return emptyModel(cfg.mode, 'Need more candles (≥4)')
 
   if (cfg.mode === 'candle_columns') {
     const { cols, priceMin, priceMax, volMax } = buildCandleColumns(
@@ -362,10 +469,12 @@ export function buildViz3DModel(
       candles: cols,
       book: [],
       dom: [],
+      bubbles: [],
       priceMin,
       priceMax,
       volMax,
       mid: (priceMin + priceMax) / 2,
+      spread: 0,
       totalBid: 0,
       totalAsk: 0,
       ready: cols.length > 0,
@@ -385,10 +494,12 @@ export function buildViz3DModel(
     candles: [],
     book: [],
     dom: [],
+    bubbles: [],
     priceMin,
     priceMax,
     volMax,
     mid: (priceMin + priceMax) / 2,
+    spread: 0,
     totalBid: 0,
     totalAsk: 0,
     ready: cells.length > 0,
