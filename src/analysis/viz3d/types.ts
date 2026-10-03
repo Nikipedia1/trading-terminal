@@ -25,6 +25,8 @@ export interface Viz3DConfig {
   opacity: number
   /** Color scheme */
   theme: 'desk' | 'neon' | 'mono'
+  /** Follow primary chart visible time range */
+  syncVisible: boolean
 }
 
 export const DEFAULT_VIZ3D_CONFIG: Viz3DConfig = {
@@ -40,6 +42,7 @@ export const DEFAULT_VIZ3D_CONFIG: Viz3DConfig = {
   priceBins: 32,
   opacity: 0.85,
   theme: 'desk',
+  syncVisible: true,
 }
 
 export const VIZ3D_PRESETS: Record<
