@@ -12,6 +12,7 @@ import {
   checkRateLimit,
   clientIp,
   readJsonBody,
+  type UserRecord,
 } from './_shared'
 
 export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
@@ -48,13 +49,28 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     return bad('invalid credentials', 401, request)
   }
 
-  const user = await getUserByEmail(env.WORKSPACE_KV, email)
+  const user = (await getUserByEmail(env.WORKSPACE_KV, email)) as
+    | (UserRecord & { totpEnabled?: boolean })
+    | null
   if (!user || user.disabled) return bad('invalid credentials', 401, request)
 
   const ok = await verifyPassword(body.password, user.salt, user.passwordHash)
   if (!ok) return bad('invalid credentials', 401, request)
 
+  if (user.totpEnabled) {
+    return bad('2FA required – use /api/auth/totp login', 401, request)
+  }
+
   const token = await createSession(env.WORKSPACE_KV, user)
+  try {
+    const idxKey = `auth:sessions:user:${user.id}`
+    const raw = await env.WORKSPACE_KV.get(idxKey)
+    const list = raw ? (JSON.parse(raw) as { token: string; createdAt: number }[]) : []
+    list.push({ token, createdAt: Date.now() })
+    await env.WORKSPACE_KV.put(idxKey, JSON.stringify(list.slice(-20)))
+  } catch {
+    /* */
+  }
   return json(
     { user: publicUser(user) },
     200,
