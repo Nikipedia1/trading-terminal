@@ -43,18 +43,18 @@ function fmt(n: number | null, digits = 2): string {
   return n.toFixed(4)
 }
 
-function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValueRow[] {
-  if (candles.length === 0) return []
+function buildRows(candles: Candle[], params: IndicatorParamsMap | null | undefined): IndicatorValueRow[] {
+  if (candles.length === 0 || !params) return []
   const rows: IndicatorValueRow[] = []
   const push = (id: IndicatorValueRow['id'], label: string, values: IndicatorValueRow['values']) => {
     if (values.length) rows.push({ id, label, values })
   }
 
-  if (params.rsi.visible) {
+  if (params.rsi?.visible) {
     const v = lastValue(computeRsi(candles, Math.max(2, params.rsi.period), params.rsi.source))
     push('rsi', 'RSI', [{ name: String(params.rsi.period), value: v ?? NaN, color: params.rsi.color }])
   }
-  if (params.macd.visible) {
+  if (params.macd?.visible) {
     let fast = Math.max(2, params.macd.period)
     let slow = Math.max(3, params.macd.period2)
     if (fast >= slow) slow = fast + 1
@@ -68,7 +68,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       vals.push({ name: 'Hist', value: lastValue(m.hist) ?? NaN, color: params.macd.color3 })
     push('macd', 'MACD', vals)
   }
-  if (params.stoch.visible) {
+  if (params.stoch?.visible) {
     const s = computeStoch(
       candles,
       Math.max(2, params.stoch.period),
@@ -82,7 +82,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       vals.push({ name: '%D', value: lastValue(s.d) ?? NaN, color: params.stoch.color2 })
     push('stoch', 'Stoch', vals)
   }
-  if (params.cci.visible) {
+  if (params.cci?.visible) {
     push('cci', 'CCI', [
       {
         name: String(params.cci.period),
@@ -91,7 +91,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       },
     ])
   }
-  if (params.willr.visible) {
+  if (params.willr?.visible) {
     push('willr', '%R', [
       {
         name: String(params.willr.period),
@@ -100,7 +100,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       },
     ])
   }
-  if (params.atr.visible) {
+  if (params.atr?.visible) {
     push('atr', 'ATR', [
       {
         name: String(params.atr.period),
@@ -109,7 +109,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       },
     ])
   }
-  if (params.adx.visible) {
+  if (params.adx?.visible) {
     const a = computeAdx(candles, Math.max(2, params.adx.period))
     const vals = []
     if (params.adx.show1)
@@ -120,7 +120,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       vals.push({ name: '−DI', value: lastValue(a.minusDI) ?? NaN, color: params.adx.color3 })
     push('adx', 'ADX', vals)
   }
-  if (params.mfi.visible) {
+  if (params.mfi?.visible) {
     push('mfi', 'MFI', [
       {
         name: String(params.mfi.period),
@@ -129,78 +129,38 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
       },
     ])
   }
-  if (params.obv.visible) {
-    push('obv', 'OBV', [
-      { name: '', value: lastValue(computeObv(candles)) ?? NaN, color: params.obv.color },
-    ])
-  }
-  if (params.momentum.visible) {
+  if (params.momentum?.visible) {
     push('momentum', 'Mom', [
       {
         name: String(params.momentum.period),
-        value:
-          lastValue(
-            computeMomentum(candles, Math.max(1, params.momentum.period), params.momentum.source)
-          ) ?? NaN,
+        value: lastValue(computeMomentum(candles, Math.max(1, params.momentum.period), params.momentum.source)) ?? NaN,
         color: params.momentum.color,
       },
     ])
   }
-  if (params.roc.visible) {
+  if (params.roc?.visible) {
     push('roc', 'ROC', [
       {
         name: String(params.roc.period),
-        value:
-          lastValue(computeRoc(candles, Math.max(1, params.roc.period), params.roc.source)) ?? NaN,
+        value: lastValue(computeRoc(candles, Math.max(1, params.roc.period), params.roc.source)) ?? NaN,
         color: params.roc.color,
       },
     ])
   }
-  if (params.sma.visible) {
-    const vals = []
-    if (params.sma.show1 && params.sma.period > 0)
-      vals.push({
-        name: `SMA${params.sma.period}`,
-        value: lastValue(computeSma(candles, params.sma.period, params.sma.source)) ?? NaN,
-        color: params.sma.color,
-      })
-    if (params.sma.show2 && params.sma.period2 > 0)
-      vals.push({
-        name: `SMA${params.sma.period2}`,
-        value: lastValue(computeSma(candles, params.sma.period2, params.sma.source)) ?? NaN,
-        color: params.sma.color2,
-      })
-    push('sma', 'SMA', vals)
-  }
-  if (params.ema.visible) {
-    const vals = []
-    if (params.ema.show1 && params.ema.period > 0)
-      vals.push({
-        name: `EMA${params.ema.period}`,
-        value: lastValue(computeEma(candles, params.ema.period, params.ema.source)) ?? NaN,
-        color: params.ema.color,
-      })
-    if (params.ema.show2 && params.ema.period2 > 0)
-      vals.push({
-        name: `EMA${params.ema.period2}`,
-        value: lastValue(computeEma(candles, params.ema.period2, params.ema.source)) ?? NaN,
-        color: params.ema.color2,
-      })
-    push('ema', 'EMA', vals)
-  }
-  if (params.vwap.visible) {
-    push('vwap', 'VWAP', [
-      { name: '', value: lastValue(computeVwap(candles)) ?? NaN, color: params.vwap.color },
+  if (params.obv?.visible) {
+    push('obv', 'OBV', [
+      {
+        name: '',
+        value: lastValue(computeObv(candles)) ?? NaN,
+        color: params.obv.color,
+      },
     ])
   }
   if (params.ao?.visible) {
     push('ao', 'AO', [
       {
         name: '',
-        value:
-          lastValue(
-            computeAo(candles, Math.max(2, params.ao.period), Math.max(3, params.ao.period2))
-          ) ?? NaN,
+        value: lastValue(computeAo(candles)) ?? NaN,
         color: params.ao.color,
       },
     ])
@@ -209,29 +169,28 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
     push('trix', 'TRIX', [
       {
         name: String(params.trix.period),
-        value:
-          lastValue(computeTrix(candles, Math.max(2, params.trix.period), params.trix.source)) ??
-          NaN,
+        value: lastValue(computeTrix(candles, Math.max(2, params.trix.period))) ?? NaN,
         color: params.trix.color,
       },
     ])
   }
   if (params.ppo?.visible) {
-    let f = Math.max(2, params.ppo.period)
-    let s = Math.max(3, params.ppo.period2)
-    if (f >= s) s = f + 1
-    const p = computePpo(candles, f, s, Math.max(2, params.ppo.period3), params.ppo.source)
-    push('ppo', 'PPO', [
-      { name: 'PPO', value: lastValue(p.ppo) ?? NaN, color: params.ppo.color },
-      { name: 'Sig', value: lastValue(p.signal) ?? NaN, color: params.ppo.color2 },
-    ])
+    const p = computePpo(candles, Math.max(2, params.ppo.period), Math.max(3, params.ppo.period2), Math.max(2, params.ppo.period3))
+    const vals = []
+    if (params.ppo.show1)
+      vals.push({ name: 'PPO', value: lastValue(p.ppo) ?? NaN, color: params.ppo.color })
+    if (params.ppo.show2)
+      vals.push({ name: 'Sig', value: lastValue(p.signal) ?? NaN, color: params.ppo.color2 })
+    push('ppo', 'PPO', vals)
   }
   if (params.aroon?.visible) {
     const a = computeAroon(candles, Math.max(2, params.aroon.period))
-    push('aroon', 'Aroon', [
-      { name: 'Up', value: lastValue(a.up) ?? NaN, color: params.aroon.color },
-      { name: 'Dn', value: lastValue(a.down) ?? NaN, color: params.aroon.color2 },
-    ])
+    const vals = []
+    if (params.aroon.show1)
+      vals.push({ name: 'Up', value: lastValue(a.up) ?? NaN, color: params.aroon.color })
+    if (params.aroon.show2)
+      vals.push({ name: 'Down', value: lastValue(a.down) ?? NaN, color: params.aroon.color2 })
+    push('aroon', 'Aroon', vals)
   }
   if (params.cmf?.visible) {
     push('cmf', 'CMF', [
@@ -244,14 +203,18 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
   }
   if (params.adl?.visible) {
     push('adl', 'ADL', [
-      { name: '', value: lastValue(computeAdl(candles)) ?? NaN, color: params.adl.color },
+      {
+        name: '',
+        value: lastValue(computeAdl(candles)) ?? NaN,
+        color: params.adl.color,
+      },
     ])
   }
   if (params.force?.visible) {
     push('force', 'FI', [
       {
         name: String(params.force.period),
-        value: lastValue(computeForce(candles, Math.max(2, params.force.period))) ?? NaN,
+        value: lastValue(computeForce(candles, Math.max(1, params.force.period))) ?? NaN,
         color: params.force.color,
       },
     ])
@@ -260,15 +223,7 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
     push('uo', 'UO', [
       {
         name: '',
-        value:
-          lastValue(
-            computeUo(
-              candles,
-              Math.max(2, params.uo.period),
-              Math.max(2, params.uo.period2),
-              Math.max(2, params.uo.period3)
-            )
-          ) ?? NaN,
+        value: lastValue(computeUo(candles, Math.max(2, params.uo.period), Math.max(2, params.uo.period2), Math.max(2, params.uo.period3))) ?? NaN,
         color: params.uo.color,
       },
     ])
@@ -277,35 +232,39 @@ function buildRows(candles: Candle[], params: IndicatorParamsMap): IndicatorValu
     push('cmo', 'CMO', [
       {
         name: String(params.cmo.period),
-        value:
-          lastValue(computeCmo(candles, Math.max(2, params.cmo.period), params.cmo.source)) ?? NaN,
+        value: lastValue(computeCmo(candles, Math.max(2, params.cmo.period))) ?? NaN,
         color: params.cmo.color,
       },
     ])
   }
   if (params.rvi?.visible) {
     const r = computeRvi(candles, Math.max(2, params.rvi.period), Math.max(1, params.rvi.period2))
-    push('rvi', 'RVI', [
-      { name: 'RVI', value: lastValue(r.rvi) ?? NaN, color: params.rvi.color },
-      { name: 'Sig', value: lastValue(r.signal) ?? NaN, color: params.rvi.color2 },
-    ])
+    const vals = []
+    if (params.rvi.show1)
+      vals.push({ name: 'RVI', value: lastValue(r.rvi) ?? NaN, color: params.rvi.color })
+    if (params.rvi.show2)
+      vals.push({ name: 'Sig', value: lastValue(r.signal) ?? NaN, color: params.rvi.color2 })
+    push('rvi', 'RVI', vals)
   }
   if (params.stddev?.visible) {
-    push('stddev', 'σ', [
+    push('stddev', 'StdDev', [
       {
         name: String(params.stddev.period),
-        value:
-          lastValue(
-            computeStdDev(candles, Math.max(2, params.stddev.period), params.stddev.source)
-          ) ?? NaN,
+        value: lastValue(computeStdDev(candles, Math.max(2, params.stddev.period), params.stddev.source)) ?? NaN,
         color: params.stddev.color,
       },
     ])
   }
+  if (params.vwap?.visible) {
+    push('vwap', 'VWAP', [
+      {
+        name: '',
+        value: lastValue(computeVwap(candles)) ?? NaN,
+        color: params.vwap.color,
+      },
+    ])
+  }
 
-  // stable order by catalog
-  const order = new Map(INDICATOR_CATALOG.map((m, i) => [m.id, i]))
-  rows.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
   return rows
 }
 
@@ -314,7 +273,7 @@ export function IndicatorValuesHud({
   params,
 }: {
   candles: Candle[]
-  params: IndicatorParamsMap
+  params: IndicatorParamsMap | null | undefined
 }) {
   const rows = useMemo(() => buildRows(candles, params), [candles, params])
   if (rows.length === 0) return null
