@@ -28,7 +28,7 @@ export interface NewsApiResponse {
 export type NewsDirezione = 'rialzista' | 'ribassista' | 'neutra'
 export type NewsOrizzonte = 'minuti' | 'ore' | 'giorni'
 
-/** Response of POST /api/news-analyze – only these fields. */
+/** Response of POST /api/news-analyze */
 export interface NewsImpactAnalysis {
   sintesi: string
   asset_coinvolti: string[]
@@ -39,4 +39,12 @@ export interface NewsImpactAnalysis {
   rischi: string[]
   livelli_da_osservare: string
   confidenza: number
+  fonti?: string[]
+  disclaimer?: string
+  meta?: {
+    provider?: string
+    cached?: boolean
+    fallback?: boolean
+    quotaRemaining?: number
+  }
 }

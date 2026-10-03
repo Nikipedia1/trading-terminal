@@ -1,4 +1,4 @@
-/** AI impact card – disclaimer always visible · glossary links to Learn. */
+/** AI impact card – disclaimer always visible · no buy/sell · glossary links. */
 
 import type { NewsImpactAnalysis } from './types'
 import { GlossaryLinkedText, GlossaryHitChips } from '@/panels/learn/GlossaryLinkedText'
@@ -21,6 +21,9 @@ const DIR_STYLE: Record<
   },
 }
 
+const DEFAULT_DISCLAIMER =
+  'Interpretazione AI, non consiglio finanziario. Nessun invito a comprare o vendere.'
+
 export function ImpactCard({
   analysis,
   onClose,
@@ -30,12 +33,13 @@ export function ImpactCard({
 }) {
   const dir = DIR_STYLE[analysis.direzione] ?? DIR_STYLE.neutra
   const confPct = Math.round((analysis.confidenza ?? 0) * 100)
+  const disclaimer = analysis.disclaimer || DEFAULT_DISCLAIMER
 
   return (
     <div className="mt-2 rounded border border-[#2b3139] bg-[#0d1117] p-2 space-y-1.5 text-[10px] leading-snug">
       <div className="flex items-start justify-between gap-2">
         <span className="text-[9px] uppercase tracking-wide text-[#f0b90b]/90 font-semibold">
-          Interpretazione AI, non consiglio finanziario
+          {disclaimer}
         </span>
         {onClose && (
           <button
@@ -48,6 +52,22 @@ export function ImpactCard({
           </button>
         )}
       </div>
+
+      {(analysis.meta?.fallback || analysis.meta?.cached) && (
+        <div className="flex flex-wrap gap-1 text-[9px] text-[#848e9c]">
+          {analysis.meta.fallback && (
+            <span className="px-1 rounded border border-[#f0b90b]/40 text-[#f0b90b]">
+              Fallback (modello non disponibile)
+            </span>
+          )}
+          {analysis.meta.cached && (
+            <span className="px-1 rounded border border-[#2b3139]">Cache</span>
+          )}
+          {analysis.meta.provider && (
+            <span className="px-1 rounded border border-[#2b3139]">{analysis.meta.provider}</span>
+          )}
+        </div>
+      )}
 
       <p className="text-[#eaecef]">
         <GlossaryLinkedText text={analysis.sintesi} />
@@ -108,6 +128,13 @@ export function ImpactCard({
         </p>
       </div>
 
+      {analysis.fonti && analysis.fonti.length > 0 && (
+        <div>
+          <div className="text-[#848e9c] text-[9px] uppercase tracking-wide">Fonti</div>
+          <p className="text-[#848e9c]">{analysis.fonti.join(' · ')}</p>
+        </div>
+      )}
+
       <GlossaryHitChips
         texts={[
           analysis.sintesi,
@@ -116,6 +143,11 @@ export function ImpactCard({
           ...(analysis.rischi ?? []),
         ]}
       />
+
+      <p className="text-[9px] text-[#5e6673] border-t border-[#1e2329] pt-1.5">
+        Non è un invito a comprare o vendere. Verifica sempre fonti primarie e il tuo piano di
+        rischio.
+      </p>
     </div>
   )
 }

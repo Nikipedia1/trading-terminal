@@ -1,12 +1,7 @@
 /**
  * POST /api/news-analyze
- * Body: { title: string, text?: string, source?: string, url?: string }
- * Calls an LLM (OpenAI / xAI / Groq – OpenAI-compatible) and returns ONLY:
- * {
- *   sintesi, asset_coinvolti[], direzione, forza, orizzonte,
- *   meccanismo, rischi[], livelli_da_osservare, confidenza
- * }
- * No synthetic market data. Requires one of OPENAI_API_KEY | XAI_API_KEY | GROQ_API_KEY.
+ * Guardrails: no buy/sell advice, confidence + sources, disclaimer meta.
+ * Quota per user/IP, KV cache, heuristic fallback if LLM down.
  */
 
 import {
@@ -16,6 +11,8 @@ import {
   readJsonBody,
   checkRateLimit,
   clientIp,
+  extractToken,
+  getSession,
   type Env as AuthEnv,
 } from './auth/_shared'
 
@@ -23,8 +20,9 @@ interface AnalyzeEnv extends AuthEnv {
   OPENAI_API_KEY?: string
   XAI_API_KEY?: string
   GROQ_API_KEY?: string
-  /** Optional model override, e.g. gpt-4o-mini */
   NEWS_ANALYZE_MODEL?: string
+  /** Max AI analyzes per user/IP per hour (default 15) */
+  NEWS_ANALYZE_QUOTA_HOUR?: string
 }
 
 export type Direzione = 'rialzista' | 'ribassista' | 'neutra'
@@ -40,22 +38,46 @@ export interface NewsImpactAnalysis {
   rischi: string[]
   livelli_da_osservare: string
   confidenza: number
+  /** Optional supporting notes / outlet names – not investment advice */
+  fonti?: string[]
+  disclaimer: string
+  meta?: {
+    provider?: string
+    cached?: boolean
+    fallback?: boolean
+    quotaRemaining?: number
+  }
 }
 
-const SYSTEM = `Sei un analista di mercato crypto/macro. Ricevi titolo e testo di una notizia.
-Rispondi SOLO con un oggetto JSON valido (nessun markdown, nessun testo extra) con esattamente queste chiavi:
+const DISCLAIMER =
+  'Interpretazione AI, non consiglio finanziario. Nessun invito a comprare o vendere.'
+
+const SYSTEM = `Sei un analista educativo di mercato crypto/macro. Ricevi titolo e testo di una notizia.
+Rispondi SOLO con un oggetto JSON valido (nessun markdown) con queste chiavi:
 {
   "sintesi": string (2-4 frasi, italiano, fatto-based),
   "asset_coinvolti": string[] (ticker base es. BTC, ETH, o "macro"),
   "direzione": "rialzista" | "ribassista" | "neutra",
   "forza": number intero 1-5,
   "orizzonte": "minuti" | "ore" | "giorni",
-  "meccanismo": string (come la notizia può influenzare prezzo/flussi),
-  "rischi": string[] (2-5 rischi o confutazioni),
-  "livelli_da_osservare": string (prezzi, date, eventi da monitorare; se non noti, descrivi qualitativamente),
-  "confidenza": number 0-1
+  "meccanismo": string (canali di impatto plausibili: flussi, risk-on/off, funding, liquidazioni…),
+  "rischi": string[] (2-5 confutazioni o rischi),
+  "livelli_da_osservare": string (eventi/date/aree qualitative; NO prezzi inventati),
+  "confidenza": number 0-1,
+  "fonti": string[] (citazioni dal testo o nome outlet; se assenti: [])
 }
-Non inventare prezzi numerici precisi se non nel testo. Non dare consigli di investimento.`
+VIETATO:
+- Consigli di trading ("compra", "vendi", "buy now", "sell now", "entra long/short", "leverage").
+- Target price o stop inventati non presenti nel testo.
+- Linguaggio prescrittivo verso l'utente.
+Se l'impatto è incerto, usa direzione "neutra" e confidenza bassa.`
+
+const FORBIDDEN =
+  /\b(buy now|sell now|compra ora|vendi ora|devi comprare|devi vendere|entra long|entra short|leverage alto|all-in)\b/gi
+
+function scrubAdvice(s: string): string {
+  return s.replace(FORBIDDEN, '[redacted]').trim()
+}
 
 function pickProvider(env: AnalyzeEnv): {
   key: string
@@ -110,7 +132,7 @@ function asStringArray(v: unknown): string[] {
     .slice(0, 12)
 }
 
-function normalizeAnalysis(raw: unknown): NewsImpactAnalysis | null {
+function normalizeAnalysis(raw: unknown, extra?: Partial<NewsImpactAnalysis>): NewsImpactAnalysis | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
   const direzioneRaw = String(o.direzione ?? '').toLowerCase()
@@ -124,7 +146,7 @@ function normalizeAnalysis(raw: unknown): NewsImpactAnalysis | null {
   else if (orizzonteRaw.startsWith('giorn') || orizzonteRaw.startsWith('day')) orizzonte = 'giorni'
   else if (orizzonteRaw.startsWith('or')) orizzonte = 'ore'
 
-  const sintesi = String(o.sintesi ?? '').trim()
+  const sintesi = scrubAdvice(String(o.sintesi ?? '').trim())
   if (!sintesi) return null
 
   return {
@@ -133,10 +155,14 @@ function normalizeAnalysis(raw: unknown): NewsImpactAnalysis | null {
     direzione,
     forza: clampInt(o.forza, 1, 5, 3),
     orizzonte,
-    meccanismo: String(o.meccanismo ?? '').trim() || 'Non specificato',
-    rischi: asStringArray(o.rischi),
-    livelli_da_osservare: String(o.livelli_da_osservare ?? '').trim() || '—',
+    meccanismo: scrubAdvice(String(o.meccanismo ?? '').trim()) || 'Non specificato',
+    rischi: asStringArray(o.rischi).map(scrubAdvice),
+    livelli_da_osservare:
+      scrubAdvice(String(o.livelli_da_osservare ?? '').trim()) || '—',
     confidenza: clamp01(o.confidenza, 0.4),
+    fonti: asStringArray(o.fonti),
+    disclaimer: DISCLAIMER,
+    ...extra,
   }
 }
 
@@ -145,14 +171,14 @@ function extractJsonObject(text: string): unknown {
   try {
     return JSON.parse(trimmed)
   } catch {
-    /* try fenced or embedded */
+    /* */
   }
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
   if (fence?.[1]) {
     try {
       return JSON.parse(fence[1].trim())
     } catch {
-      /* continue */
+      /* */
     }
   }
   const start = trimmed.indexOf('{')
@@ -167,6 +193,50 @@ function extractJsonObject(text: string): unknown {
   return null
 }
 
+/** Cheap deterministic digest for cache keys */
+async function digestKey(title: string, text: string): Promise<string> {
+  const data = new TextEncoder().encode(`${title}\n${text.slice(0, 2000)}`)
+  const buf = await crypto.subtle.digest('SHA-256', data)
+  return [...new Uint8Array(buf)]
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 32)
+}
+
+function heuristicFallback(title: string, text: string, source: string): NewsImpactAnalysis {
+  const blob = `${title} ${text}`.toLowerCase()
+  let direzione: Direzione = 'neutra'
+  if (/\b(surge|rally|approval|etf inflows?|rate cut|bullish)\b/.test(blob)) direzione = 'rialzista'
+  if (/\b(hack|ban|lawsuit|outflow|crash|bearish|inflation hot)\b/.test(blob)) direzione = 'ribassista'
+  const assets: string[] = []
+  for (const a of ['BTC', 'ETH', 'SOL', 'macro']) {
+    if (a === 'macro') {
+      if (/\b(fomc|cpi|nfp|fed|inflation)\b/i.test(blob)) assets.push('macro')
+    } else if (new RegExp(`\\b${a}\\b`, 'i').test(blob)) assets.push(a)
+  }
+  return {
+    sintesi: scrubAdvice(
+      `Analisi euristica (modello AI non disponibile): la notizia «${title.slice(0, 120)}» richiede verifica sulle fonti primarie. Nessuna raccomandazione operativa.`
+    ),
+    asset_coinvolti: assets.length ? assets : ['macro'],
+    direzione,
+    forza: 2,
+    orizzonte: 'ore',
+    meccanismo:
+      'Classificazione basata su parole-chiave; non sostituisce lettura del testo completo né dati di mercato real-time.',
+    rischi: [
+      'Possibile falsa polarità da keyword matching',
+      'Titolo clickbait non rappresentativo del corpo',
+      'Eventi già prezzati dal mercato',
+    ],
+    livelli_da_osservare: 'Attendere conferma da fonti ufficiali e reazione del prezzo dopo pubblicazione completa.',
+    confidenza: 0.25,
+    fonti: source ? [source] : [],
+    disclaimer: DISCLAIMER,
+    meta: { fallback: true, provider: 'heuristic' },
+  }
+}
+
 async function callLlm(
   provider: NonNullable<ReturnType<typeof pickProvider>>,
   title: string,
@@ -177,6 +247,7 @@ async function callLlm(
     `Titolo: ${title}`,
     source ? `Fonte: ${source}` : '',
     text ? `Testo:\n${text.slice(0, 6000)}` : 'Testo: (non disponibile — analizza solo il titolo)',
+    'Ricorda: nessun consiglio buy/sell; solo interpretazione educativa.',
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -189,7 +260,7 @@ async function callLlm(
     },
     body: JSON.stringify({
       model: provider.model,
-      temperature: 0.2,
+      temperature: 0.15,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM },
@@ -219,29 +290,6 @@ export const onRequestOptions: PagesFunction<AnalyzeEnv> = async (ctx) =>
 export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
   const { request, env } = ctx
 
-  const provider = pickProvider(env)
-  if (!provider) {
-    return bad(
-      'AI not configured: set OPENAI_API_KEY, XAI_API_KEY, or GROQ_API_KEY on Pages',
-      503,
-      request
-    )
-  }
-
-  // Soft rate limit per IP when KV is available
-  if (env.WORKSPACE_KV) {
-    const ip = clientIp(request)
-    const rl = await checkRateLimit(env.WORKSPACE_KV, `news-analyze:${ip}`, 20, 60)
-    if (!rl.ok) {
-      return json(
-        { error: 'rate limit', retryAfterSec: rl.retryAfterSec },
-        429,
-        request,
-        { 'Retry-After': String(rl.retryAfterSec) }
-      )
-    }
-  }
-
   const body = await readJsonBody<{
     title?: string
     text?: string
@@ -257,24 +305,116 @@ export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
   const text = String(body.data.text ?? '').trim()
   const source = String(body.data.source ?? '').trim()
 
+  let quotaRemaining: number | undefined
+  const quotaHour = Math.max(1, Number(env.NEWS_ANALYZE_QUOTA_HOUR || 15) || 15)
+
+  if (env.WORKSPACE_KV) {
+    let subject = clientIp(request)
+    try {
+      const token = extractToken(request)
+      if (token) {
+        const sess = await getSession(env.WORKSPACE_KV, token)
+        if (sess?.userId) subject = `u:${sess.userId}`
+      }
+    } catch {
+      /* */
+    }
+    const rl = await checkRateLimit(
+      env.WORKSPACE_KV,
+      `news-analyze-quota:${subject}`,
+      quotaHour,
+      3600
+    )
+    if (!rl.ok) {
+      return json(
+        {
+          error: 'quota exceeded',
+          retryAfterSec: rl.retryAfterSec,
+          disclaimer: DISCLAIMER,
+        },
+        429,
+        request,
+        { 'Retry-After': String(rl.retryAfterSec) }
+      )
+    }
+    quotaRemaining = Math.max(0, quotaHour - (rl as { count?: number }).count! - 1) || undefined
+    // soft IP burst
+    const burst = await checkRateLimit(env.WORKSPACE_KV, `news-analyze:ip:${clientIp(request)}`, 30, 60)
+    if (!burst.ok) {
+      return json(
+        { error: 'rate limit', retryAfterSec: burst.retryAfterSec, disclaimer: DISCLAIMER },
+        429,
+        request,
+        { 'Retry-After': String(burst.retryAfterSec) }
+      )
+    }
+
+    // Cache hit
+    const hash = await digestKey(title, text)
+    const cacheKey = `ai:news-analyze:${hash}`
+    try {
+      const cached = await env.WORKSPACE_KV.get(cacheKey, 'json')
+      if (cached && typeof cached === 'object') {
+        const analysis = normalizeAnalysis(cached, {
+          disclaimer: DISCLAIMER,
+          meta: { cached: true, quotaRemaining },
+        })
+        if (analysis) return json(analysis, 200, request)
+      }
+    } catch {
+      /* */
+    }
+  }
+
+  const provider = pickProvider(env)
+  if (!provider) {
+    // No keys: still return structured educational fallback (not empty error for UX)
+    return json(heuristicFallback(title, text, source), 200, request)
+  }
+
   try {
     const rawContent = await callLlm(provider, title, text, source)
     const parsed = extractJsonObject(rawContent)
-    const analysis = normalizeAnalysis(parsed)
+    const analysis = normalizeAnalysis(parsed, {
+      disclaimer: DISCLAIMER,
+      meta: { provider: provider.name, cached: false, quotaRemaining },
+    })
     if (!analysis) {
-      return bad('model returned invalid analysis JSON', 502, request)
+      return json(
+        {
+          ...heuristicFallback(title, text, source),
+          meta: { fallback: true, provider: provider.name },
+        },
+        200,
+        request
+      )
     }
-    // Return ONLY the analysis object as requested (plus minimal meta for debug)
+    if (!analysis.fonti?.length && source) analysis.fonti = [source]
+
+    if (env.WORKSPACE_KV) {
+      try {
+        const hash = await digestKey(title, text)
+        await env.WORKSPACE_KV.put(`ai:news-analyze:${hash}`, JSON.stringify(analysis), {
+          expirationTtl: 60 * 60 * 6,
+        })
+      } catch {
+        /* */
+      }
+    }
+
     return json(analysis, 200, request)
   } catch (e) {
     const status = (e as { status?: number })?.status
-    const msg = e instanceof Error ? e.message : 'analyze failed'
+    // Provider down / quota: graceful fallback instead of hard fail when possible
+    if (status === 429 || status === 500 || status === 502 || status === 503 || !status) {
+      const fb = heuristicFallback(title, text, source)
+      fb.meta = { ...fb.meta, fallback: true, provider: provider.name }
+      return json(fb, 200, request)
+    }
     if (status === 401 || status === 403) {
       return bad('AI provider rejected the API key', 502, request)
     }
-    if (status === 429) {
-      return bad('AI provider rate limited — retry later', 429, request)
-    }
+    const msg = e instanceof Error ? e.message : 'analyze failed'
     return bad(msg.slice(0, 300), 502, request)
   }
 }
