@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Roadmap – NACS Lab Terminal</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0b0e11; color: #eaecef; margin: 0; }
+    .wrap { max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #f0b90b; font-size: 1.25rem; }
+    h2 { font-size: 1rem; margin-top: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { border: 1px solid #2b3139; padding: 0.45rem 0.5rem; text-align: left; vertical-align: top; }
+    .paper { color: #0ecb81; } .live { color: #f0b90b; } .exp { color: #848e9c; }
+    .muted { color: #848e9c; font-size: 0.85rem; }
+    a { color: #f0b90b; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Public roadmap</h1>
+    <p class="muted">What is paper, live, or experimental. Updated with product releases.</p>
+    <table>
+      <thead>
+        <tr><th>Area</th><th>Status</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Charts, book, tape</td><td class="paper">Paper / public data</td><td>Live market data from public venues</td></tr>
+        <tr><td>Paper trading + risk</td><td class="paper">Stable (Free)</td><td>Simulated fills from live marks</td></tr>
+        <tr><td>News RSS + AI impact</td><td class="paper">Stable</td><td>AI needs API keys; quota + fallback</td></tr>
+        <tr><td>Calendar / Learn / Live TV</td><td class="paper">Stable</td><td>Educational; not advice</td></tr>
+        <tr><td>Live exchange orders</td><td class="live">Pro+</td><td>Your keys; risk gates; not a managed OMS SLA yet</td></tr>
+        <tr><td>Cloud workspace</td><td class="live">Pro+</td><td>Requires Cloudflare KV</td></tr>
+        <tr><td>Team seats / RBAC</td><td class="live">Team</td><td>Roles viewer/trader/risk/admin</td></tr>
+        <tr><td>Multi-venue OMS + reconcile</td><td class="exp">Experimental</td><td>Architecture in-repo; production hardening ongoing</td></tr>
+        <tr><td>Stripe billing</td><td class="exp">Experimental</td><td>Plan matrix live; checkout URL optional</td></tr>
+        <tr><td>MiFID / broker licensing</td><td class="exp">Out of scope</td><td>Software tool only — not a licensed firm</td></tr>
+      </tbody>
+    </table>
+    <h2>Legend</h2>
+    <p class="muted"><span class="paper">Paper</span> · <span class="live">Live / paid</span> · <span class="exp">Experimental</span></p>
+    <p class="muted"><a href="/pricing/">Pricing</a> · <a href="/status/">Status</a> · <a href="/">Terminal</a></p>
+  </div>
+</body>
+</html>

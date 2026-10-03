@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Support – NACS Lab Terminal</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0b0e11; color: #eaecef; margin: 0; }
+    .wrap { max-width: 28rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #f0b90b; font-size: 1.25rem; }
+    label { display: block; font-size: 0.75rem; color: #848e9c; margin-top: 0.75rem; }
+    input, textarea, select {
+      width: 100%; box-sizing: border-box; margin-top: 0.25rem;
+      background: #0d1117; border: 1px solid #2b3139; color: #eaecef;
+      border-radius: 0.4rem; padding: 0.5rem; font: inherit;
+    }
+    button {
+      margin-top: 1rem; width: 100%; padding: 0.65rem;
+      background: #f0b90b; color: #0b0e11; border: 0; border-radius: 0.4rem;
+      font-weight: 700; cursor: pointer;
+    }
+    .muted { color: #848e9c; font-size: 0.85rem; }
+    a { color: #f0b90b; }
+    #out { margin-top: 1rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Support</h1>
+    <p class="muted">Open a ticket (stored securely when KV is configured). Or email support@nacslab.example.</p>
+    <form id="f">
+      <label>Email<input name="email" type="email" required /></label>
+      <label>Plan
+        <select name="plan">
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="team">Team</option>
+        </select>
+      </label>
+      <label>Subject<input name="subject" required minlength="3" /></label>
+      <label>Message<textarea name="message" rows="5" required minlength="10"></textarea></label>
+      <button type="submit">Submit ticket</button>
+    </form>
+    <div id="out" class="muted"></div>
+    <p class="muted" style="margin-top:1.5rem">
+      <a href="/status/">Status page</a> · <a href="/help/">User guide</a> · <a href="/">Terminal</a>
+    </p>
+  </div>
+  <script>
+    document.getElementById('f').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const fd = new FormData(e.target)
+      const body = Object.fromEntries(fd.entries())
+      const out = document.getElementById('out')
+      out.textContent = 'Sending…'
+      try {
+        const res = await fetch('/api/support/ticket', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || res.statusText)
+        out.textContent = 'Ticket ' + data.id + ' recorded. ' + (data.message || '')
+        e.target.reset()
+      } catch (err) {
+        out.textContent = 'Error: ' + (err.message || err)
+      }
+    })
+  </script>
+</body>
+</html>

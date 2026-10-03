@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Status – NACS Lab Terminal</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0b0e11; color: #eaecef; margin: 0; }
+    .wrap { max-width: 36rem; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #f0b90b; font-size: 1.25rem; }
+    .row { display: flex; justify-content: space-between; border-bottom: 1px solid #1e2329; padding: 0.6rem 0; font-size: 0.9rem; }
+    .ok { color: #0ecb81; } .bad { color: #f6465d; } .muted { color: #848e9c; font-size: 0.85rem; }
+    a { color: #f0b90b; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>System status</h1>
+    <p class="muted">Live probes against this deployment. Third-party exchanges are outside our control.</p>
+    <div id="rows">Loading…</div>
+    <p class="muted" style="margin-top:1.5rem"><a href="/support/">Support</a> · <a href="/">Terminal</a></p>
+  </div>
+  <script>
+    async function probe(name, url) {
+      const t0 = performance.now()
+      try {
+        const res = await fetch(url, { cache: 'no-store' })
+        return { name, ok: res.ok, ms: Math.round(performance.now() - t0), detail: res.status }
+      } catch (e) {
+        return { name, ok: false, ms: Math.round(performance.now() - t0), detail: e.message }
+      }
+    }
+    ;(async () => {
+      const checks = await Promise.all([
+        probe('App shell', '/'),
+        probe('Health API', '/api/health'),
+        probe('News API', '/api/news'),
+        probe('Calendar API', '/api/calendar'),
+      ])
+      const el = document.getElementById('rows')
+      el.innerHTML = checks.map(c =>
+        '<div class="row"><span>' + c.name + '</span><span class="' +
+        (c.ok ? 'ok' : 'bad') + '">' + (c.ok ? 'Operational' : 'Issue') +
+        ' · ' + c.ms + 'ms · ' + c.detail + '</span></div>'
+      ).join('')
+    })()
+  </script>
+</body>
+</html>
