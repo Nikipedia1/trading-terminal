@@ -1,13 +1,15 @@
 /**
- * Professional 3D tools desk widget.
+ * Professional 3D tools desk widget — live-synced to primary chart viewport.
  * Modes: Volume Terrain · Candle Columns · Book Depth.
- * Data: real OHLCV + live L2 from market store.
+ * Data: real OHLCV + live L2; range follows chart when Sync on.
  */
 
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
+import { useChartViewportStore } from '@/stores/chartViewportStore'
+import { useChartFocusStore } from '@/stores/chartFocusStore'
 import { Viz3DScene } from './Viz3DScene'
 import { buildViz3DModel } from './compute'
 import {
@@ -16,12 +18,29 @@ import {
   type Viz3DConfig,
   type Viz3DMode,
 } from './types'
+import type { Candle } from '@/types'
 
 const MODES: { id: Viz3DMode; label: string }[] = [
   { id: 'volume_terrain', label: 'Volume Terrain' },
   { id: 'candle_columns', label: 'Candles 3D' },
   { id: 'book_depth', label: 'Book Depth' },
 ]
+
+function filterByRange(
+  candles: Candle[],
+  fromSec: number | null,
+  toSec: number | null,
+  syncVisible: boolean,
+  maxBars: number
+): Candle[] {
+  if (!syncVisible || fromSec == null || toSec == null || !(toSec > fromSec)) {
+    return candles.slice(-Math.max(8, maxBars))
+  }
+  const inRange = candles.filter((c) => c.time >= fromSec && c.time <= toSec)
+  if (inRange.length >= 4) return inRange
+  const upto = candles.filter((c) => c.time <= toSec)
+  return upto.slice(-Math.max(8, maxBars))
+}
 
 export function Viz3DPanel() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
@@ -30,18 +49,57 @@ export function Viz3DPanel() {
   const symbol = primary?.symbol ?? 'BTCUSDT'
   const interval = primary?.interval ?? '1m'
   const exchange = primary?.exchange ?? 'binance'
-  const { candles } = usePanelMarket(symbol, interval, exchange)
+  const { candles, status } = usePanelMarket(symbol, interval, exchange)
   const book = useMarketStore((s) => s.orderBook)
 
-  const [cfg, setCfg] = useState<Viz3DConfig>(() => ({ ...DEFAULT_VIZ3D_CONFIG }))
+  const fromSec = useChartViewportStore((s) => s.fromSec)
+  const toSec = useChartViewportStore((s) => s.toSec)
+  const crosshairTime = useChartViewportStore((s) => s.crosshairTime)
+  const crosshairPrice = useChartViewportStore((s) => s.crosshairPrice)
+  const requestFocus = useChartFocusStore((s) => s.requestFocus)
+
+  const [cfg, setCfg] = useState<Viz3DConfig>(() => ({
+    ...DEFAULT_VIZ3D_CONFIG,
+    syncVisible: true,
+  }))
   const patch = useCallback((p: Partial<Viz3DConfig>) => {
     setCfg((c) => ({ ...c, ...p }))
   }, [])
 
-  const model = useMemo(
-    () => buildViz3DModel(candles, book, cfg),
-    [candles, book, cfg]
+  const scopedCandles = useMemo(
+    () => filterByRange(candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars),
+    [candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars]
   )
+
+  const model = useMemo(
+    () => buildViz3DModel(scopedCandles, book, cfg),
+    [scopedCandles, book, cfg]
+  )
+
+  const lastT = candles.length ? candles[candles.length - 1]?.time : 0
+
+  const onPick = useCallback(
+    (timeSec: number, price?: number) => {
+      requestFocus(timeSec, { price, padSec: 600 })
+      useChartViewportStore.getState().setCrosshair(timeSec, price ?? null)
+    },
+    [requestFocus]
+  )
+
+  useEffect(() => {
+    useChartViewportStore.getState().setViewport({
+      panelId: primaryPanelId,
+      symbol,
+      interval,
+    })
+  }, [primaryPanelId, symbol, interval])
+
+  const syncLabel =
+    cfg.syncVisible && fromSec != null && toSec != null
+      ? `SYNC · ${scopedCandles.length} bars in view`
+      : status === 'connected'
+        ? `LIVE · last ${scopedCandles.length} bars`
+        : status
 
   return (
     <div className="h-full w-full flex flex-col bg-[#0b0e11] min-h-0">
@@ -51,6 +109,15 @@ export function Viz3DPanel() {
         </span>
         <span className="text-[10px] text-[#5e6673] font-mono">
           {symbol} · {interval}
+        </span>
+        <span
+          className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+            cfg.syncVisible
+              ? 'text-[#0ecb81] border-[#0ecb81]/40'
+              : 'text-[#5e6673] border-[#2b3139]'
+          }`}
+        >
+          {syncLabel}
         </span>
         <div className="flex gap-0.5 ml-1">
           {MODES.map((m) => (
@@ -84,6 +151,15 @@ export function Viz3DPanel() {
         <label className="flex items-center gap-1 text-[10px] text-[#848e9c] ml-auto cursor-pointer">
           <input
             type="checkbox"
+            className="accent-[#0ecb81]"
+            checked={cfg.syncVisible}
+            onChange={(e) => patch({ syncVisible: e.target.checked })}
+          />
+          Sync chart
+        </label>
+        <label className="flex items-center gap-1 text-[10px] text-[#848e9c] cursor-pointer">
+          <input
+            type="checkbox"
             className="accent-[#f0b90b]"
             checked={cfg.autoRotate}
             onChange={(e) => patch({ autoRotate: e.target.checked })}
@@ -106,7 +182,15 @@ export function Viz3DPanel() {
       </div>
 
       <div className="flex-1 min-h-0 relative">
-        <Viz3DScene model={model} config={cfg} onCameraChange={patch} />
+        <Viz3DScene
+          model={model}
+          config={cfg}
+          onCameraChange={patch}
+          crosshairTime={crosshairTime}
+          crosshairPrice={crosshairPrice}
+          onPick={onPick}
+          liveKey={lastT}
+        />
       </div>
 
       <div className="shrink-0 flex flex-wrap items-center gap-3 px-2 py-1 border-t border-[#2b3139] text-[10px] text-[#5e6673]">
@@ -158,7 +242,11 @@ export function Viz3DPanel() {
           <option value="neon">Neon</option>
           <option value="mono">Mono</option>
         </select>
-        <span className="ml-auto text-[9px]">Solo dati reali · no synthetic</span>
+        <span className="ml-auto text-[9px]">
+          {crosshairPrice != null
+            ? `XH ${crosshairPrice.toFixed(2)}`
+            : 'live ↔ chart'}
+        </span>
       </div>
     </div>
   )
