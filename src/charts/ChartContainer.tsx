@@ -70,6 +70,7 @@ import {
 } from '@/analysis/footprint'
 import { ReplayBar } from '@/analysis/replay'
 import { PaperPositionLines } from '@/trading/paper'
+import { MacroEventLines } from './MacroEventLines'
 import { LOAD_MORE_THRESHOLD } from '@/data/klines/history'
 import { ChartViewportBridge } from './ChartViewportBridge'
 
@@ -238,6 +239,7 @@ export function ChartContainer({
   void printPinTime
   void setPrintPinTime
   void intervalToSeconds
+  void setSyncHighlight
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -526,6 +528,7 @@ export function ChartContainer({
           containerRef={containerRef}
           symbol={symbol}
         />
+        <MacroEventLines enabled bridge={bridge} containerRef={containerRef} />
         <DomLadder enabled={deepDomEnabled} exchange={exchange} symbol={symbol} />
         <ReplayBar enabled={replayEnabled} exchange={exchange} symbol={symbol} />
         <PaperEquitySeries chart={mainChart} symbol={symbol} enabled />
