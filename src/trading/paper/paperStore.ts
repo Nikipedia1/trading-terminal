@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import type { PaperAccount, PaperFill, PaperMarginMode, PaperOrder, PaperOrderType, PaperPosition, PaperSide } from './types'
 import { userStorage } from '@/lib/userScopedStorage'
+import { useRiskStore } from '@/trading/risk/riskStore'
 
 const STORAGE_PREFIX = 'tt-paper:v3:'
 const LEGACY_KEYS = ['tt-paper:v2', 'tt-paper:v1']
@@ -130,6 +131,18 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     const postOnly = !!input.postOnly
     if (!symbol || !Number.isFinite(qty) || qty <= 0) return { ok: false, error: 'Invalid size' }
     if (!Number.isFinite(markPrice) || markPrice <= 0) return { ok: false, error: 'No real market price – start live data first' }
+    const risk = useRiskStore.getState().evaluate({
+      mode: 'paper',
+      symbol: symbol.toUpperCase(),
+      leverage,
+      qty,
+      price: type === 'limit' && input.price ? Number(input.price) : markPrice,
+      openPositionCount: get().positions.length,
+    })
+    if (!risk.ok) {
+      useRiskStore.getState().recordReject()
+      return { ok: false, error: risk.message }
+    }
     const entryRef = type === 'limit' && input.price ? Number(input.price) : markPrice
     const tpslErr = validateTpsl(side, entryRef, takeProfit, stopLoss)
     if (tpslErr) return { ok: false, error: tpslErr }
@@ -146,12 +159,14 @@ export const usePaperStore = create<PaperState>((set, get) => ({
       const order: PaperOrder = { id: uid('ord'), symbol: symbol.toUpperCase(), side, type: 'limit', price: limitPx, qty, leverage, marginMode, status: 'open', createdAt: Date.now(), takeProfit, stopLoss, trailingPct, postOnly }
       set((s) => { const next = { ...s, orders: [order, ...s.orders] }; persist(next); return { orders: next.orders, lastError: null } })
       get().tryFillLimits(symbol.toUpperCase(), markPrice)
+      useRiskStore.getState().recordAccept()
       return { ok: true }
     }
     const order: PaperOrder = { id: uid('ord'), symbol: symbol.toUpperCase(), side, type: 'market', price: null, qty, leverage, marginMode, status: 'filled', createdAt: Date.now(), filledAt: Date.now(), fillPrice: markPrice, takeProfit, stopLoss, trailingPct }
     const pos: PaperPosition = { id: uid('pos'), symbol: order.symbol, side, qty, entryPrice: markPrice, leverage, margin, marginMode, openedAt: Date.now(), markPrice, takeProfit, stopLoss, trailingPct, trailExtreme: trailingPct != null ? markPrice : null }
     const fill: PaperFill = { id: uid('fill'), orderId: order.id, symbol: order.symbol, side, qty, price: markPrice, leverage, realizedPnl: 0, time: Date.now(), action: 'open' }
     set((s) => { const next = { account: { ...s.account, balance: s.account.balance - margin }, positions: [pos, ...s.positions], orders: [order, ...s.orders], fills: [fill, ...s.fills].slice(0, 200) }; persist(next); return { ...next, lastError: null } })
+    useRiskStore.getState().recordAccept()
     return { ok: true }
   },
   cancelOrder: (orderId) => {
@@ -166,6 +181,7 @@ export const usePaperStore = create<PaperState>((set, get) => ({
     const returned = pos.marginMode === 'isolated' ? Math.max(0, pos.margin + pnl) : pos.margin + pnl
     const fill: PaperFill = { id: uid('fill'), orderId: `${reason}-${pos.id}`, symbol: pos.symbol, side: pos.side, qty: pos.qty, price: px, leverage: pos.leverage, realizedPnl: pos.marginMode === 'isolated' ? Math.max(-pos.margin, pnl) : pnl, time: Date.now(), action: reason }
     set((s) => { const next = { account: { ...s.account, balance: s.account.balance + returned }, positions: s.positions.filter((p) => p.id !== positionId), fills: [fill, ...s.fills].slice(0, 200) }; persist(next); return { ...next, lastError: null } })
+    useRiskStore.getState().addRealizedPnl(fill.realizedPnl)
     return { ok: true }
   },
   closeSide: (symbol, side, markPrice) => {
