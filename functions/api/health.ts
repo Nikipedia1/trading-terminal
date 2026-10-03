@@ -1,5 +1,5 @@
 /**
- * GET /api/health – liveness for Pages + optional KV probe.
+ * GET /api/health – liveness + KV + optional upstream probes (news, calendar).
  */
 
 interface Env {
@@ -13,6 +13,26 @@ function cors(request: Request): HeadersInit {
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
+  }
+}
+
+async function probe(
+  url: string,
+  timeoutMs = 4000
+): Promise<{ ok: boolean; ms: number; detail?: string }> {
+  const t0 = Date.now()
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), timeoutMs)
+    const res = await fetch(url, { signal: ctrl.signal })
+    clearTimeout(t)
+    return {
+      ok: res.ok,
+      ms: Date.now() - t0,
+      detail: res.ok ? undefined : `HTTP ${res.status}`,
+    }
+  } catch (e: any) {
+    return { ok: false, ms: Date.now() - t0, detail: e?.message || 'fail' }
   }
 }
 
@@ -31,15 +51,26 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     }
   }
 
+  const origin = new URL(ctx.request.url).origin
+  const deep = new URL(ctx.request.url).searchParams.get('deep') === '1'
+
+  const upstream: Record<string, { ok: boolean; ms: number; detail?: string }> = {}
+  if (deep) {
+    upstream.news = await probe(`${origin}/api/news`)
+    upstream.calendar = await probe(`${origin}/api/calendar`)
+  }
+
   const body = {
     ok: kv !== 'error',
-    service: 'trading-terminal',
+    service: 'nacs-lab-terminal',
     time: new Date().toISOString(),
-    uptimeMs: started,
+    latencyMs: Date.now() - started,
     checks: {
       kv,
       runtime: 'cloudflare-pages',
+      functions: 'ok',
     },
+    upstream: deep ? upstream : undefined,
   }
 
   return new Response(JSON.stringify(body), {
