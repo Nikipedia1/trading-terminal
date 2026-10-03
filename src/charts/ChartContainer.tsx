@@ -1,1 +1,4 @@
-PLACEHOLDER_WILL_BE_REPLACED
+/**
+ * ChartContainer – thin re-export (implementation in ChartContainerImpl).
+ */
+export { ChartContainer, type ChartContainerProps } from './ChartContainerImpl'
