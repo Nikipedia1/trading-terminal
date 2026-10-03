@@ -1,5 +1,10 @@
 {
-  "version": 1,
+  "version": "1.1.0",
+  "schema": 1,
+  "curated": true,
+  "reviewedAt": "2026-10-03",
+  "disclaimer": "Contenuti educativi. Non costituiscono consiglio finanziario.",
+  "changelog": "See CHANGELOG.md",
   "title": "Trading Desk Academy",
   "categories": [
     { "id": "order-flow", "label": "Order flow" },
@@ -226,8 +231,8 @@
       "type": "video",
       "category": "order-flow",
       "title": "Intro order flow (embed)",
-      "summary": "Panoramica concetti base — sostituisci videoId con un contenuto tuo se serve.",
-      "videoId": "dQw4w9WgXcQ",
+      "summary": "Panoramica concetti base. Imposta un videoId YouTube educativo.",
+      "videoId": "",
       "durationMin": 8
     },
     {
@@ -235,8 +240,8 @@
       "type": "video",
       "category": "risk",
       "title": "Position sizing in pratica",
-      "summary": "Esempio numerico di size su stop in tick/percentuale.",
-      "videoId": "dQw4w9WgXcQ",
+      "summary": "Esempio numerico di size su stop. Imposta un videoId YouTube educativo.",
+      "videoId": "",
       "durationMin": 6
     },
     {
@@ -244,8 +249,8 @@
       "type": "video",
       "category": "psicologia",
       "title": "Journal e review settimanale",
-      "summary": "Come strutturare una review senza bias di hindsight.",
-      "videoId": "dQw4w9WgXcQ",
+      "summary": "Review senza bias di hindsight. Imposta un videoId YouTube educativo.",
+      "videoId": "",
       "durationMin": 7
     }
   ],
