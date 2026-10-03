@@ -10,6 +10,7 @@ import { DEFAULT_DEEP_DOM_CONFIG } from '@/analysis/deepDom'
 import { DEFAULT_DELTA_CONFIG } from '@/analysis/deltaPrint'
 import { DEFAULT_PROFILE_CONFIG } from '@/analysis/volumeProfile'
 import { DEFAULT_GAMMA_CONFIG } from '@/analysis/gamma'
+import { DEFAULT_FOOTPRINT_CONFIG } from '@/analysis/footprint'
 
 export function defaultOrderflowState(): OrderflowState {
   return {
@@ -23,6 +24,7 @@ export function defaultOrderflowState(): OrderflowState {
     dom: false,
     domCfg: { ...DEFAULT_DEEP_DOM_CONFIG },
     footprint: false,
+    footprintCfg: { ...DEFAULT_FOOTPRINT_CONFIG },
     gamma: false,
     gammaCfg: { ...DEFAULT_GAMMA_CONFIG },
     replay: false,
