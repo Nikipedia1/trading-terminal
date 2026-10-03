@@ -65,35 +65,37 @@ export function LoginScreen({
         </div>
       )}
 
-      <div className="flex gap-1 p-1 rounded-lg bg-[#0b0e11] border border-[#1e2329]">
-        <button
-          type="button"
-          className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
-            mode === 'login'
-              ? 'bg-[#f0b90b] text-[#0b0e11] shadow-[0_0_12px_rgba(240,185,11,0.35)]'
-              : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#1e2329]'
-          }`}
-          onClick={() => {
-            setMode('login')
-            clearError()
-          }}
-        >
-          Login
-        </button>
-        <button
-          type="button"
-          className={`flex-1 py-2 text-xs font-semibold rounded-md transition-all ${
-            mode === 'register'
-              ? 'bg-[#f0b90b] text-[#0b0e11] shadow-[0_0_12px_rgba(240,185,11,0.35)]'
-              : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#1e2329]'
-          }`}
-          onClick={() => {
-            setMode('register')
-            clearError()
-          }}
-        >
-          Register
-        </button>
+      <div className={`${embedded ? '' : 'px-6 pt-4'}`}>
+        <div className="flex gap-1 p-1 rounded-lg bg-[#0b0e11] border border-[#1e2329]">
+          <button
+            type="button"
+            className={`flex-1 py-2.5 text-xs font-bold rounded-md transition-all ${
+              mode === 'login'
+                ? 'bg-[#f0b90b] text-[#0b0e11] shadow-[0_0_12px_rgba(240,185,11,0.35)]'
+                : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#1e2329]'
+            }`}
+            onClick={() => {
+              setMode('login')
+              clearError()
+            }}
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            className={`flex-1 py-2.5 text-xs font-bold rounded-md transition-all ${
+              mode === 'register'
+                ? 'bg-[#f0b90b] text-[#0b0e11] shadow-[0_0_12px_rgba(240,185,11,0.35)]'
+                : 'text-[#848e9c] hover:text-[#eaecef] hover:bg-[#1e2329]'
+            }`}
+            onClick={() => {
+              setMode('register')
+              clearError()
+            }}
+          >
+            Register
+          </button>
+        </div>
       </div>
 
       <form onSubmit={onSubmit} className={`${embedded ? 'mt-4' : 'p-6 pt-4'} space-y-3.5`}>
@@ -133,7 +135,7 @@ export function LoginScreen({
             </span>
             <input
               type="password"
-euenComplete="new-password"
+              autoComplete="new-password"
               required
               minLength={8}
               placeholder="Repeat password"
