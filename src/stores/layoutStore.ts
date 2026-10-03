@@ -43,6 +43,7 @@ export const WIDGET_META: Record<
   calendar: { title: 'Calendario', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   livetv: { title: 'Live TV', minW: 3, minH: 6, defaultW: 5, defaultH: 12 },
   learn: { title: 'Learn', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
+  ops: { title: 'Ops', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
