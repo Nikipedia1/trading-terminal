@@ -226,7 +226,6 @@ export function ChartContainer({
   const activeTool = useDrawingStore((s) => s.activeTool)
   void indicatorByPanel
   void activeTool
-  void seriesMgr
   void deltaConfig
 
   useEffect(() => {
@@ -281,14 +280,18 @@ export function ChartContainer({
     const series = seriesMgrRef.current?.getCandleSeries() as ISeriesApi<'Candlestick'> | null | undefined
     const el = containerRef.current
     if (!chart || !series || !el) return
-    return attachFreePan(chart, series, el)
+    return attachFreePan(
+      { chart, series, container: el },
+      () => useDrawingStore.getState().activeTool === 'pan'
+    )
   }, [mainChart, candleSeries])
 
   useEffect(() => {
     const chart = chartRef.current
-    if (!chart) return
-    unlockPriceScale(chart)
-  }, [mainChart])
+    const series = seriesMgrRef.current?.getCandleSeries() as ISeriesApi<'Candlestick'> | null | undefined
+    if (!chart || !series) return
+    unlockPriceScale(chart, series)
+  }, [mainChart, candleSeries])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -349,6 +352,16 @@ export function ChartContainer({
     ind.apply(candles, indicatorParams)
   }, [candles, panelId, indicatorParams])
 
+  useCandleDeltaSeries(
+    deltaEnabled,
+    seriesMgr,
+    exchange,
+    symbol,
+    interval,
+    candles,
+    deltaConfig
+  )
+
   useEffect(() => {
     if (!chartRef.current || !syncGroup) return
     const chart = chartRef.current
@@ -371,8 +384,15 @@ export function ChartContainer({
   useEffect(() => {
     if (!isPrimary || !focusRequest || !chartRef.current) return
     const chart = chartRef.current
-    const ts = chart.timeScale()
-    if (focusRequest.logicalRange) ts.setVisibleLogicalRange(focusRequest.logicalRange)
+    const pad = focusRequest.padSec ?? 900
+    try {
+      chart.timeScale().setVisibleRange({
+        from: (focusRequest.timeSec - pad) as Time,
+        to: (focusRequest.timeSec + pad) as Time,
+      })
+    } catch {
+      /* */
+    }
   }, [focusRequest, isPrimary])
 
   useEffect(() => {
@@ -442,7 +462,6 @@ export function ChartContainer({
           exchange={exchange}
           symbol={symbol}
           config={profileConfig}
-          series={candleSeries}
         />
 
         <FootprintOverlay
