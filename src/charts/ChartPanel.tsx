@@ -205,7 +205,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0 overflow-visible relative z-30">
+      <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0 overflow-visible relative z-40">
         <DrawingToolbar panelId={id} symbol={symbol} />
         <OrderflowMenu
           state={ofState}
@@ -244,7 +244,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <ChartContainer
           panelId={id}
           symbol={symbol}
