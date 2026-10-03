@@ -32,6 +32,7 @@ import { PluginIndicatorPanel } from '@/plugins/PluginIndicatorPanel'
 import { MicrostructurePanel } from '@/analysis/microstructure'
 import { Viz3DPanel } from '@/analysis/viz3d'
 import { useMobileLayout } from '@/layout/useMobileLayout'
+import { NewsPanel, getRegisteredPanel } from '@/panels'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -109,8 +110,16 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <MicrostructurePanel />
     case 'viz3d':
       return <Viz3DPanel />
-    default:
+    case 'news':
+      return <NewsPanel />
+    default: {
+      const reg = getRegisteredPanel(kind)
+      if (reg) {
+        const C = reg.component
+        return <C />
+      }
       return null
+    }
   }
 }
 
@@ -134,6 +143,7 @@ const ADDABLE: WidgetKind[] = [
   'livekeys',
   'plugins',
   'micro',
+  'news',
 ]
 
 export function PanelGrid({ width }: PanelGridProps) {
