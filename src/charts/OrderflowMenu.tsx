@@ -1,6 +1,6 @@
 /**
  * Orderflow – un unico menu a tendina con tutti gli strumenti:
- * Print · Delta · Profile · Trades · Dom · Footprint · Gamma · Replay
+ * Print · Delta · Profile · Trades · L2 Heatmap · Footprint · GEX · Replay
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -10,7 +10,11 @@ import type { DeepTradesConfig } from '@/analysis/deepTrades'
 import type { DeepDomConfig } from '@/analysis/deepDom'
 import { L2_GRANULARITY_NOTES } from '@/analysis/deepDom'
 import type { DeltaPrintConfig } from '@/analysis/deltaPrint'
-import { FOOTPRINT_NOTE } from '@/analysis/footprint'
+import {
+  FOOTPRINT_NOTE,
+  DEFAULT_FOOTPRINT_CONFIG,
+  type FootprintConfig,
+} from '@/analysis/footprint'
 import { DEFAULT_GAMMA_CONFIG, type GammaConfig } from '@/analysis/gamma'
 import type { ExchangeId } from '@/types'
 
@@ -25,6 +29,7 @@ export interface OrderflowState {
   dom: boolean
   domCfg: DeepDomConfig
   footprint: boolean
+  footprintCfg: FootprintConfig
   gamma: boolean
   gammaCfg: GammaConfig
   replay: boolean
@@ -108,11 +113,11 @@ export function OrderflowMenu({
   const active = [
     state.print && 'Print',
     state.delta && 'Delta',
-    state.profile && 'Profile',
+    state.profile && 'VP',
     state.trades && 'Trades',
-    state.dom && 'Dom',
-    state.footprint && 'FP',
-    state.gamma && 'Gamma',
+    state.dom && 'Heatmap',
+    state.footprint && 'Footprint',
+    state.gamma && 'GEX',
     state.replay && 'Replay',
   ].filter(Boolean) as string[]
 
@@ -179,7 +184,7 @@ export function OrderflowMenu({
           </Row>
 
           <Row
-            label="Profile"
+            label="Volume Profile"
             on={!!state.profile}
             onToggle={() => onChange({ profile: !state.profile })}
           >
@@ -197,31 +202,74 @@ export function OrderflowMenu({
           </Row>
 
           <Row
-            label="DeepDom + ladder"
+            label="L2 Heatmap + ladder"
             on={!!state.dom}
             onToggle={() => onChange({ dom: !state.dom })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              {L2_GRANULARITY_NOTES[exchange] ?? 'L2 book heatmap + ladder'}
+              {'L2 Heatmap time×price · ladder laterale. '}
+              {L2_GRANULARITY_NOTES[exchange] ?? ''}
             </p>
           </Row>
 
           <Row
-            label="Footprint grid"
+            label="Footprint"
             on={!!state.footprint}
             onToggle={() => onChange({ footprint: !state.footprint })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">{FOOTPRINT_NOTE}</p>
+            {state.footprint && (
+              <div className="flex flex-col gap-1 mt-1">
+                <label className="flex items-center gap-2 text-[11px] text-[#848e9c]">
+                  Max candles
+                  <input
+                    type="range"
+                    min={10}
+                    max={80}
+                    value={state.footprintCfg?.maxCandles ?? 40}
+                    className="w-20 accent-[#f0b90b]"
+                    onChange={(e) =>
+                      onChange({
+                        footprintCfg: {
+                          ...(state.footprintCfg ?? DEFAULT_FOOTPRINT_CONFIG),
+                          maxCandles: Number(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                  <span className="font-mono text-[10px] w-6">
+                    {state.footprintCfg?.maxCandles ?? 40}
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 text-[11px] text-[#848e9c] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="accent-[#0ecb81]"
+                    checked={state.footprintCfg?.showBarMetrics !== false}
+                    onChange={(e) =>
+                      onChange({
+                        footprintCfg: {
+                          ...(state.footprintCfg ?? DEFAULT_FOOTPRINT_CONFIG),
+                          showBarMetrics: e.target.checked,
+                        },
+                      })
+                    }
+                  />
+                  Delta / POC / unfinished
+                </label>
+              </div>
+            )}
           </Row>
 
           <Row
-            label="Gamma levels"
+            label="GEX (Gamma Exposure)"
             on={!!state.gamma}
             onToggle={() => onChange({ gamma: !state.gamma })}
           >
             <p className="text-[9px] text-[#5e6673] leading-snug">
-              Call/Put walls · flip · max pain da Deribit OI (BTC/ETH). Live,
-              linee sincronizzate al prezzo del grafico.
+              GEX proxy da Deribit OI pubblico (BTC/ETH): call/put walls,
+              gamma flip, max pain, HVL. Linee sul chart al prezzo reale.
+              Non è dealer GEX istituzionale completo.
             </p>
             {state.gamma && (
               <div className="flex flex-col gap-1 mt-1">
