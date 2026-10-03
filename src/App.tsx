@@ -24,6 +24,7 @@ import { FEATURES } from '@/lib/features'
 import { useSessionModeStore } from '@/stores/sessionModeStore'
 import { useCloudLayoutSync } from '@/workspace/useCloudLayoutSync'
 import { useMobileLayout } from '@/layout/useMobileLayout'
+import { BrandLogo, SplashLoader, BRAND } from '@/brand'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -272,7 +273,8 @@ function DetachedApp({
   )
   return (
     <div className="h-full flex flex-col bg-terminal-bg">
-      <header className="flex items-center gap-3 px-3 py-1.5 border-b border-terminal-border shrink-0">
+      <header className="nacs-app-header flex items-center gap-3 px-3 py-1.5 shrink-0">
+        <BrandLogo size="sm" showWordmark={false} />
         <span className="text-xxs font-semibold tracking-wide text-[#f0b90b]">DETACHED</span>
         <SymbolBadge symbol={symbol} size="sm" showName={false} />
         <span className="text-xs font-mono-nums text-terminal-text">
@@ -323,12 +325,14 @@ function TerminalApp() {
   }
   return (
     <div className={`h-full flex flex-col pb-7 ${mobile ? 'tt-mobile-shell' : ''}`}>
-      <header className="flex items-center justify-between px-4 py-2 border-b border-terminal-border bg-terminal-panel density-compact">
-        <h1 className="text-sm font-semibold tracking-wide">TRADING TERMINAL</h1>
-        <div className="flex items-center gap-3">
+      <header className="nacs-app-header flex items-center justify-between px-4 py-2 density-compact">
+        <div className="nacs-header-brand">
+          <BrandLogo size="sm" />
+        </div>
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
-            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b]"
+            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b] hover:border-[#f0b90b]/40 transition-colors"
             title="Toggle density (D)"
             onClick={toggleDensity}
           >
@@ -336,7 +340,7 @@ function TerminalApp() {
           </button>
           <button
             type="button"
-            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#eaecef] density-chrome"
+            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#eaecef] density-chrome transition-colors"
             title="Hotkey map (?)"
             onClick={() => setHelpOpen(true)}
           >
@@ -344,7 +348,7 @@ function TerminalApp() {
           </button>
           <button
             type="button"
-            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#eaecef] density-chrome"
+            className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#eaecef] density-chrome transition-colors"
             title="Replay onboarding tour"
             onClick={() => {
               resetOnboardingTour()
@@ -356,7 +360,9 @@ function TerminalApp() {
           <ArchiveMenu />
           <WorkspaceMenu />
           <UserMenu />
-          <span className="text-xxs text-terminal-muted density-chrome">Desk workflow</span>
+          <span className="hidden sm:inline text-xxs text-terminal-muted density-chrome">
+            Desk · {BRAND.versionLabel}
+          </span>
         </div>
       </header>
       <ErrorBanner />
@@ -407,21 +413,40 @@ function GuestEntry() {
   }, [entered, setMode])
   if (!entered) {
     return (
-      <div className="min-h-screen bg-[#0b0e11] flex flex-col items-center justify-center gap-4 text-[#eaecef] px-4">
-        <h1 className="text-lg font-semibold tracking-wide">TRADING TERMINAL</h1>
-        <p className="text-[12px] text-[#848e9c] max-w-sm text-center">
-          Continue as guest for a read-only demo (charts & public data). Trading, bots, and live keys
-          stay disabled.
-        </p>
-        <button
-          type="button"
-          className="px-4 py-2 rounded bg-[#f0b90b] text-[#0b0e11] text-sm font-medium"
-          onClick={() => setEntered(true)}
-        >
-          Enter as guest
-        </button>
-        <div className="w-full max-w-sm">
-          <LoginScreen />
+      <div className="nacs-splash min-h-screen flex flex-col items-center justify-center gap-6 text-[#eaecef] px-4 relative overflow-hidden">
+        <div className="nacs-splash-grid" aria-hidden />
+        <div className="nacs-splash-glow" aria-hidden />
+        <div className="relative z-10 nacs-guest-card rounded-xl px-8 py-10 max-w-md w-full flex flex-col items-center gap-5">
+          <BrandLogo size="lg" />
+          <div className="nacs-loader-stage" aria-hidden>
+            <div className="nacs-orbit">
+              <div className="nacs-orbit-ring" />
+              <div className="nacs-orbit-ring nacs-orbit-ring--2" />
+              <div className="nacs-cube">
+                <div className="nacs-cube-face nacs-cube-face--front" />
+                <div className="nacs-cube-face nacs-cube-face--back" />
+                <div className="nacs-cube-face nacs-cube-face--right" />
+                <div className="nacs-cube-face nacs-cube-face--left" />
+                <div className="nacs-cube-face nacs-cube-face--top" />
+                <div className="nacs-cube-face nacs-cube-face--bottom" />
+              </div>
+              <div className="nacs-orbit-dot" />
+            </div>
+          </div>
+          <p className="text-[12px] text-[#848e9c] text-center leading-relaxed">
+            Continue as guest for a read-only desk (charts & public data).
+            Trading, bots, and live keys stay disabled until you sign in.
+          </p>
+          <button
+            type="button"
+            className="w-full px-4 py-2.5 rounded-lg bg-[#f0b90b] text-[#0b0e11] text-sm font-semibold tracking-wide hover:bg-[#f5c93a] transition-colors shadow-[0_0_20px_rgba(240,185,11,0.2)]"
+            onClick={() => setEntered(true)}
+          >
+            Enter as guest
+          </button>
+          <div className="w-full border-t border-[#1e2329] pt-4">
+            <LoginScreen />
+          </div>
         </div>
       </div>
     )
@@ -440,11 +465,7 @@ export default function App() {
     if (status === 'authenticated') setMode('full')
   }, [status, setMode])
   if (status === 'unknown') {
-    return (
-      <div className="min-h-screen bg-[#0b0e11] flex items-center justify-center text-[#848e9c] text-sm">
-        Checking session…
-      </div>
-    )
+    return <SplashLoader label="Checking secure session…" />
   }
   if (status !== 'authenticated') {
     if (FEATURES.allowGuest) {
