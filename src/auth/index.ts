@@ -1,3 +1,6 @@
 export { useAuthStore } from './authStore'
+export type { AuthUser, AuthRole } from './authStore'
 export { LoginScreen } from './LoginScreen'
 export { AdminPanel } from './AdminPanel'
+export { can, normalizeRole, roleLabel } from './rbac'
+export type { Permission } from './rbac'
