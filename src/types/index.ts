@@ -96,6 +96,7 @@ export type WidgetKind =
   | 'livekeys'
   | 'plugins'
   | 'micro'
+  | 'viz3d'
 
 export interface WidgetPanelConfig {
   id: string
