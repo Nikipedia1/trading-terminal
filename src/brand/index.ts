@@ -1,3 +1,4 @@
 export { BRAND } from './identity'
 export { BrandLogo } from './BrandLogo'
+export { LogoMark3D } from './LogoMark3D'
 export { SplashLoader, Loader3D } from './SplashLoader'

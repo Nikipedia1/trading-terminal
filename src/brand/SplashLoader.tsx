@@ -1,8 +1,9 @@
-/** Full-screen professional splash with CSS 3D loading object. */
+/** Full-screen professional splash with multi-layer CSS 3D objects. */
 
 import { useEffect, useState } from 'react'
 import { BRAND } from './identity'
 import { BrandLogo } from './BrandLogo'
+import { LogoMark3D } from './LogoMark3D'
 
 const STEPS = [
   'Initializing desk…',
@@ -11,12 +12,39 @@ const STEPS = [
   'Connecting feeds…',
 ]
 
+function Stage3D() {
+  return (
+    <div className="nacs-loader-stage nacs-loader-stage--xl" aria-hidden>
+      <div className="nacs-orbit nacs-orbit--deep">
+        <div className="nacs-orbit-ring" />
+        <div className="nacs-orbit-ring nacs-orbit-ring--2" />
+        <div className="nacs-orbit-ring nacs-orbit-ring--3" />
+        <div className="nacs-pyramid">
+          <div className="nacs-pyramid-face nacs-pyramid-face--f" />
+          <div className="nacs-pyramid-face nacs-pyramid-face--r" />
+          <div className="nacs-pyramid-face nacs-pyramid-face--b" />
+          <div className="nacs-pyramid-face nacs-pyramid-face--l" />
+        </div>
+        <div className="nacs-cube nacs-cube--nested">
+          <div className="nacs-cube-face nacs-cube-face--front" />
+          <div className="nacs-cube-face nacs-cube-face--back" />
+          <div className="nacs-cube-face nacs-cube-face--right" />
+          <div className="nacs-cube-face nacs-cube-face--left" />
+          <div className="nacs-cube-face nacs-cube-face--top" />
+          <div className="nacs-cube-face nacs-cube-face--bottom" />
+        </div>
+        <div className="nacs-orbit-dot" />
+        <div className="nacs-orbit-dot nacs-orbit-dot--2" />
+      </div>
+    </div>
+  )
+}
+
 export function SplashLoader({
   label,
   progress,
 }: {
   label?: string
-  /** 0–1 optional determinate bar */
   progress?: number
 }) {
   const [step, setStep] = useState(0)
@@ -37,26 +65,12 @@ export function SplashLoader({
     <div className="nacs-splash min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden">
       <div className="nacs-splash-grid" aria-hidden />
       <div className="nacs-splash-glow" aria-hidden />
+      <div className="nacs-splash-scan" aria-hidden />
 
       <div className="relative z-10 flex flex-col items-center gap-8 max-w-md w-full">
-        <BrandLogo size="lg" />
+        <BrandLogo size="xl" animated />
 
-        {/* CSS 3D orbital + cube */}
-        <div className="nacs-loader-stage" aria-hidden>
-          <div className="nacs-orbit">
-            <div className="nacs-orbit-ring" />
-            <div className="nacs-orbit-ring nacs-orbit-ring--2" />
-            <div className="nacs-cube">
-              <div className="nacs-cube-face nacs-cube-face--front" />
-              <div className="nacs-cube-face nacs-cube-face--back" />
-              <div className="nacs-cube-face nacs-cube-face--right" />
-              <div className="nacs-cube-face nacs-cube-face--left" />
-              <div className="nacs-cube-face nacs-cube-face--top" />
-              <div className="nacs-cube-face nacs-cube-face--bottom" />
-            </div>
-            <div className="nacs-orbit-dot" />
-          </div>
-        </div>
+        <Stage3D />
 
         <div className="w-full space-y-2">
           <div className="flex items-center justify-between text-[11px]">
@@ -67,7 +81,7 @@ export function SplashLoader({
           </div>
           <div className="h-1 rounded-full bg-[#1e2329] overflow-hidden">
             <div
-              className={`h-full rounded-full bg-gradient-to-r from-[#c99400] to-[#f0b90b] ${
+              className={`h-full rounded-full bg-gradient-to-r from-[#c99400] via-[#f0b90b] to-[#ffe08a] ${
                 pct == null ? 'nacs-progress-indeterminate' : ''
               }`}
               style={pct != null ? { width: `${pct * 100}%` } : undefined}
@@ -83,9 +97,8 @@ export function SplashLoader({
   )
 }
 
-/** Compact inline 3D spinner for panels / buttons. */
 export function Loader3D({
-  size = 36,
+  size = 40,
   className = '',
 }: {
   size?: number
@@ -93,22 +106,12 @@ export function Loader3D({
 }) {
   return (
     <div
-      className={`nacs-loader-stage nacs-loader-stage--inline ${className}`}
+      className={`inline-flex items-center justify-center ${className}`}
       style={{ width: size, height: size }}
       aria-label="Loading"
       role="status"
     >
-      <div className="nacs-orbit nacs-orbit--sm">
-        <div className="nacs-orbit-ring" />
-        <div className="nacs-cube nacs-cube--sm">
-          <div className="nacs-cube-face nacs-cube-face--front" />
-          <div className="nacs-cube-face nacs-cube-face--back" />
-          <div className="nacs-cube-face nacs-cube-face--right" />
-          <div className="nacs-cube-face nacs-cube-face--left" />
-          <div className="nacs-cube-face nacs-cube-face--top" />
-          <div className="nacs-cube-face nacs-cube-face--bottom" />
-        </div>
-      </div>
+      <LogoMark3D size={size} animated />
     </div>
   )
 }
