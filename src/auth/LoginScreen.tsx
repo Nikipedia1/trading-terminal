@@ -44,26 +44,25 @@ export function LoginScreen({
           : 'w-full max-w-md border border-[#2b3139] rounded-2xl bg-[#12161c]/95 shadow-[0_0_0_1px_rgba(240,185,11,0.06),0_24px_64px_rgba(0,0,0,0.5)] backdrop-blur-sm overflow-hidden'
       }
     >
-      {!embedded && (
-        <div className="px-6 pt-7 pb-4 flex flex-col items-center gap-3 border-b border-[#1e2329]">
-          <BrandLogo size="lg" animated />
-          <p className="text-[11px] text-[#848e9c] text-center leading-relaxed max-w-xs">
-            Sign in to unlock trading, bots, and live keys. Passwords are hashed
-            server-side.
-          </p>
-        </div>
-      )}
-
-      {embedded && (
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-[#eaecef] tracking-wide">
-            Sign in to {BRAND.shortName}
-          </h2>
-          <p className="text-[11px] text-[#848e9c] mt-0.5">
-            Full desk access · passwords hashed server-side
-          </p>
-        </div>
-      )}
+      {/* Logo sempre in evidenza */}
+      <div
+        className={
+          embedded
+            ? 'flex flex-col items-center gap-2 mb-5 pb-4 border-b border-[#1e2329]'
+            : 'px-6 pt-8 pb-5 flex flex-col items-center gap-3 border-b border-[#1e2329]'
+        }
+      >
+        <BrandLogo
+          size={embedded ? 'lg' : 'xl'}
+          layout="stack"
+          animated={false}
+        />
+        <p className="text-[11px] text-[#848e9c] text-center leading-relaxed max-w-xs">
+          {embedded
+            ? 'Full desk access · passwords hashed server-side'
+            : 'Sign in to unlock trading, bots, and live keys. Passwords are hashed server-side.'}
+        </p>
+      </div>
 
       <div className={`${embedded ? '' : 'px-6 pt-4'}`}>
         <div className="flex gap-1 p-1 rounded-lg bg-[#0b0e11] border border-[#1e2329]">
