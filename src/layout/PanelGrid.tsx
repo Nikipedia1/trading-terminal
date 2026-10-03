@@ -32,7 +32,7 @@ import { PluginIndicatorPanel } from '@/plugins/PluginIndicatorPanel'
 import { MicrostructurePanel } from '@/analysis/microstructure'
 import { Viz3DPanel } from '@/analysis/viz3d'
 import { useMobileLayout } from '@/layout/useMobileLayout'
-import { NewsPanel, getRegisteredPanel } from '@/panels'
+import { NewsPanel, CalendarPanel, getRegisteredPanel } from '@/panels'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -112,6 +112,8 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <Viz3DPanel />
     case 'news':
       return <NewsPanel />
+    case 'calendar':
+      return <CalendarPanel />
     default: {
       const reg = getRegisteredPanel(kind)
       if (reg) {
@@ -144,6 +146,7 @@ const ADDABLE: WidgetKind[] = [
   'plugins',
   'micro',
   'news',
+  'calendar',
 ]
 
 export function PanelGrid({ width }: PanelGridProps) {
