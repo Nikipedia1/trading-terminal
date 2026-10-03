@@ -221,7 +221,7 @@ function ChartArea() {
     return () => ro.disconnect()
   }, [])
   return (
-    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative">
+    <div ref={ref} className="flex-1 min-h-0 min-w-0 relative overflow-auto">
       <PanelGrid width={size.width} height={size.height} />
     </div>
   )
@@ -366,7 +366,7 @@ function TerminalApp() {
         <ExecutionBar />
       </div>
       <div
-        className="flex-1 bg-terminal-bg overflow-hidden min-h-0 flex flex-col"
+        className="flex-1 bg-terminal-bg overflow-auto min-h-0 flex flex-col"
         data-tour="chart-area"
       >
         <ChartArea />
