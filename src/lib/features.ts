@@ -14,7 +14,8 @@ function envFlag(key: string, defaultOn = false): boolean {
 }
 
 export const FEATURES = {
-  allowGuest: envFlag('VITE_ALLOW_GUEST', true),
+  /** Guest / read-only entry — off by default (login required). */
+  allowGuest: envFlag('VITE_ALLOW_GUEST', false),
   autoCloudLayout: envFlag('VITE_AUTO_CLOUD_LAYOUT', true),
   liveKeysUi: envFlag('VITE_LIVE_KEYS_UI', true),
   indicatorPlugins: envFlag('VITE_INDICATOR_PLUGINS', true),
