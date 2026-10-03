@@ -357,6 +357,18 @@ function TerminalApp() {
           >
             Help
           </a>
+          <a href="/pricing/" className="text-xxs text-terminal-muted hover:text-[#f0b90b] hidden md:inline" target="_blank" rel="noreferrer">
+            Plans
+          </a>
+          <a href="/support/" className="text-xxs text-terminal-muted hover:text-[#f0b90b] hidden md:inline" target="_blank" rel="noreferrer">
+            Support
+          </a>
+          <a href="/status/" className="text-xxs text-terminal-muted hover:text-[#f0b90b] hidden lg:inline" target="_blank" rel="noreferrer">
+            Status
+          </a>
+          <a href="/roadmap/" className="text-xxs text-terminal-muted hover:text-[#f0b90b] hidden lg:inline" target="_blank" rel="noreferrer">
+            Roadmap
+          </a>
           <button
             type="button"
             className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b] hover:border-[#f0b90b]/40 transition-colors"
