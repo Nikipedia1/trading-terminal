@@ -97,6 +97,7 @@ export type WidgetKind =
   | 'plugins'
   | 'micro'
   | 'viz3d'
+  | 'news'
 
 export interface WidgetPanelConfig {
   id: string
