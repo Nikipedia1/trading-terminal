@@ -19,6 +19,10 @@ import { LoginScreen, useAuthStore } from '@/auth'
 import { readDetachConfig } from '@/layout/detachPanel'
 import { usePaperWalletSync } from '@/trading/paper'
 import { OnboardingTour, resetOnboardingTour } from '@/ui/OnboardingTour'
+import { OnboardingChecklist } from '@/ui/OnboardingChecklist'
+import { MobileBanner } from '@/ui/MobileBanner'
+import { PerfGuard } from '@/ui/PerfGuard'
+import { LocaleSwitcher } from '@/ui/LocaleSwitcher'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import { FEATURES } from '@/lib/features'
 import { useSessionModeStore } from '@/stores/sessionModeStore'
@@ -45,15 +49,29 @@ function StatusBadge() {
 function ErrorBanner() {
   const lastError = useMarketStore((s) => s.lastError)
   const clearError = useMarketStore((s) => s.clearError)
+  const loadHistorical = useMarketStore((s) => s.loadHistorical)
+  const startLive = useMarketStore((s) => s.startLive)
   if (!lastError) return null
   return (
-    <div className="bg-terminal-red/10 border border-terminal-red/40 text-terminal-red px-4 py-2 text-sm flex justify-between items-center density-chrome">
+    <div className="bg-terminal-red/10 border border-terminal-red/40 text-terminal-red px-4 py-2 text-sm flex justify-between items-center density-chrome gap-2 flex-wrap">
       <span>
         <strong>[{lastError.code}]</strong> {lastError.message}
       </span>
-      <button onClick={clearError} className="text-xs underline hover:no-underline">
-        dismiss
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            clearError()
+            void loadHistorical().then(() => startLive())
+          }}
+          className="text-xs font-semibold px-2 py-0.5 rounded bg-[#f0b90b] text-[#0b0e11] hover:bg-[#fcd535]"
+        >
+          Retry
+        </button>
+        <button type="button" onClick={clearError} className="text-xs underline hover:no-underline">
+          Dismiss
+        </button>
+      </div>
     </div>
   )
 }
@@ -330,6 +348,15 @@ function TerminalApp() {
           <BrandLogo size="sm" />
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          <LocaleSwitcher />
+          <a
+            href="/help/"
+            className="text-xxs text-terminal-muted hover:text-[#f0b90b] hidden sm:inline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Help
+          </a>
           <button
             type="button"
             className="text-xxs px-2 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b] hover:border-[#f0b90b]/40 transition-colors"
@@ -365,6 +392,7 @@ function TerminalApp() {
           </span>
         </div>
       </header>
+      <MobileBanner />
       <ErrorBanner />
       <Controls />
       <TickerBar />
@@ -380,6 +408,8 @@ function TerminalApp() {
       <FeedHealthHud />
       <HotkeyHelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
       <OnboardingTour />
+      <OnboardingChecklist />
+      <PerfGuard />
     </div>
   )
 }
@@ -417,7 +447,6 @@ function GuestEntry() {
         <div className="nacs-splash-grid" aria-hidden />
         <div className="nacs-splash-glow" aria-hidden />
         <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-5">
-          {/* Logo grande e leggibile (SVG statico) */}
           <BrandLogo size="xl" layout="stack" animated={false} />
 
           <div className="nacs-loader-stage" style={{ width: 88, height: 88 }} aria-hidden>
@@ -448,7 +477,6 @@ function GuestEntry() {
             Enter as guest
           </button>
           <div className="w-full border-t border-[#1e2329] pt-5 mt-1">
-            {/* Form senza secondo logo: già in cima alla card */}
             <LoginScreen embedded hideLogo />
           </div>
         </div>
