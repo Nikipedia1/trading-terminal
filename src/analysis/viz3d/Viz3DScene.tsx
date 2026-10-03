@@ -1,11 +1,11 @@
 /**
- * Professional 3D scene renderer — pure Canvas2D perspective.
- * Orbit: drag · Zoom: wheel · Real data only.
- * Modes: terrain · candles · book depth · DOM ladder.
+ * Professional 3D scene — Canvas2D perspective.
+ * Deep DOM: liquidity walls + aggressor trade bubbles (Deep Chart style).
  */
 
 import { useCallback, useEffect, useRef } from 'react'
 import type { Viz3DConfig, Viz3DModel } from './types'
+import { DEFAULT_DOM3D_OPTIONS } from './types'
 import { project, columnCorners, type Camera3D, type Vec3 } from './math3d'
 
 interface Viz3DSceneProps {
@@ -53,6 +53,23 @@ function normPrice(p: number, min: number, max: number) {
   return ((p - min) / (max - min)) * 1.6 - 0.8
 }
 
+function hexAlpha(hex: string, a: number): string {
+  if (hex.startsWith('rgba')) return hex
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = parseInt(full, 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  return `rgba(${r},${g},${b},${a})`
+}
+
+function fmtQuote(q: number): string {
+  if (q >= 1_000_000) return (q / 1_000_000).toFixed(1) + 'M'
+  if (q >= 1_000) return (q / 1_000).toFixed(1) + 'k'
+  return q.toFixed(0)
+}
+
 export function Viz3DScene({
   model,
   config,
@@ -60,9 +77,7 @@ export function Viz3DScene({
   className = '',
 }: Viz3DSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const dragRef = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(
-    null
-  )
+  const dragRef = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
   const cfgRef = useRef(config)
   cfgRef.current = config
   const modelRef = useRef(model)
@@ -89,15 +104,11 @@ export function Viz3DScene({
     const cfg = cfgRef.current
     const m = modelRef.current
     const theme = THEMES[cfg.theme] ?? THEMES.desk
+    const dom = cfg.dom ?? DEFAULT_DOM3D_OPTIONS
     ctx.fillStyle = theme.bg
     ctx.fillRect(0, 0, w, h)
 
-    const cam: Camera3D = {
-      yaw: cfg.yaw,
-      pitch: cfg.pitch,
-      zoom: cfg.zoom,
-      focal: 3.2,
-    }
+    const cam: Camera3D = { yaw: cfg.yaw, pitch: cfg.pitch, zoom: cfg.zoom, focal: 3.2 }
     const cx = w * 0.5
     const cy = h * 0.55
     const op = Math.max(0.25, Math.min(1, cfg.opacity))
@@ -119,7 +130,7 @@ export function Viz3DScene({
       }
     }
 
-    if (cfg.showGrid) {
+    if (cfg.showGrid && m.mode !== 'dom_ladder') {
       ctx.strokeStyle = theme.grid
       ctx.lineWidth = 1
       for (let i = -5; i <= 5; i++) {
@@ -155,18 +166,13 @@ export function Viz3DScene({
       const cellW = (1.8 / Math.max(8, cfg.maxBars)) * 0.85
       const cellD = (1.4 / Math.max(8, cfg.priceBins)) * 0.9
       for (const cell of cells) {
-        const base = -0.85
         const hgt = Math.max(0.02, cell.h * 0.95)
-        const corners = columnCorners(cell.tx, base, cellW, cellD, hgt)
+        const corners = columnCorners(cell.tx, -0.85, cellW, cellD, hgt)
         const shifted = corners.map((p) => ({ ...p, z: p.z + cell.ty * 0.75 }))
-        const buy = cell.buyFrac >= 0.5
-        const col = buy ? theme.buy : theme.sell
-        const top = [shifted[4], shifted[5], shifted[6], shifted[7]]
-        const front = [shifted[0], shifted[1], shifted[5], shifted[4]]
-        const side = [shifted[1], shifted[2], shifted[6], shifted[5]]
-        drawPoly(side, hexAlpha(col, 0.25 * op))
-        drawPoly(front, hexAlpha(col, 0.4 * op))
-        drawPoly(top, hexAlpha(col, 0.7 * op), hexAlpha(col, 0.9))
+        const col = cell.buyFrac >= 0.5 ? theme.buy : theme.sell
+        drawPoly([shifted[1], shifted[2], shifted[6], shifted[5]], hexAlpha(col, 0.25 * op))
+        drawPoly([shifted[0], shifted[1], shifted[5], shifted[4]], hexAlpha(col, 0.4 * op))
+        drawPoly([shifted[4], shifted[5], shifted[6], shifted[7]], hexAlpha(col, 0.7 * op), hexAlpha(col, 0.9))
       }
     }
 
@@ -183,8 +189,7 @@ export function Viz3DScene({
         const yHigh = normPrice(c.high, m.priceMin, m.priceMax)
         const yLow = normPrice(c.low, m.priceMin, m.priceMax)
         const bodyLo = Math.min(yOpen, yClose)
-        const bodyHi = Math.max(yOpen, yClose)
-        const bodyH = Math.max(0.02, bodyHi - bodyLo)
+        const bodyH = Math.max(0.02, Math.abs(yClose - yOpen))
         const col = c.bull ? theme.buy : theme.sell
         const wickTop = project({ x: c.tx, y: yHigh, z: 0 }, cam, cx, cy)
         const wickBot = project({ x: c.tx, y: yLow, z: 0 }, cam, cx, cy)
@@ -196,12 +201,9 @@ export function Viz3DScene({
         ctx.stroke()
         const volH = (c.volume / m.volMax) * 0.35
         const corners = columnCorners(c.tx, bodyLo, bw, 0.12 + volH * 0.5, bodyH)
-        const top = [corners[4], corners[5], corners[6], corners[7]]
-        const front = [corners[0], corners[1], corners[5], corners[4]]
-        const side = [corners[1], corners[2], corners[6], corners[5]]
-        drawPoly(side, hexAlpha(col, 0.35 * op))
-        drawPoly(front, hexAlpha(col, 0.55 * op))
-        drawPoly(top, hexAlpha(col, 0.85 * op), hexAlpha(col, 1))
+        drawPoly([corners[1], corners[2], corners[6], corners[5]], hexAlpha(col, 0.35 * op))
+        drawPoly([corners[0], corners[1], corners[5], corners[4]], hexAlpha(col, 0.55 * op))
+        drawPoly([corners[4], corners[5], corners[6], corners[7]], hexAlpha(col, 0.85 * op), hexAlpha(col, 1))
       }
     }
 
@@ -216,54 +218,45 @@ export function Viz3DScene({
         const hgt = Math.max(0.03, bar.h * 0.9)
         const corners = columnCorners(bar.side * 0.95, -0.85, 0.08, 0.1, hgt)
         const shifted = corners.map((p) => ({ ...p, z: p.z + bar.ty * 0.5 }))
-        const top = [shifted[4], shifted[5], shifted[6], shifted[7]]
-        const front = [shifted[0], shifted[1], shifted[5], shifted[4]]
-        drawPoly(front, hexAlpha(col, 0.45 * op))
-        drawPoly(top, hexAlpha(col, 0.8 * op), hexAlpha(col, 1))
+        drawPoly([shifted[0], shifted[1], shifted[5], shifted[4]], hexAlpha(col, 0.45 * op))
+        drawPoly([shifted[4], shifted[5], shifted[6], shifted[7]], hexAlpha(col, 0.8 * op), hexAlpha(col, 1))
       }
-      const midA = project({ x: 0, y: -0.85, z: -0.9 }, cam, cx, cy)
-      const midB = project({ x: 0, y: -0.85, z: 0.9 }, cam, cx, cy)
-      ctx.strokeStyle = theme.accent
-      ctx.setLineDash([4, 3])
-      ctx.beginPath()
-      ctx.moveTo(midA.x, midA.y)
-      ctx.lineTo(midB.x, midB.y)
-      ctx.stroke()
-      ctx.setLineDash([])
     }
 
-    if (m.mode === 'dom_ladder' && m.dom && m.dom.length) {
-      const sorted = [...m.dom].sort((a, b) => {
-        const da = project({ x: 0, y: a.ty, z: 0 }, cam, cx, cy).depth
-        const db = project({ x: 0, y: b.ty, z: 0 }, cam, cx, cy).depth
-        return db - da
-      })
-      const rowH = Math.min(0.12, 1.6 / Math.max(8, sorted.length))
-      for (const row of sorted) {
-        const y = row.ty * 0.85
-        if (row.bidH > 0.001) {
-          const len = Math.max(0.04, row.bidH * 0.95)
-          const corners = columnCorners(-len / 2, y - rowH / 2, len, 0.08, rowH)
-          const top = [corners[4], corners[5], corners[6], corners[7]]
-          const front = [corners[0], corners[1], corners[5], corners[4]]
-          drawPoly(front, hexAlpha(theme.buy, 0.5 * op))
-          drawPoly(top, hexAlpha(theme.buy, 0.85 * op), hexAlpha(theme.buy, 1))
-        }
-        if (row.askH > 0.001) {
-          const len = Math.max(0.04, row.askH * 0.95)
-          const corners = columnCorners(len / 2, y - rowH / 2, len, 0.08, rowH)
-          const top = [corners[4], corners[5], corners[6], corners[7]]
-          const front = [corners[0], corners[1], corners[5], corners[4]]
-          drawPoly(front, hexAlpha(theme.sell, 0.5 * op))
-          drawPoly(top, hexAlpha(theme.sell, 0.85 * op), hexAlpha(theme.sell, 1))
+    if (m.mode === 'dom_ladder') {
+      const wallOp = (dom.wallOpacity ?? 0.75) * op
+      const bubOp = (dom.bubbleOpacity ?? 0.9) * op
+
+      if (dom.showWalls && m.dom?.length) {
+        const sorted = [...m.dom].sort((a, b) => {
+          const da = project({ x: 0, y: a.ty, z: 0 }, cam, cx, cy).depth
+          const db = project({ x: 0, y: b.ty, z: 0 }, cam, cx, cy).depth
+          return db - da
+        })
+        const rowH = Math.min(0.11, 1.5 / Math.max(8, sorted.length))
+        for (const row of sorted) {
+          const y = row.ty * 0.85
+          if (row.bidH > 0.001) {
+            const len = Math.max(0.04, row.bidH * 1.05)
+            const corners = columnCorners(-len / 2 - 0.02, y - rowH / 2, len, 0.1, rowH)
+            drawPoly([corners[0], corners[1], corners[5], corners[4]], hexAlpha(theme.buy, 0.45 * wallOp))
+            drawPoly([corners[4], corners[5], corners[6], corners[7]], hexAlpha(theme.buy, 0.8 * wallOp), hexAlpha(theme.buy, 1))
+          }
+          if (row.askH > 0.001) {
+            const len = Math.max(0.04, row.askH * 1.05)
+            const corners = columnCorners(len / 2 + 0.02, y - rowH / 2, len, 0.1, rowH)
+            drawPoly([corners[0], corners[1], corners[5], corners[4]], hexAlpha(theme.sell, 0.45 * wallOp))
+            drawPoly([corners[4], corners[5], corners[6], corners[7]], hexAlpha(theme.sell, 0.8 * wallOp), hexAlpha(theme.sell, 1))
+          }
         }
       }
-      if (m.mid > 0 && m.priceMax > m.priceMin) {
+
+      if (dom.showMid && m.mid > 0 && m.priceMax > m.priceMin) {
         const my = ((m.mid - m.priceMin) / (m.priceMax - m.priceMin)) * 2 - 1
-        const a = project({ x: -1.0, y: my * 0.85, z: -0.3 }, cam, cx, cy)
-        const b = project({ x: 1.0, y: my * 0.85, z: 0.3 }, cam, cx, cy)
+        const a = project({ x: -1.05, y: my * 0.85, z: -0.35 }, cam, cx, cy)
+        const b = project({ x: 1.05, y: my * 0.85, z: 0.35 }, cam, cx, cy)
         ctx.strokeStyle = theme.accent
-        ctx.lineWidth = 1.5
+        ctx.lineWidth = 1.6
         ctx.setLineDash([5, 3])
         ctx.beginPath()
         ctx.moveTo(a.x, a.y)
@@ -272,14 +265,44 @@ export function Viz3DScene({
         ctx.setLineDash([])
         ctx.fillStyle = theme.accent
         ctx.font = '10px ui-monospace, Menlo, monospace'
-        ctx.fillText(`MID ${m.mid.toFixed(2)}`, b.x + 4, b.y - 2)
+        ctx.textAlign = 'left'
+        const sp = m.spread > 0 ? `  sp ${m.spread.toPrecision(4)}` : ''
+        ctx.fillText(`MID ${m.mid.toFixed(2)}${sp}`, b.x + 4, b.y - 2)
       }
+
+      if (dom.showBubbles && m.bubbles?.length) {
+        const sortedB = [...m.bubbles].sort((a, b) => {
+          const da = project({ x: a.tx * 0.7, y: a.ty * 0.85, z: 0.15 }, cam, cx, cy).depth
+          const db = project({ x: b.tx * 0.7, y: b.ty * 0.85, z: 0.15 }, cam, cx, cy).depth
+          return db - da
+        })
+        for (const bub of sortedB) {
+          const p = project({ x: bub.tx * 0.7, y: bub.ty * 0.85, z: 0.12 }, cam, cx, cy)
+          const radius = Math.max(3, Math.min(28, 6 + bub.r * 18))
+          const col = bub.aggressor === 'buy' ? theme.buy : theme.sell
+          const grd = ctx.createRadialGradient(p.x - radius * 0.3, p.y - radius * 0.3, 1, p.x, p.y, radius)
+          grd.addColorStop(0, hexAlpha(col, Math.min(1, bubOp + 0.15)))
+          grd.addColorStop(0.7, hexAlpha(col, bubOp * 0.85))
+          grd.addColorStop(1, hexAlpha(col, 0.15))
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2)
+          ctx.fillStyle = grd
+          ctx.fill()
+          ctx.strokeStyle = hexAlpha(col, 0.95)
+          ctx.lineWidth = 1.2
+          ctx.stroke()
+          if (dom.showBubbleLabels && radius >= 10) {
+            ctx.fillStyle = '#eaecef'
+            ctx.font = '9px ui-monospace, Menlo, monospace'
+            ctx.textAlign = 'center'
+            ctx.fillText(fmtQuote(bub.quoteQty), p.x, p.y + 3)
+          }
+        }
+      }
+
       const totalBid = m.totalBid ?? 0
       const totalAsk = m.totalAsk ?? 0
-      const imb =
-        totalBid + totalAsk > 0
-          ? ((totalBid - totalAsk) / (totalBid + totalAsk)) * 100
-          : 0
+      const imb = totalBid + totalAsk > 0 ? ((totalBid - totalAsk) / (totalBid + totalAsk)) * 100 : 0
       ctx.font = '10px ui-monospace, Menlo, monospace'
       ctx.textAlign = 'left'
       ctx.fillStyle = theme.buy
@@ -288,18 +311,22 @@ export function Viz3DScene({
       ctx.fillText(`ASK ${totalAsk.toFixed(3)}`, 14, h - 14)
       ctx.fillStyle = imb >= 0 ? theme.buy : theme.sell
       ctx.fillText(`IMB ${imb >= 0 ? '+' : ''}${imb.toFixed(1)}%`, 120, h - 14)
+      if (m.bubbles?.length) {
+        ctx.fillStyle = theme.label
+        ctx.fillText(`${m.bubbles.length} bubbles`, 200, h - 14)
+      }
     }
 
     if (cfg.showLabels) {
       ctx.fillStyle = 'rgba(11,14,17,0.75)'
-      ctx.fillRect(8, 8, Math.min(360, w - 16), 36)
+      ctx.fillRect(8, 8, Math.min(380, w - 16), 36)
       ctx.font = '11px ui-monospace, Menlo, monospace'
       ctx.fillStyle = theme.accent
       ctx.textAlign = 'left'
       ctx.fillText(m.note, 14, 22)
       ctx.fillStyle = theme.label
       ctx.fillText(
-        `yaw ${cfg.yaw.toFixed(0)}° · pitch ${cfg.pitch.toFixed(0)}° · zoom ${cfg.zoom.toFixed(2)} · drag orbit · wheel zoom`,
+        `yaw ${cfg.yaw.toFixed(0)}° · pitch ${cfg.pitch.toFixed(0)}° · zoom ${cfg.zoom.toFixed(2)} · drag · wheel`,
         14,
         36
       )
@@ -327,21 +354,14 @@ export function Viz3DScene({
     if (!canvas) return
     const onDown = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId)
-      dragRef.current = {
-        x: e.clientX,
-        y: e.clientY,
-        yaw: cfgRef.current.yaw,
-        pitch: cfgRef.current.pitch,
-      }
+      dragRef.current = { x: e.clientX, y: e.clientY, yaw: cfgRef.current.yaw, pitch: cfgRef.current.pitch }
     }
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current
       if (!d) return
-      const dyaw = (e.clientX - d.x) * 0.35
-      const dpitch = (e.clientY - d.y) * 0.25
       onCameraChange?.({
-        yaw: d.yaw + dyaw,
-        pitch: Math.max(5, Math.min(80, d.pitch + dpitch)),
+        yaw: d.yaw + (e.clientX - d.x) * 0.35,
+        pitch: Math.max(5, Math.min(80, d.pitch + (e.clientY - d.y) * 0.25)),
       })
     }
     const onUp = () => {
@@ -350,8 +370,7 @@ export function Viz3DScene({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const z = cfgRef.current.zoom
-      const next = Math.max(0.45, Math.min(2.4, z * (e.deltaY > 0 ? 0.92 : 1.08)))
-      onCameraChange?.({ zoom: next })
+      onCameraChange?.({ zoom: Math.max(0.45, Math.min(2.4, z * (e.deltaY > 0 ? 0.92 : 1.08))) })
     }
     canvas.addEventListener('pointerdown', onDown)
     canvas.addEventListener('pointermove', onMove)
@@ -377,15 +396,4 @@ export function Viz3DScene({
       aria-label="3D market scene"
     />
   )
-}
-
-function hexAlpha(hex: string, a: number): string {
-  if (hex.startsWith('rgba')) return hex
-  const h = hex.replace('#', '')
-  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
-  const n = parseInt(full, 16)
-  const r = (n >> 16) & 255
-  const g = (n >> 8) & 255
-  const b = n & 255
-  return `rgba(${r},${g},${b},${a})`
 }
