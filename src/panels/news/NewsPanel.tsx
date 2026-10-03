@@ -1,9 +1,10 @@
 /**
  * News panel – live feed from GET /api/news (real RSS, no runtime mocks).
+ * Poll every 45s; NEW badge on fresh items for 60s; pause when tab/panel hidden.
  * Optional `items` prop is only for unit tests.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NewsApiResponse, NewsAssetFilter, NewsItem } from './types'
 
 const FILTERS: { id: NewsAssetFilter; label: string }[] = [
@@ -13,7 +14,10 @@ const FILTERS: { id: NewsAssetFilter; label: string }[] = [
   { id: 'macro', label: 'Macro' },
 ]
 
-const POLL_MS = 35_000
+/** Poll interval while panel is visible */
+const POLL_MS = 45_000
+/** How long the NEW badge stays on a newly arrived item */
+const NEW_BADGE_MS = 60_000
 
 function publishedMs(v: string | number): number {
   if (typeof v === 'number') return v
@@ -45,71 +49,232 @@ function matchesFilter(item: NewsItem, filter: NewsAssetFilter): boolean {
   return itemTags(item).some((t) => t.toUpperCase() === filter.toUpperCase())
 }
 
+function networkErrorMessage(e: unknown, httpStatus?: number): string {
+  if (httpStatus === 404) {
+    return 'News API not found (/api/news). Deploy Cloudflare Pages Functions or run: npm run cf:pages:dev'
+  }
+  if (httpStatus === 502 || httpStatus === 503) {
+    return 'News upstream temporarily unavailable. Retrying automatically…'
+  }
+  if (httpStatus === 429) {
+    return 'Too many requests to the news API. Waiting for the next poll…'
+  }
+  if (httpStatus && httpStatus >= 400) {
+    return `News API error (HTTP ${httpStatus}). Check network or try Refresh.`
+  }
+  const name = (e as { name?: string })?.name
+  const msg = e instanceof Error ? e.message : String(e ?? '')
+  if (name === 'TypeError' || /failed to fetch|networkerror|load failed/i.test(msg)) {
+    return 'Network error: cannot reach /api/news. Check connection, CORS, or local proxy (VITE_API_PROXY).'
+  }
+  if (/invalid response|unexpected token|json/i.test(msg)) {
+    return 'News API returned invalid data. The endpoint may be misconfigured.'
+  }
+  return msg ? `News feed error: ${msg}` : 'News feed error: unknown network failure.'
+}
+
 export interface NewsPanelProps {
   /** Test-only injection – production always fetches /api/news. */
   items?: NewsItem[]
 }
 
 export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
+  const knownIdsRef = useRef<Set<string>>(new Set())
+  const firstLoadDoneRef = useRef(false)
+  const visibleRef = useRef(true)
+
   const [filter, setFilter] = useState<NewsAssetFilter>('all')
   const [feed, setFeed] = useState<NewsItem[]>(itemsProp ?? [])
+  /** id → timestamp when first seen as new (for NEW badge) */
+  const [newSince, setNewSince] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(!itemsProp)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const [paused, setPaused] = useState(false)
+  /** tick to re-evaluate NEW badge expiry without refetch */
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    // When tests inject items, skip network
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      if (itemsProp) return
+      setLoading(true)
+      try {
+        const res = await fetch('/api/news', {
+          signal,
+          headers: { Accept: 'application/json' },
+        })
+        if (!res.ok) {
+          throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status })
+        }
+        const data = (await res.json()) as NewsApiResponse
+        if (!data || !Array.isArray(data.items)) {
+          throw new Error('Invalid response')
+        }
+
+        const incoming = data.items
+        const known = knownIdsRef.current
+        const arrivedAt = Date.now()
+
+        if (!firstLoadDoneRef.current) {
+          // Seed known ids so the first paint is not all NEW
+          for (const it of incoming) known.add(it.id)
+          firstLoadDoneRef.current = true
+          setNewSince({})
+        } else {
+          const fresh: Record<string, number> = {}
+          for (const it of incoming) {
+            if (!known.has(it.id)) {
+              known.add(it.id)
+              fresh[it.id] = arrivedAt
+            }
+          }
+          if (Object.keys(fresh).length > 0) {
+            setNewSince((prev) => {
+              const next = { ...prev, ...fresh }
+              // Drop expired entries
+              const cutoff = arrivedAt - NEW_BADGE_MS
+              for (const id of Object.keys(next)) {
+                if ((next[id] ?? 0) < cutoff) delete next[id]
+              }
+              return next
+            })
+          }
+        }
+
+        // API already sorts newest first; keep order, new ids naturally near top
+        setFeed(incoming)
+        setWarnings(Array.isArray(data.warnings) ? data.warnings : [])
+        setFetchedAt(data.fetchedAt ?? new Date().toISOString())
+        setError(null)
+      } catch (e) {
+        if ((e as { name?: string })?.name === 'AbortError') return
+        const status = (e as { status?: number })?.status
+        setError(networkErrorMessage(e, status))
+        // Keep last good feed; never invent headlines
+      } finally {
+        setLoading(false)
+      }
+    },
+    [itemsProp]
+  )
+
+  // Visibility: document tab + panel in viewport
+  useEffect(() => {
     if (itemsProp) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/news', {
-        signal,
-        headers: { Accept: 'application/json' },
-      })
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
+
+    const updatePaused = (panelInView: boolean) => {
+      const docVisible = document.visibilityState === 'visible'
+      const active = docVisible && panelInView
+      visibleRef.current = active
+      setPaused(!active)
+    }
+
+    const onVis = () => {
+      const el = rootRef.current
+      // If we cannot measure, only trust document visibility
+      if (!el) {
+        updatePaused(document.visibilityState === 'visible')
+        return
       }
-      const data = (await res.json()) as NewsApiResponse
-      if (!data || !Array.isArray(data.items)) {
-        throw new Error('Invalid response')
-      }
-      // Trust only real payload – no client-side placeholders
-      setFeed(data.items)
-      setWarnings(Array.isArray(data.warnings) ? data.warnings : [])
-      setFetchedAt(data.fetchedAt ?? new Date().toISOString())
-      setError(null)
-    } catch (e) {
-      if ((e as { name?: string })?.name === 'AbortError') return
-      setError(e instanceof Error ? e.message : 'Fetch failed')
-      // Keep last good feed if any; do not invent headlines
-    } finally {
-      setLoading(false)
+      // IO will refine; optimistic use doc visibility
+      updatePaused(document.visibilityState === 'visible')
+    }
+
+    document.addEventListener('visibilitychange', onVis)
+
+    let io: IntersectionObserver | null = null
+    const el = rootRef.current
+    if (el && typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0]
+          const inView = !!entry?.isIntersecting && (entry.intersectionRatio ?? 0) > 0.05
+          updatePaused(inView)
+        },
+        { threshold: [0, 0.05, 0.25] }
+      )
+      io.observe(el)
+    } else {
+      updatePaused(true)
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      io?.disconnect()
     }
   }, [itemsProp])
 
+  // Poll only while visible; resume with immediate fetch when becoming visible again
   useEffect(() => {
     if (itemsProp) {
       setFeed(itemsProp)
       setLoading(false)
       return
     }
+
     const ac = new AbortController()
     void load(ac.signal)
-    const t = window.setInterval(() => void load(), POLL_MS)
+
+    const id = window.setInterval(() => {
+      if (!visibleRef.current) return
+      void load()
+    }, POLL_MS)
+
     return () => {
       ac.abort()
-      window.clearInterval(t)
+      window.clearInterval(id)
     }
   }, [itemsProp, load])
 
-  const visible = useMemo(
-    () => feed.filter((n) => matchesFilter(n, filter)),
-    [feed, filter]
+  // When unpausing, fetch immediately
+  useEffect(() => {
+    if (itemsProp || paused) return
+    void load()
+  }, [paused, itemsProp, load])
+
+  // Expire NEW badges every few seconds
+  useEffect(() => {
+    if (Object.keys(newSince).length === 0) return
+    const id = window.setInterval(() => {
+      const now = Date.now()
+      setNowTick(now)
+      setNewSince((prev) => {
+        const next = { ...prev }
+        let changed = false
+        for (const k of Object.keys(next)) {
+          if ((next[k] ?? 0) + NEW_BADGE_MS <= now) {
+            delete next[k]
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 5_000)
+    return () => window.clearInterval(id)
+  }, [newSince])
+
+  const isNew = useCallback(
+    (id: string) => {
+      const t = newSince[id]
+      if (t == null) return false
+      return nowTick - t < NEW_BADGE_MS
+    },
+    [newSince, nowTick]
   )
 
+  const visible = useMemo(() => {
+    const filtered = feed.filter((n) => matchesFilter(n, filter))
+    // Keep API order (newest first); items with active NEW already tend to be on top
+    return filtered
+  }, [feed, filter])
+
   return (
-    <div className="flex flex-col h-full min-h-0 text-[11px] bg-terminal-panel text-terminal-text">
+    <div
+      ref={rootRef}
+      className="flex flex-col h-full min-h-0 text-[11px] bg-terminal-panel text-terminal-text"
+    >
       <div className="px-2 py-1.5 border-b border-terminal-border shrink-0 flex flex-wrap items-center gap-1">
         <span className="font-semibold text-[#eaecef] mr-1">News</span>
         {FILTERS.map((f) => (
@@ -128,29 +293,41 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
         ))}
         <button
           type="button"
-          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b]"
-          title="Refresh"
+          className="text-xxs px-1.5 py-0.5 rounded border border-terminal-border text-terminal-muted hover:text-[#f0b90b] disabled:opacity-40"
+          title="Refresh now"
           onClick={() => void load()}
           disabled={loading}
         >
           {loading ? '…' : '↻'}
         </button>
+        {paused && (
+          <span
+            className="text-[9px] px-1.5 py-0.5 rounded bg-[#1e2329] text-[#848e9c] border border-[#2b3139]"
+            title="Polling paused while the panel or tab is hidden"
+          >
+            paused
+          </span>
+        )}
         <span className="ml-auto text-terminal-muted text-[10px]">
           {visible.length}/{feed.length}
-          {fetchedAt
-            ? ` · ${formatTime(fetchedAt)}`
-            : ''}
+          {fetchedAt ? ` · ${formatTime(fetchedAt)}` : ''}
         </span>
       </div>
 
       {error && (
-        <div className="px-2 py-1 text-[10px] text-terminal-red border-b border-terminal-red/30 shrink-0">
-          Feed error: {error}
-          {!itemsProp && ' — deploy Pages Functions or run wrangler pages dev'}
+        <div className="px-2 py-1.5 text-[10px] text-terminal-red border-b border-terminal-red/30 shrink-0 leading-snug">
+          <div className="font-medium">Network / API</div>
+          <div>{error}</div>
+          {feed.length > 0 && (
+            <div className="text-[#848e9c] mt-0.5">Showing last successful headlines.</div>
+          )}
         </div>
       )}
       {warnings.length > 0 && !error && (
-        <div className="px-2 py-0.5 text-[9px] text-[#848e9c] border-b border-terminal-border/50 shrink-0 truncate" title={warnings.join('; ')}>
+        <div
+          className="px-2 py-0.5 text-[9px] text-[#848e9c] border-b border-terminal-border/50 shrink-0 truncate"
+          title={warnings.join('; ')}
+        >
           Partial: {warnings.join(' · ')}
         </div>
       )}
@@ -162,41 +339,54 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
               ? 'Loading headlines…'
               : feed.length === 0
                 ? error
-                  ? 'No live feed (API unreachable).'
+                  ? 'No headlines (API unreachable). Use Refresh when online.'
                   : 'No headlines from upstream RSS yet.'
                 : 'No headlines for this filter.'}
           </div>
         ) : (
           <ul className="divide-y divide-terminal-border/60">
-            {visible.map((n) => (
-              <li key={n.id} className="px-2 py-2 hover:bg-[#12161c]/80">
-                <a
-                  href={n.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-[#eaecef] hover:text-[#f0b90b] font-medium leading-snug"
+            {visible.map((n) => {
+              const fresh = isNew(n.id)
+              return (
+                <li
+                  key={n.id}
+                  className={`px-2 py-2 hover:bg-[#12161c]/80 ${fresh ? 'bg-[#f0b90b]/5' : ''}`}
                 >
-                  {n.title}
-                </a>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-terminal-muted">
-                  <span className="text-[#848e9c]">{n.source}</span>
-                  <span>·</span>
-                  <time dateTime={new Date(publishedMs(n.publishedAt)).toISOString()}>
-                    {formatTime(n.publishedAt)}
-                  </time>
-                  <span className="flex gap-0.5">
-                    {itemTags(n).map((a) => (
-                      <span
-                        key={a}
-                        className="px-1 rounded bg-[#1e2329] text-[#848e9c] border border-[#2b3139]"
-                      >
-                        {a}
+                  <div className="flex items-start gap-1.5">
+                    {fresh && (
+                      <span className="shrink-0 mt-0.5 text-[9px] font-bold tracking-wide px-1 py-px rounded bg-[#f0b90b] text-[#0b0e11]">
+                        NEW
                       </span>
-                    ))}
-                  </span>
-                </div>
-              </li>
-            ))}
+                    )}
+                    <a
+                      href={n.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block flex-1 text-[#eaecef] hover:text-[#f0b90b] font-medium leading-snug"
+                    >
+                      {n.title}
+                    </a>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-terminal-muted">
+                    <span className="text-[#848e9c]">{n.source}</span>
+                    <span>·</span>
+                    <time dateTime={new Date(publishedMs(n.publishedAt)).toISOString()}>
+                      {formatTime(n.publishedAt)}
+                    </time>
+                    <span className="flex gap-0.5">
+                      {itemTags(n).map((a) => (
+                        <span
+                          key={a}
+                          className="px-1 rounded bg-[#1e2329] text-[#848e9c] border border-[#2b3139]"
+                        >
+                          {a}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
