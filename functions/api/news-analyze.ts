@@ -38,7 +38,6 @@ export interface NewsImpactAnalysis {
   rischi: string[]
   livelli_da_osservare: string
   confidenza: number
-  /** Optional supporting notes / outlet names – not investment advice */
   fonti?: string[]
   disclaimer: string
   meta?: {
@@ -193,7 +192,6 @@ function extractJsonObject(text: string): unknown {
   return null
 }
 
-/** Cheap deterministic digest for cache keys */
 async function digestKey(title: string, text: string): Promise<string> {
   const data = new TextEncoder().encode(`${title}\n${text.slice(0, 2000)}`)
   const buf = await crypto.subtle.digest('SHA-256', data)
@@ -212,7 +210,7 @@ function heuristicFallback(title: string, text: string, source: string): NewsImp
   for (const a of ['BTC', 'ETH', 'SOL', 'macro']) {
     if (a === 'macro') {
       if (/\b(fomc|cpi|nfp|fed|inflation)\b/i.test(blob)) assets.push('macro')
-    } else if (new RegExp(`\\b${a}\\b`, 'i').test(blob)) assets.push(a)
+    } else if (new RegExp('\\b' + a + '\\b', 'i').test(blob)) assets.push(a)
   }
   return {
     sintesi: scrubAdvice(
@@ -229,7 +227,8 @@ function heuristicFallback(title: string, text: string, source: string): NewsImp
       'Titolo clickbait non rappresentativo del corpo',
       'Eventi già prezzati dal mercato',
     ],
-    livelli_da_osservare: 'Attendere conferma da fonti ufficiali e reazione del prezzo dopo pubblicazione completa.',
+    livelli_da_osservare:
+      'Attendere conferma da fonti ufficiali e reazione del prezzo dopo pubblicazione completa.',
     confidenza: 0.25,
     fonti: source ? [source] : [],
     disclaimer: DISCLAIMER,
@@ -305,7 +304,7 @@ export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
   const text = String(body.data.text ?? '').trim()
   const source = String(body.data.source ?? '').trim()
 
-  let quotaRemaining: number | undefined
+  const quotaRemaining: number | undefined = undefined
   const quotaHour = Math.max(1, Number(env.NEWS_ANALYZE_QUOTA_HOUR || 15) || 15)
 
   if (env.WORKSPACE_KV) {
@@ -337,9 +336,12 @@ export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
         { 'Retry-After': String(rl.retryAfterSec) }
       )
     }
-    quotaRemaining = Math.max(0, quotaHour - (rl as { count?: number }).count! - 1) || undefined
-    // soft IP burst
-    const burst = await checkRateLimit(env.WORKSPACE_KV, `news-analyze:ip:${clientIp(request)}`, 30, 60)
+    const burst = await checkRateLimit(
+      env.WORKSPACE_KV,
+      `news-analyze:ip:${clientIp(request)}`,
+      30,
+      60
+    )
     if (!burst.ok) {
       return json(
         { error: 'rate limit', retryAfterSec: burst.retryAfterSec, disclaimer: DISCLAIMER },
@@ -349,7 +351,6 @@ export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
       )
     }
 
-    // Cache hit
     const hash = await digestKey(title, text)
     const cacheKey = `ai:news-analyze:${hash}`
     try {
@@ -368,7 +369,6 @@ export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
 
   const provider = pickProvider(env)
   if (!provider) {
-    // No keys: still return structured educational fallback (not empty error for UX)
     return json(heuristicFallback(title, text, source), 200, request)
   }
 
@@ -405,7 +405,6 @@ export const onRequestPost: PagesFunction<AnalyzeEnv> = async (ctx) => {
     return json(analysis, 200, request)
   } catch (e) {
     const status = (e as { status?: number })?.status
-    // Provider down / quota: graceful fallback instead of hard fail when possible
     if (status === 429 || status === 500 || status === 502 || status === 503 || !status) {
       const fb = heuristicFallback(title, text, source)
       fb.meta = { ...fb.meta, fallback: true, provider: provider.name }
