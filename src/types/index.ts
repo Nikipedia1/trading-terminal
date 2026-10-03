@@ -101,6 +101,7 @@ export type WidgetKind =
   | 'calendar'
   | 'livetv'
   | 'learn'
+  | 'ops'
 
 export interface WidgetPanelConfig {
   id: string
