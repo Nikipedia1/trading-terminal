@@ -229,9 +229,8 @@ function parseRssItems(xml: string, source: FeedSource): NewsItemDto[] {
   const rssBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? []
   for (const block of rssBlocks) {
     const title = pick(block, 'title')
-    const link =
-      pick(block, 'link') ||
-      (block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1] ?? '')
+    const hrefAttr = block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1] ?? ''
+    const link = pick(block, 'link') || hrefAttr
     const pub = pick(block, 'pubDate', 'published', 'dc:date', 'updated')
     pushItem(items, source, title, link, pub)
   }
@@ -241,10 +240,9 @@ function parseRssItems(xml: string, source: FeedSource): NewsItemDto[] {
     const atomBlocks = xml.match(/<entry[\s\S]*?<\/entry>/gi) ?? []
     for (const block of atomBlocks) {
       const title = pick(block, 'title')
-      const link =
-        block.match(/<link[^>]+href=["']([^"']+)["'][^>]*>/i)?.[1] ??
-        pick(block, 'link') ||
-        pick(block, 'id')
+      const hrefAttr =
+        block.match(/<link[^>]+href=["']([^"']+)["'][^>]*>/i)?.[1] ?? ''
+      const link = hrefAttr || pick(block, 'link') || pick(block, 'id')
       const pub = pick(block, 'published', 'updated')
       pushItem(items, source, title, link, pub)
     }
@@ -259,7 +257,8 @@ async function fetchOnce(
   try {
     const res = await fetch(url, {
       headers: {
-        Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+        Accept:
+          'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
         'User-Agent': UA,
         'Accept-Language': 'en-US,en;q=0.9',
       },
