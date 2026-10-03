@@ -1,8 +1,8 @@
 /**
- * Fixed HUD – feed quality for primary panel (free client metrics).
+ * Fixed HUD – feed quality + SLA for primary panel.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLayoutStore } from '@/stores/layoutStore'
 import {
   getFeedHealth,
@@ -10,6 +10,8 @@ import {
   FEED_HEALTH_NOTES,
   type FeedHealthSnapshot,
 } from '@/data/shared'
+import { evaluateSla } from '@/data/market/feedPolicy'
+import { useMarketStore } from '@/stores/marketStore'
 
 function ageLabel(ms: number | null): string {
   if (ms == null) return '—'
@@ -23,6 +25,8 @@ export function FeedHealthHud() {
   const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
   const exchange = primary?.exchange ?? 'binance'
   const symbol = primary?.symbol ?? 'BTCUSDT'
+  const streamDropped = useMarketStore((s) => s.streamDropped)
+  const historyMeta = useMarketStore((s) => s.historyMeta)
 
   const [h, setH] = useState<FeedHealthSnapshot>(() =>
     getFeedHealth(exchange, symbol)
@@ -38,7 +42,6 @@ export function FeedHealthHud() {
     })
   }, [exchange, symbol])
 
-  // Refresh stale / age flags every second
   useEffect(() => {
     const id = window.setInterval(() => {
       setH(getFeedHealth(exchange, symbol))
@@ -46,9 +49,27 @@ export function FeedHealthHud() {
     return () => window.clearInterval(id)
   }, [exchange, symbol])
 
+  const sla = useMemo(
+    () =>
+      evaluateSla({
+        bookAgeMs: h.bookAgeMs,
+        tickAgeMs: h.tickAgeMs,
+        latencyP99: h.latencyP99,
+        gapsRecent: h.gaps,
+      }),
+    [h.bookAgeMs, h.tickAgeMs, h.latencyP99, h.gaps]
+  )
+
   const p50 = h.latencyP50 != null ? `${Math.round(h.latencyP50)}ms` : '—'
   const p99 = h.latencyP99 != null ? `${Math.round(h.latencyP99)}ms` : '—'
   const errN = h.errorQueue?.length ?? 0
+
+  const slaClass =
+    sla.level === 'crit'
+      ? 'text-[#f6465d] font-bold'
+      : sla.level === 'warn'
+        ? 'text-[#f0b90b] font-semibold'
+        : 'text-[#0ecb81]'
 
   return (
     <div
@@ -57,6 +78,10 @@ export function FeedHealthHud() {
     >
       <span className="text-[#eaecef] font-semibold">
         {exchange}:{symbol}
+      </span>
+      <span className={slaClass} title={sla.reasons.join(', ') || 'within SLA'}>
+        SLA {sla.level.toUpperCase()}
+        {sla.reasons.length > 0 ? ` (${sla.reasons[0]})` : ''}
       </span>
       <span>
         lag p50 <span className="text-[#eaecef]">{p50}</span>
@@ -80,6 +105,14 @@ export function FeedHealthHud() {
         {' · '}
         reconn <span className="text-[#eaecef]">{h.reconnects}</span>
       </span>
+      {(streamDropped?.trades || streamDropped?.book) ? (
+        <span className="text-[#f0b90b]" title="Throttled under load">
+          drop t{streamDropped?.trades ?? 0}/b{streamDropped?.book ?? 0}
+        </span>
+      ) : null}
+      {historyMeta?.fallbackUsed && (
+        <span className="text-[#f0b90b]">hist via {historyMeta.exchangeUsed}</span>
+      )}
       <span
         className={
           h.bookStale || h.tickStale
@@ -100,7 +133,7 @@ export function FeedHealthHud() {
         err {errN}
       </button>
       <span className="text-[#5e6673] hidden sm:inline">
-        free tier · IDB history · no MBO
+        multi-venue · throttle · no MBO
       </span>
 
       {showErrors && errN > 0 && (
