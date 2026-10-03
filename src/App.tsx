@@ -416,9 +416,11 @@ function GuestEntry() {
       <div className="nacs-splash min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden">
         <div className="nacs-splash-grid" aria-hidden />
         <div className="nacs-splash-glow" aria-hidden />
-        <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-4">
-          <BrandLogo size="lg" animated />
-          <div className="nacs-loader-stage" style={{ width: 100, height: 100 }} aria-hidden>
+        <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-5">
+          {/* Logo grande e leggibile (SVG statico) */}
+          <BrandLogo size="xl" layout="stack" animated={false} />
+
+          <div className="nacs-loader-stage" style={{ width: 88, height: 88 }} aria-hidden>
             <div className="nacs-orbit">
               <div className="nacs-orbit-ring" />
               <div className="nacs-orbit-ring nacs-orbit-ring--2" />
@@ -433,6 +435,7 @@ function GuestEntry() {
               <div className="nacs-orbit-dot" />
             </div>
           </div>
+
           <p className="text-[12px] text-[#848e9c] text-center leading-relaxed">
             Continue as guest for a read-only desk (charts & public data).
             Trading, bots, and live keys stay disabled until you sign in.
@@ -445,7 +448,8 @@ function GuestEntry() {
             Enter as guest
           </button>
           <div className="w-full border-t border-[#1e2329] pt-5 mt-1">
-            <LoginScreen embedded />
+            {/* Form senza secondo logo: già in cima alla card */}
+            <LoginScreen embedded hideLogo />
           </div>
         </div>
       </div>
