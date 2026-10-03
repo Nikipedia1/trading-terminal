@@ -37,6 +37,7 @@ import {
   CalendarPanel,
   LiveTvPanel,
   LearnPanel,
+  OpsHealthPanel,
   getRegisteredPanel,
 } from '@/panels'
 import 'react-grid-layout/css/styles.css'
@@ -124,6 +125,8 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <LiveTvPanel />
     case 'learn':
       return <LearnPanel />
+    case 'ops':
+      return <OpsHealthPanel />
     default: {
       const reg = getRegisteredPanel(kind)
       if (reg) {
@@ -159,6 +162,7 @@ const ADDABLE: WidgetKind[] = [
   'calendar',
   'livetv',
   'learn',
+  'ops',
 ]
 
 export function PanelGrid({ width }: PanelGridProps) {
@@ -287,7 +291,7 @@ export function PanelGrid({ width }: PanelGridProps) {
                   }}
                 >
                   {WIDGET_META[k].title}
-                  {onDesk ? ' \u2713' : ''}
+                  {onDesk ? ' ✓' : ''}
                 </button>
               )
             })}
