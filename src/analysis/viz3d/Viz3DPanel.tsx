@@ -1,0 +1,165 @@
+/**
+ * Professional 3D tools desk widget.
+ * Modes: Volume Terrain · Candle Columns · Book Depth.
+ * Data: real OHLCV + live L2 from market store.
+ */
+
+import { useMemo, useState, useCallback } from 'react'
+import { useLayoutStore } from '@/stores/layoutStore'
+import { useMarketStore } from '@/stores/marketStore'
+import { usePanelMarket } from '@/hooks/usePanelMarket'
+import { Viz3DScene } from './Viz3DScene'
+import { buildViz3DModel } from './compute'
+import {
+  DEFAULT_VIZ3D_CONFIG,
+  VIZ3D_PRESETS,
+  type Viz3DConfig,
+  type Viz3DMode,
+} from './types'
+
+const MODES: { id: Viz3DMode; label: string }[] = [
+  { id: 'volume_terrain', label: 'Volume Terrain' },
+  { id: 'candle_columns', label: 'Candles 3D' },
+  { id: 'book_depth', label: 'Book Depth' },
+]
+
+export function Viz3DPanel() {
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const panels = useLayoutStore((s) => s.panels)
+  const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
+  const symbol = primary?.symbol ?? 'BTCUSDT'
+  const interval = primary?.interval ?? '1m'
+  const exchange = primary?.exchange ?? 'binance'
+  const { candles } = usePanelMarket(symbol, interval, exchange)
+  const book = useMarketStore((s) => s.orderBook)
+
+  const [cfg, setCfg] = useState<Viz3DConfig>(() => ({ ...DEFAULT_VIZ3D_CONFIG }))
+  const patch = useCallback((p: Partial<Viz3DConfig>) => {
+    setCfg((c) => ({ ...c, ...p }))
+  }, [])
+
+  const model = useMemo(
+    () => buildViz3DModel(candles, book, cfg),
+    [candles, book, cfg]
+  )
+
+  return (
+    <div className="h-full w-full flex flex-col bg-[#0b0e11] min-h-0">
+      <div className="shrink-0 flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b border-[#2b3139]">
+        <span className="text-[10px] font-semibold tracking-wide text-[#f0b90b] uppercase">
+          3D Pro
+        </span>
+        <span className="text-[10px] text-[#5e6673] font-mono">
+          {symbol} · {interval}
+        </span>
+        <div className="flex gap-0.5 ml-1">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                cfg.mode === m.id
+                  ? 'bg-[#1e2329] text-[#f0b90b] border-[#f0b90b]/50'
+                  : 'text-[#848e9c] border-[#2b3139] hover:text-[#eaecef]'
+              }`}
+              onClick={() => patch({ mode: m.id })}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-0.5">
+          {Object.entries(VIZ3D_PRESETS).map(([k, p]) => (
+            <button
+              key={k}
+              type="button"
+              className="text-[9px] px-1 py-0.5 rounded border border-[#2b3139] text-[#5e6673] hover:text-[#eaecef]"
+              onClick={() => patch(p.patch)}
+              title={p.label}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1 text-[10px] text-[#848e9c] ml-auto cursor-pointer">
+          <input
+            type="checkbox"
+            className="accent-[#f0b90b]"
+            checked={cfg.autoRotate}
+            onChange={(e) => patch({ autoRotate: e.target.checked })}
+          />
+          Auto
+        </label>
+        <button
+          type="button"
+          className="text-[10px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef]"
+          onClick={() =>
+            patch({
+              yaw: DEFAULT_VIZ3D_CONFIG.yaw,
+              pitch: DEFAULT_VIZ3D_CONFIG.pitch,
+              zoom: DEFAULT_VIZ3D_CONFIG.zoom,
+            })
+          }
+        >
+          Reset view
+        </button>
+      </div>
+
+      <div className="flex-1 min-h-0 relative">
+        <Viz3DScene model={model} config={cfg} onCameraChange={patch} />
+      </div>
+
+      <div className="shrink-0 flex flex-wrap items-center gap-3 px-2 py-1 border-t border-[#2b3139] text-[10px] text-[#5e6673]">
+        <label className="flex items-center gap-1">
+          Bars
+          <input
+            type="range"
+            min={20}
+            max={150}
+            value={cfg.maxBars}
+            className="w-16 accent-[#f0b90b]"
+            onChange={(e) => patch({ maxBars: Number(e.target.value) })}
+          />
+          <span className="font-mono text-[#848e9c] w-6">{cfg.maxBars}</span>
+        </label>
+        {cfg.mode === 'volume_terrain' && (
+          <label className="flex items-center gap-1">
+            Bins
+            <input
+              type="range"
+              min={12}
+              max={48}
+              value={cfg.priceBins}
+              className="w-14 accent-[#60a5fa]"
+              onChange={(e) => patch({ priceBins: Number(e.target.value) })}
+            />
+          </label>
+        )}
+        <label className="flex items-center gap-1">
+          Opacity
+          <input
+            type="range"
+            min={0.3}
+            max={1}
+            step={0.05}
+            value={cfg.opacity}
+            className="w-14 accent-[#0ecb81]"
+            onChange={(e) => patch({ opacity: Number(e.target.value) })}
+          />
+        </label>
+        <select
+          className="bg-[#12161c] border border-[#2b3139] rounded px-1 py-0.5 text-[10px] text-[#eaecef]"
+          value={cfg.theme}
+          onChange={(e) =>
+            patch({ theme: e.target.value as Viz3DConfig['theme'] })
+          }
+        >
+          <option value="desk">Desk</option>
+          <option value="neon">Neon</option>
+          <option value="mono">Mono</option>
+        </select>
+        <span className="ml-auto text-[9px]">Solo dati reali · no synthetic</span>
+      </div>
+    </div>
+  )
+}
