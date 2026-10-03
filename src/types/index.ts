@@ -99,6 +99,7 @@ export type WidgetKind =
   | 'viz3d'
   | 'news'
   | 'calendar'
+  | 'livetv'
 
 export interface WidgetPanelConfig {
   id: string

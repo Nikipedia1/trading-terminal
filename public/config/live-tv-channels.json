@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "defaultChannelId": "bloomberg",
+  "channels": [
+    {
+      "id": "bloomberg",
+      "name": "Bloomberg",
+      "channelId": "UCIALMKvObZNtJ6AmdCLP7Lw"
+    },
+    {
+      "id": "cnbc",
+      "name": "CNBC",
+      "channelId": "UCvJJ_dzjViJCoIub-nFxaaQ"
+    },
+    {
+      "id": "yahoo-finance",
+      "name": "Yahoo Finance",
+      "channelId": "UCEAZeUIeJs0IjQiqawcJinQ"
+    },
+    {
+      "id": "sky-news",
+      "name": "Sky News",
+      "channelId": "UCoMdktPbSTixAy1OQxDx4Dw"
+    },
+    {
+      "id": "france24",
+      "name": "France 24 English",
+      "channelId": "UCQfwfsi5VrQ8yKZ-UWmAEFg"
+    },
+    {
+      "id": "dw",
+      "name": "DW News",
+      "channelId": "UCknLrEdhRCp1aegoMqRaCZg"
+    }
+  ]
+}

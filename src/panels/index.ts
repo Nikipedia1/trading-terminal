@@ -4,6 +4,7 @@
  */
 import './news'
 import './calendar'
+import './livetv'
 
 export {
   registerPanelType,
@@ -14,4 +15,5 @@ export {
 export type { PanelTypeRegistration } from './registry'
 export { NewsPanel } from './news'
 export { CalendarPanel } from './calendar'
+export { LiveTvPanel } from './livetv'
 export type { NewsItem, NewsAssetFilter, NewsPanelProps } from './news'
