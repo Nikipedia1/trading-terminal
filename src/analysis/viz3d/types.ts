@@ -8,31 +8,70 @@ export type Viz3DMode =
 
 export interface Viz3DConfig {
   mode: Viz3DMode
-  /** Camera yaw degrees */
   yaw: number
-  /** Camera pitch degrees */
   pitch: number
-  /** Zoom scale */
   zoom: number
-  /** Auto-rotate scene */
   autoRotate: boolean
   autoRotateSpeed: number
-  /** Show grid floor */
   showGrid: boolean
-  /** Show axis labels */
   showLabels: boolean
-  /** Max candles / snapshots in scene */
   maxBars: number
-  /** Price bins for volume terrain */
   priceBins: number
-  /** DOM / book levels per side */
   domLevels: number
-  /** Opacity of fills 0–1 */
   opacity: number
-  /** Color scheme */
   theme: 'desk' | 'neon' | 'mono'
-  /** Follow primary chart visible time range */
   syncVisible: boolean
+  /** Deep DOM (Deep Chart-style) options */
+  dom: Dom3DOptions
+}
+
+/** Full customization for Deep DOM 3D — bubbles + walls + filters */
+export interface Dom3DOptions {
+  /** Draw resting L2 liquidity walls */
+  showWalls: boolean
+  /** Draw aggressor trade bubbles */
+  showBubbles: boolean
+  /** Size labels on medium/large bubbles */
+  showBubbleLabels: boolean
+  /** Show mid line + spread */
+  showMid: boolean
+  /** Show pull/refill flash tint on walls */
+  showFlash: boolean
+  /** Levels per side */
+  levels: number
+  /** Tick aggregation multiplier (1 = raw) */
+  tickAgg: 1 | 5 | 10
+  /** Hide levels below this base qty */
+  minLevelSize: number
+  /** Min quote notional (USDT) for a bubble */
+  minBubbleQuote: number
+  /** Bubble radius scale */
+  bubbleScale: number
+  /** Max bubbles kept in scene */
+  maxBubbles: number
+  /** Cluster trades within ms at same price */
+  clusterMs: number
+  /** Wall bar opacity 0–1 */
+  wallOpacity: number
+  /** Bubble opacity 0–1 */
+  bubbleOpacity: number
+}
+
+export const DEFAULT_DOM3D_OPTIONS: Dom3DOptions = {
+  showWalls: true,
+  showBubbles: true,
+  showBubbleLabels: true,
+  showMid: true,
+  showFlash: true,
+  levels: 28,
+  tickAgg: 1,
+  minLevelSize: 0,
+  minBubbleQuote: 2_000,
+  bubbleScale: 1,
+  maxBubbles: 80,
+  clusterMs: 200,
+  wallOpacity: 0.75,
+  bubbleOpacity: 0.9,
 }
 
 export const DEFAULT_VIZ3D_CONFIG: Viz3DConfig = {
@@ -50,6 +89,7 @@ export const DEFAULT_VIZ3D_CONFIG: Viz3DConfig = {
   opacity: 0.85,
   theme: 'desk',
   syncVisible: true,
+  dom: { ...DEFAULT_DOM3D_OPTIONS },
 }
 
 export const VIZ3D_PRESETS: Record<
@@ -68,9 +108,15 @@ export const VIZ3D_PRESETS: Record<
     label: 'Book 3D',
     patch: { mode: 'book_depth', pitch: 35, yaw: 50, zoom: 1.1 },
   },
-  dom: {
-    label: 'DOM 3D',
-    patch: { mode: 'dom_ladder', pitch: 18, yaw: 25, zoom: 1.15, domLevels: 28 },
+  deepDom: {
+    label: 'Deep DOM',
+    patch: {
+      mode: 'dom_ladder',
+      pitch: 16,
+      yaw: 28,
+      zoom: 1.2,
+      dom: { ...DEFAULT_DOM3D_OPTIONS },
+    },
   },
   neon: {
     label: 'Neon',
@@ -108,20 +154,35 @@ export interface BookBar {
   isBid: boolean
 }
 
-/** Classic DOM ladder row — one price, bid+ask sizes + cumulative */
 export interface DomRow {
-  /** normalized price rank -1..1 (low..high) */
   ty: number
   price: number
   bidQty: number
   askQty: number
-  /** 0..1 normalized for bar length */
   bidH: number
   askH: number
   cumBid: number
   cumAsk: number
-  /** bid/(bid+ask) at this level, 0.5 if empty */
   imbalance: number
+  /** pull | refill flash hint */
+  flash: 'pull' | 'refill' | null
+}
+
+/** Aggressor trade bubble — Deep Chart style */
+export interface DomBubble {
+  id: string
+  /** normalized X along recent time (-1..1) */
+  tx: number
+  /** normalized price Y */
+  ty: number
+  price: number
+  time: number
+  /** 0..1 radius factor */
+  r: number
+  quoteQty: number
+  baseQty: number
+  aggressor: 'buy' | 'sell'
+  clusterCount: number
 }
 
 export interface Viz3DModel {
@@ -130,10 +191,12 @@ export interface Viz3DModel {
   candles: CandleColumn[]
   book: BookBar[]
   dom: DomRow[]
+  bubbles: DomBubble[]
   priceMin: number
   priceMax: number
   volMax: number
   mid: number
+  spread: number
   totalBid: number
   totalAsk: number
   ready: boolean
