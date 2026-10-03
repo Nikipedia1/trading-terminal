@@ -40,6 +40,7 @@ export const WIDGET_META: Record<
   micro: { title: 'Microstructure', minW: 3, minH: 6, defaultW: 3, defaultH: 10 },
   viz3d: { title: '3D Pro', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
   news: { title: 'News', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  calendar: { title: 'Calendario', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -121,44 +122,63 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (inLayout.has(p.id)) continue
       nextLayout = [
         ...nextLayout,
-        { i: p.id, x: 0, y: maxY, w: 6, h: 8, minW: 4, minH: 4 },
+        {
+          i: p.id,
+          x: 0,
+          y: maxY,
+          w: 6,
+          h: 12,
+          minW: 4,
+          minH: 4,
+        },
       ]
-      maxY += 8
+      maxY += 12
       inLayout.add(p.id)
     }
 
-    set({ layout: nextLayout })
+    if (JSON.stringify(nextLayout) !== JSON.stringify(layout)) {
+      set({ layout: nextLayout })
+    }
   },
 
   addPanel: () => {
-    const id = uid('panel')
-    const primary = get().panels.find((p) => p.id === get().primaryPanelId) ?? get().panels[0]
-    const newPanel: ChartPanelConfig = {
+    const id = uid('chart')
+    const panel: ChartPanelConfig = {
       id,
-      symbol: primary?.symbol ?? 'BTCUSDT',
-      interval: primary?.interval ?? '1m',
-      exchange: primary?.exchange ?? 'binance',
+      symbol: 'BTCUSDT',
+      interval: '1m',
+      exchange: 'binance',
       syncGroup: null,
     }
-    const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-    set((s) => ({
-      panels: [...s.panels, newPanel],
-      layout: [...s.layout, { i: id, x: 0, y: maxY, w: 6, h: 8, minW: 4, minH: 4 }],
-    }))
+    set((s) => {
+      const maxY = s.layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+      return {
+        panels: [...s.panels, panel],
+        layout: [
+          ...s.layout,
+          { i: id, x: 0, y: maxY, w: 6, h: 12, minW: 4, minH: 4 },
+        ],
+      }
+    })
   },
 
   addWidget: (kind) => {
-    const existing = get().widgets.find((w) => w.kind === kind)
-    if (existing) {
-      const hasSlot = get().layout.some((l) => l.i === existing.id)
-      if (hasSlot) return
-      const meta = WIDGET_META[kind]
-      const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-      set((s) => ({
+    const meta = WIDGET_META[kind]
+    const id = uid(kind)
+    const widget: WidgetPanelConfig = {
+      id,
+      kind,
+      title: meta.title,
+    }
+    set((s) => {
+      if (s.widgets.some((w) => w.kind === kind)) return s
+      const maxY = s.layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+      return {
+        widgets: [...s.widgets, widget],
         layout: [
           ...s.layout,
           {
-            i: existing.id,
+            i: id,
             x: 0,
             y: maxY,
             w: meta.defaultW,
@@ -167,39 +187,19 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
             minH: meta.minH,
           },
         ],
-      }))
-      return
-    }
-    const meta = WIDGET_META[kind]
-    const id = uid(`widget-${kind}`)
-    const widget: WidgetPanelConfig = { id, kind, title: meta.title }
-    const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-    set((s) => ({
-      widgets: [...s.widgets, widget],
-      layout: [
-        ...s.layout,
-        {
-          i: id,
-          x: 0,
-          y: maxY,
-          w: meta.defaultW,
-          h: meta.defaultH,
-          minW: meta.minW,
-          minH: meta.minH,
-        },
-      ],
-    }))
+      }
+    })
   },
 
   removePanel: (id) => {
-    const { panels, primaryPanelId } = get()
-    if (panels.length <= 1) return
-    const nextPanels = panels.filter((p) => p.id !== id)
-    set({
-      panels: nextPanels,
-      layout: get().layout.filter((l) => l.i !== id),
-      primaryPanelId: primaryPanelId === id ? nextPanels[0].id : primaryPanelId,
-    })
+    set((s) => ({
+      panels: s.panels.filter((p) => p.id !== id),
+      layout: s.layout.filter((l) => l.i !== id),
+      primaryPanelId:
+        s.primaryPanelId === id
+          ? s.panels.find((p) => p.id !== id)?.id ?? s.primaryPanelId
+          : s.primaryPanelId,
+    }))
   },
 
   removeWidget: (id) => {
@@ -223,79 +223,5 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   setLayout: (layout) => set({ layout }),
 
-  setPrimaryPanel: (id) => {
-    if (get().panels.some((p) => p.id === id)) set({ primaryPanelId: id })
-  },
+  setPrimaryPanel: (id) => set({ primaryPanelId: id }),
 }))
-
-type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
-
-export type SyncPayload =
-  | { type: 'timeRange'; from: number; to: number }
-  | {
-      type: 'crosshair'
-      time: number | null
-      price: number | null
-      highlight?: {
-        timeSec: number
-        price: number
-        aggressor?: 'buy' | 'sell'
-      } | null
-    }
-  | {
-      logicalRange: { from: number; to: number }
-      sourceId?: string
-    }
-
-const syncListeners = new Map<string, Set<SyncListener>>()
-
-/** ChartContainer calls subscribeSyncGroup(group, panelId, listener). */
-export function subscribeSyncGroup(
-  groupId: string,
-  panelIdOrListener: string | SyncListener,
-  maybeListener?: SyncListener
-): () => void {
-  const listener: SyncListener =
-    typeof panelIdOrListener === 'function'
-      ? panelIdOrListener
-      : (maybeListener as SyncListener)
-  if (!listener) return () => {}
-  if (!syncListeners.has(groupId)) syncListeners.set(groupId, new Set())
-  syncListeners.get(groupId)!.add(listener)
-  return () => {
-    syncListeners.get(groupId)?.delete(listener)
-  }
-}
-
-export function publishSync(
-  groupId: string,
-  sourceId: string,
-  payload: SyncPayload
-) {
-  const set = syncListeners.get(groupId)
-  if (!set) return
-  const full = { ...payload, sourceId } as SyncPayload & { sourceId: string }
-  for (const fn of set) {
-    try {
-      fn(full)
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-const lastHighlight = new Map<
-  string,
-  { timeSec: number; price: number; aggressor?: 'buy' | 'sell' } | null
->()
-
-export function setSyncHighlight(
-  groupId: string,
-  h: { timeSec: number; price: number; aggressor?: 'buy' | 'sell' } | null
-) {
-  lastHighlight.set(groupId, h)
-}
-
-export function getSyncHighlight(groupId: string) {
-  return lastHighlight.get(groupId) ?? null
-}
