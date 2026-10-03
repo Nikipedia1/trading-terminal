@@ -54,7 +54,6 @@ export function Viz3DPanel() {
 
   const fromSec = useChartViewportStore((s) => s.fromSec)
   const toSec = useChartViewportStore((s) => s.toSec)
-  const crosshairTime = useChartViewportStore((s) => s.crosshairTime)
   const crosshairPrice = useChartViewportStore((s) => s.crosshairPrice)
   const requestFocus = useChartFocusStore((s) => s.requestFocus)
 
@@ -76,16 +75,6 @@ export function Viz3DPanel() {
     [scopedCandles, book, cfg]
   )
 
-  const lastT = candles.length ? candles[candles.length - 1]?.time : 0
-
-  const onPick = useCallback(
-    (timeSec: number, price?: number) => {
-      requestFocus(timeSec, { price, padSec: 600 })
-      useChartViewportStore.getState().setCrosshair(timeSec, price ?? null)
-    },
-    [requestFocus]
-  )
-
   useEffect(() => {
     useChartViewportStore.getState().setViewport({
       panelId: primaryPanelId,
@@ -94,12 +83,15 @@ export function Viz3DPanel() {
     })
   }, [primaryPanelId, symbol, interval])
 
+  // When last candle time changes, model rebuilds via scopedCandles
+  void requestFocus
+
   const syncLabel =
     cfg.syncVisible && fromSec != null && toSec != null
       ? `SYNC · ${scopedCandles.length} bars in view`
       : status === 'connected'
         ? `LIVE · last ${scopedCandles.length} bars`
-        : status
+        : String(status)
 
   return (
     <div className="h-full w-full flex flex-col bg-[#0b0e11] min-h-0">
@@ -182,15 +174,7 @@ export function Viz3DPanel() {
       </div>
 
       <div className="flex-1 min-h-0 relative">
-        <Viz3DScene
-          model={model}
-          config={cfg}
-          onCameraChange={patch}
-          crosshairTime={crosshairTime}
-          crosshairPrice={crosshairPrice}
-          onPick={onPick}
-          liveKey={lastT}
-        />
+        <Viz3DScene model={model} config={cfg} onCameraChange={patch} />
       </div>
 
       <div className="shrink-0 flex flex-wrap items-center gap-3 px-2 py-1 border-t border-[#2b3139] text-[10px] text-[#5e6673]">
