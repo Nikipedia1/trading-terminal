@@ -1,6 +1,6 @@
 /**
  * Professional 3D tools desk widget — live-synced to primary chart viewport.
- * Modes: Volume Terrain · Candle Columns · Book Depth.
+ * Modes: Volume Terrain · Candles 3D · Book Depth · DOM Ladder.
  * Data: real OHLCV + live L2; range follows chart when Sync on.
  */
 
@@ -24,6 +24,7 @@ const MODES: { id: Viz3DMode; label: string }[] = [
   { id: 'volume_terrain', label: 'Volume Terrain' },
   { id: 'candle_columns', label: 'Candles 3D' },
   { id: 'book_depth', label: 'Book Depth' },
+  { id: 'dom_ladder', label: 'DOM 3D' },
 ]
 
 function filterByRange(
@@ -83,15 +84,19 @@ export function Viz3DPanel() {
     })
   }, [primaryPanelId, symbol, interval])
 
-  // When last candle time changes, model rebuilds via scopedCandles
   void requestFocus
 
+  const isDom = cfg.mode === 'dom_ladder' || cfg.mode === 'book_depth'
   const syncLabel =
-    cfg.syncVisible && fromSec != null && toSec != null
+    cfg.syncVisible && fromSec != null && toSec != null && !isDom
       ? `SYNC · ${scopedCandles.length} bars in view`
-      : status === 'connected'
-        ? `LIVE · last ${scopedCandles.length} bars`
-        : String(status)
+      : isDom
+        ? book
+          ? `L2 LIVE · ${model.barCount} lv`
+          : 'Waiting L2…'
+        : status === 'connected'
+          ? `LIVE · last ${scopedCandles.length} bars`
+          : String(status)
 
   return (
     <div className="h-full w-full flex flex-col bg-[#0b0e11] min-h-0">
@@ -104,7 +109,7 @@ export function Viz3DPanel() {
         </span>
         <span
           className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-            cfg.syncVisible
+            isDom || cfg.syncVisible
               ? 'text-[#0ecb81] border-[#0ecb81]/40'
               : 'text-[#5e6673] border-[#2b3139]'
           }`}
@@ -178,18 +183,34 @@ export function Viz3DPanel() {
       </div>
 
       <div className="shrink-0 flex flex-wrap items-center gap-3 px-2 py-1 border-t border-[#2b3139] text-[10px] text-[#5e6673]">
-        <label className="flex items-center gap-1">
-          Bars
-          <input
-            type="range"
-            min={20}
-            max={150}
-            value={cfg.maxBars}
-            className="w-16 accent-[#f0b90b]"
-            onChange={(e) => patch({ maxBars: Number(e.target.value) })}
-          />
-          <span className="font-mono text-[#848e9c] w-6">{cfg.maxBars}</span>
-        </label>
+        {!isDom && (
+          <label className="flex items-center gap-1">
+            Bars
+            <input
+              type="range"
+              min={20}
+              max={150}
+              value={cfg.maxBars}
+              className="w-16 accent-[#f0b90b]"
+              onChange={(e) => patch({ maxBars: Number(e.target.value) })}
+            />
+            <span className="font-mono text-[#848e9c] w-6">{cfg.maxBars}</span>
+          </label>
+        )}
+        {isDom && (
+          <label className="flex items-center gap-1">
+            Levels
+            <input
+              type="range"
+              min={10}
+              max={50}
+              value={cfg.domLevels}
+              className="w-16 accent-[#f0b90b]"
+              onChange={(e) => patch({ domLevels: Number(e.target.value) })}
+            />
+            <span className="font-mono text-[#848e9c] w-6">{cfg.domLevels}</span>
+          </label>
+        )}
         {cfg.mode === 'volume_terrain' && (
           <label className="flex items-center gap-1">
             Bins
@@ -229,7 +250,9 @@ export function Viz3DPanel() {
         <span className="ml-auto text-[9px]">
           {crosshairPrice != null
             ? `XH ${crosshairPrice.toFixed(2)}`
-            : 'live ↔ chart'}
+            : isDom
+              ? 'DOM · real L2'
+              : 'live ↔ chart'}
         </span>
       </div>
     </div>
