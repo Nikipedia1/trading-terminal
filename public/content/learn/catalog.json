@@ -5,7 +5,8 @@
     { "id": "order-flow", "label": "Order flow" },
     { "id": "indicatori", "label": "Indicatori" },
     { "id": "risk", "label": "Risk management" },
-    { "id": "psicologia", "label": "Psicologia" }
+    { "id": "psicologia", "label": "Psicologia" },
+    { "id": "macro", "label": "Macro" }
   ],
   "lessons": [
     {
@@ -79,6 +80,7 @@
       "type": "glossary",
       "category": "order-flow",
       "term": "Delta",
+      "aliases": ["delta volume", "volume delta"],
       "definition": "Volume aggressivo buy meno volume aggressivo sell su un intervallo o livello di prezzo."
     },
     {
@@ -86,13 +88,63 @@
       "type": "glossary",
       "category": "order-flow",
       "term": "CVD",
+      "aliases": ["cumulative volume delta"],
       "definition": "Cumulative Volume Delta: somma progressiva del delta; utile per divergenze col prezzo."
+    },
+    {
+      "id": "g-imbalance",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "Imbalance",
+      "aliases": ["stacked imbalance", "order book imbalance"],
+      "definition": "Sbilanciamento di liquidità o aggressione su un livello (footprint) o tra bid e ask (book)."
+    },
+    {
+      "id": "g-liquidation",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "Liquidazioni",
+      "aliases": ["liquidazione", "liquidations", "forced liquidation", "liq"],
+      "definition": "Chiusura forzata di posizioni a leva quando il margine non copre più la perdita non realizzata; spesso amplifica i movimenti di prezzo."
+    },
+    {
+      "id": "g-funding",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "Funding rate",
+      "aliases": ["funding", "tasso di funding", "perpetual funding"],
+      "definition": "Pagamento periodico tra long e short sui perpetual: funding positivo = i long pagano gli short (mercato tipicamente crowded long)."
+    },
+    {
+      "id": "g-oi",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "Open interest",
+      "aliases": ["OI", "open interests"],
+      "definition": "Somma dei contratti futures/perpetual aperti; in aumento con prezzo in trend spesso conferma partecipazione, in calo può indicare chiusura."
+    },
+    {
+      "id": "g-fvg",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "FVG",
+      "aliases": ["fair value gap", "imbalance gap"],
+      "definition": "Fair Value Gap: zona di inefficienza di prezzo (gap tra wick di tre candele) spesso usata come area di ritorno della liquidità."
+    },
+    {
+      "id": "g-order-block",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "Order block",
+      "aliases": ["order blocks", "OB"],
+      "definition": "Ultima candela contraria prima di un impulso forte; usata in SMC come zona di interesse istituzionale (non garanzia di tenuta)."
     },
     {
       "id": "g-vwap",
       "type": "glossary",
       "category": "indicatori",
       "term": "VWAP",
+      "aliases": ["volume weighted average price"],
       "definition": "Volume Weighted Average Price: prezzo medio ponderato per volume dalla sessione o range scelto."
     },
     {
@@ -100,6 +152,7 @@
       "type": "glossary",
       "category": "indicatori",
       "term": "ATR",
+      "aliases": ["average true range"],
       "definition": "Average True Range: misura di volatilità usata per stop e target dinamici."
     },
     {
@@ -107,6 +160,7 @@
       "type": "glossary",
       "category": "risk",
       "term": "R (R-multiple)",
+      "aliases": ["R-multiple", "r multiple", "1R"],
       "definition": "Unità di rischio definita dalla distanza entry–stop; P&L espresso in multipli di R."
     },
     {
@@ -114,6 +168,7 @@
       "type": "glossary",
       "category": "risk",
       "term": "Drawdown",
+      "aliases": ["max drawdown", "MDD"],
       "definition": "Calo del capitale dal picco precedente; da monitorare in % equity, non solo in ticket."
     },
     {
@@ -121,6 +176,7 @@
       "type": "glossary",
       "category": "psicologia",
       "term": "FOMO",
+      "aliases": [],
       "definition": "Fear of missing out: impulso a entrare tardi senza setup, spesso dopo un movimento già esteso."
     },
     {
@@ -128,7 +184,40 @@
       "type": "glossary",
       "category": "psicologia",
       "term": "Revenge trading",
+      "aliases": ["revenge"],
       "definition": "Aumentare rischio o forzare entry per recuperare perdite recenti."
+    },
+    {
+      "id": "g-cpi",
+      "type": "glossary",
+      "category": "macro",
+      "term": "CPI",
+      "aliases": ["consumer price index", "inflazione CPI", "indice dei prezzi al consumo"],
+      "definition": "Consumer Price Index: misura dell'inflazione al consumo. Surprise vs consensus spesso muove tassi reali, USD e risk assets."
+    },
+    {
+      "id": "g-fomc",
+      "type": "glossary",
+      "category": "macro",
+      "term": "FOMC",
+      "aliases": ["fed", "federal reserve", "rate decision", "fed funds"],
+      "definition": "Federal Open Market Committee: riunioni e decisioni sui tassi USA; guidance e dot plot guidano le aspettative di politica monetaria."
+    },
+    {
+      "id": "g-nfp",
+      "type": "glossary",
+      "category": "macro",
+      "term": "NFP",
+      "aliases": ["non-farm payrolls", "nonfarm", "payrolls"],
+      "definition": "Non-Farm Payrolls: report mensile sull'occupazione USA non agricola; alto impatto su USD e mercati rate-sensitive."
+    },
+    {
+      "id": "g-etf",
+      "type": "glossary",
+      "category": "macro",
+      "term": "ETF",
+      "aliases": ["bitcoin etf", "spot etf"],
+      "definition": "Exchange-Traded Fund: veicolo quotato che replica un sottostante; gli ETF spot crypto canalizzano flussi istituzionali."
     }
   ],
   "videos": [

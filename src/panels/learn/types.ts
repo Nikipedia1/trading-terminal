@@ -3,6 +3,7 @@ export type LearnCategoryId =
   | 'indicatori'
   | 'risk'
   | 'psicologia'
+  | 'macro'
   | string
 
 export type LearnItemType = 'lesson' | 'glossary' | 'video' | 'quiz'
@@ -26,6 +27,8 @@ export interface LearnGlossaryEntry {
   type: 'glossary'
   category: LearnCategoryId
   term: string
+  /** Extra phrases matched in AI text (case-insensitive). */
+  aliases?: string[]
   definition: string
 }
 
@@ -68,4 +71,11 @@ export interface LearnCatalog {
   glossary: LearnGlossaryEntry[]
   videos: LearnVideo[]
   quizzes: LearnQuiz[]
+}
+
+/** CustomEvent detail when opening a glossary term from AI / news. */
+export const LEARN_OPEN_EVENT = 'tt-learn-open'
+
+export interface LearnOpenDetail {
+  glossaryId: string
 }
