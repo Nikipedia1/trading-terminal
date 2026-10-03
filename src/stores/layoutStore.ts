@@ -227,7 +227,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 }))
 
-type SyncListener = (sourceId: string, payload: SyncPayload) => void
+type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
 
 export type SyncPayload =
   | { type: 'timeRange'; from: number; to: number }
@@ -241,10 +241,24 @@ export type SyncPayload =
         aggressor?: 'buy' | 'sell'
       } | null
     }
+  | {
+      logicalRange: { from: number; to: number }
+      sourceId?: string
+    }
 
 const syncListeners = new Map<string, Set<SyncListener>>()
 
-export function subscribeSyncGroup(groupId: string, listener: SyncListener): () => void {
+/** ChartContainer calls subscribeSyncGroup(group, panelId, listener). */
+export function subscribeSyncGroup(
+  groupId: string,
+  panelIdOrListener: string | SyncListener,
+  maybeListener?: SyncListener
+): () => void {
+  const listener: SyncListener =
+    typeof panelIdOrListener === 'function'
+      ? panelIdOrListener
+      : (maybeListener as SyncListener)
+  if (!listener) return () => {}
   if (!syncListeners.has(groupId)) syncListeners.set(groupId, new Set())
   syncListeners.get(groupId)!.add(listener)
   return () => {
@@ -252,12 +266,17 @@ export function subscribeSyncGroup(groupId: string, listener: SyncListener): () 
   }
 }
 
-export function publishSync(groupId: string, sourceId: string, payload: SyncPayload) {
+export function publishSync(
+  groupId: string,
+  sourceId: string,
+  payload: SyncPayload
+) {
   const set = syncListeners.get(groupId)
   if (!set) return
+  const full = { ...payload, sourceId } as SyncPayload & { sourceId: string }
   for (const fn of set) {
     try {
-      fn(sourceId, payload)
+      fn(full)
     } catch {
       /* ignore */
     }
