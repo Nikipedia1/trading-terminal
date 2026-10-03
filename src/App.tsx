@@ -413,12 +413,12 @@ function GuestEntry() {
   }, [entered, setMode])
   if (!entered) {
     return (
-      <div className="nacs-splash min-h-screen flex flex-col items-center justify-center gap-6 text-[#eaecef] px-4 relative overflow-hidden">
+      <div className="nacs-splash min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden">
         <div className="nacs-splash-grid" aria-hidden />
         <div className="nacs-splash-glow" aria-hidden />
-        <div className="relative z-10 nacs-guest-card rounded-xl px-8 py-10 max-w-md w-full flex flex-col items-center gap-5">
-          <BrandLogo size="lg" />
-          <div className="nacs-loader-stage" aria-hidden>
+        <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-4">
+          <BrandLogo size="lg" animated />
+          <div className="nacs-loader-stage" style={{ width: 100, height: 100 }} aria-hidden>
             <div className="nacs-orbit">
               <div className="nacs-orbit-ring" />
               <div className="nacs-orbit-ring nacs-orbit-ring--2" />
@@ -439,13 +439,13 @@ function GuestEntry() {
           </p>
           <button
             type="button"
-            className="w-full px-4 py-2.5 rounded-lg bg-[#f0b90b] text-[#0b0e11] text-sm font-semibold tracking-wide hover:bg-[#f5c93a] transition-colors shadow-[0_0_20px_rgba(240,185,11,0.2)]"
+            className="w-full px-4 py-3 rounded-lg bg-[#f0b90b] text-[#0b0e11] text-sm font-bold tracking-wide hover:bg-[#f5c93a] active:scale-[0.99] transition-all shadow-[0_0_24px_rgba(240,185,11,0.28)]"
             onClick={() => setEntered(true)}
           >
             Enter as guest
           </button>
-          <div className="w-full border-t border-[#1e2329] pt-4">
-            <LoginScreen />
+          <div className="w-full border-t border-[#1e2329] pt-5 mt-1">
+            <LoginScreen embedded />
           </div>
         </div>
       </div>
