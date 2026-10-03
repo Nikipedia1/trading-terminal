@@ -71,6 +71,7 @@ import {
 import { ReplayBar } from '@/analysis/replay'
 import { PaperPositionLines } from '@/trading/paper'
 import { LOAD_MORE_THRESHOLD } from '@/data/klines/history'
+import { ChartViewportBridge } from './ChartViewportBridge'
 
 function intervalToSeconds(interval: Interval): number {
   const m: Record<string, number> = {
@@ -234,6 +235,9 @@ export function ChartContainer({
   const activeTool = useDrawingStore((s) => s.activeTool)
   void deltaConfig
   void activeTool
+  void printPinTime
+  void setPrintPinTime
+  void intervalToSeconds
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -372,10 +376,12 @@ export function ChartContainer({
   useEffect(() => {
     if (!chartRef.current || !syncGroup) return
     const chart = chartRef.current
-    const unsub = subscribeSyncGroup(syncGroup, panelId, (payload: SyncPayload) => {
+    const unsub = subscribeSyncGroup(syncGroup, panelId, (payload: SyncPayload & { sourceId?: string }) => {
       if (payload.sourceId === panelId) return
       const ts = chart.timeScale()
-      if (payload.logicalRange) ts.setVisibleLogicalRange(payload.logicalRange)
+      if ('logicalRange' in payload && payload.logicalRange) {
+        ts.setVisibleLogicalRange(payload.logicalRange)
+      }
     })
     const handler = () => {
       const lr = chart.timeScale().getVisibleLogicalRange()
@@ -439,6 +445,14 @@ export function ChartContainer({
   return (
     <div className="flex flex-col h-full w-full relative">
       <div ref={containerRef} className="flex-1 min-h-0 relative">
+        {isPrimary && mainChart ? (
+          <ChartViewportBridge
+            chart={mainChart}
+            panelId={panelId}
+            symbol={symbol}
+            interval={interval}
+          />
+        ) : null}
         <IndicatorValuesHud candles={candles} params={indicatorParams} />
         <LivePriceBadge candles={candles} />
         <DeepPrintOverlay
