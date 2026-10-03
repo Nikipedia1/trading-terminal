@@ -1,49 +1,39 @@
 /**
- * Mock news fixtures – TEST ONLY. Never import from production panel code.
+ * Test-only fixtures. Never imported by production NewsPanel fetch path.
  */
 import type { NewsItem } from '../types'
 
-const HOUR = 3_600_000
-
 export const MOCK_NEWS: NewsItem[] = [
   {
-    id: 'mock-1',
-    title: 'Bitcoin holds above key support as ETF flows stabilize',
+    id: 't1',
+    title: 'Bitcoin ETF inflows hit weekly high',
     source: 'CoinDesk',
-    publishedAt: Date.now() - 1 * HOUR,
-    url: 'https://example.com/news/btc-support',
-    assets: ['BTC'],
+    url: 'https://example.test/btc-etf',
+    publishedAt: Date.now() - 60_000,
+    tags: ['BTC'],
   },
   {
-    id: 'mock-2',
-    title: 'Ethereum staking yields compress after Dencun anniversary',
-    source: 'The Block',
-    publishedAt: Date.now() - 3 * HOUR,
-    url: 'https://example.com/news/eth-staking',
-    assets: ['ETH'],
+    id: 't2',
+    title: 'Ethereum upgrade timeline confirmed',
+    source: 'Cointelegraph',
+    url: 'https://example.test/eth-upgrade',
+    publishedAt: Date.now() - 120_000,
+    tags: ['ETH'],
   },
   {
-    id: 'mock-3',
-    title: 'Fed speakers signal patience on rate path',
+    id: 't3',
+    title: 'Fed signals slower path for rate cuts',
     source: 'Reuters',
-    publishedAt: Date.now() - 5 * HOUR,
-    url: 'https://example.com/news/fed-patience',
-    assets: ['macro'],
+    url: 'https://example.test/fed-macro',
+    publishedAt: Date.now() - 180_000,
+    tags: ['macro'],
   },
   {
-    id: 'mock-4',
-    title: 'BTC and ETH correlation ticks higher into CPI week',
-    source: 'Bloomberg',
-    publishedAt: Date.now() - 8 * HOUR,
-    url: 'https://example.com/news/btc-eth-cpi',
-    assets: ['BTC', 'ETH', 'macro'],
-  },
-  {
-    id: 'mock-5',
-    title: 'Macro: dollar index softens on mixed labor data',
-    source: 'WSJ',
-    publishedAt: Date.now() - 12 * HOUR,
-    url: 'https://example.com/news/dxy-labor',
-    assets: ['macro'],
+    id: 't4',
+    title: 'BTC and ETH correlation with equities rises',
+    source: 'The Block',
+    url: 'https://example.test/btc-eth-macro',
+    publishedAt: Date.now() - 240_000,
+    tags: ['BTC', 'ETH', 'macro'],
   },
 ]
