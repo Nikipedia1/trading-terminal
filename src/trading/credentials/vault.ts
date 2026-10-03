@@ -4,6 +4,8 @@
  * Live trading is opt-in only; default is paper.
  */
 
+import { auditAppend } from '@/trading/audit/auditLog'
+
 export type LiveVenue = 'binance_spot' | 'binance_futures'
 
 export interface StoredCredentialMeta {
@@ -12,6 +14,8 @@ export interface StoredCredentialMeta {
   /** First/last 4 of apiKey only – never full key */
   keyHint: string
   createdAt: number
+  /** Last time keys were re-encrypted / rotated */
+  rotatedAt?: number
 }
 
 interface VaultBlob {
@@ -23,6 +27,7 @@ interface VaultBlob {
 }
 
 const STORAGE_PREFIX = 'tt-vault:v1:'
+const SESSION_IDLE_MS = 30 * 60 * 1000
 
 function b64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf)
@@ -96,11 +101,14 @@ export async function vaultStore(
       key,
       new TextEncoder().encode(payload)
     )
+    const now = Date.now()
+    const prev = listVaultMeta().find((m) => m.venue === venue)
     const meta: StoredCredentialMeta = {
       venue,
       label,
       keyHint: `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`,
-      createdAt: Date.now(),
+      createdAt: prev?.createdAt ?? now,
+      rotatedAt: now,
     }
     const blob: VaultBlob = {
       v: 1,
@@ -110,10 +118,27 @@ export async function vaultStore(
       meta,
     }
     localStorage.setItem(STORAGE_PREFIX + venue, JSON.stringify(blob))
+    auditAppend({
+      mode: 'live',
+      action: 'vault_store',
+      detail: `vault store/rotate ${venue} ${meta.keyHint}`,
+      ok: true,
+    })
     return { ok: true }
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Encrypt failed' }
   }
+}
+
+/** Re-encrypt existing vault entry with a new passphrase (rotation). */
+export async function vaultRotatePassphrase(
+  venue: LiveVenue,
+  oldPass: string,
+  newPass: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const unlocked = await vaultUnlock(venue, oldPass)
+  if (!unlocked.ok) return unlocked
+  return vaultStore(venue, unlocked.apiKey, unlocked.apiSecret, newPass)
 }
 
 export async function vaultUnlock(
@@ -139,6 +164,12 @@ export async function vaultUnlock(
     if (!data.apiKey || !data.apiSecret) {
       return { ok: false, error: 'Corrupt vault payload' }
     }
+    auditAppend({
+      mode: 'live',
+      action: 'vault_unlock',
+      detail: `unlock ${venue}`,
+      ok: true,
+    })
     return { ok: true, apiKey: data.apiKey, apiSecret: data.apiSecret }
   } catch {
     return { ok: false, error: 'Wrong passphrase or corrupt vault' }
@@ -147,30 +178,63 @@ export async function vaultUnlock(
 
 export function vaultDelete(venue: LiveVenue) {
   localStorage.removeItem(STORAGE_PREFIX + venue)
+  if (session?.venue === venue) clearSessionCredentials()
+  auditAppend({
+    mode: 'live',
+    action: 'vault_store',
+    detail: `deleted vault ${venue}`,
+    ok: true,
+  })
 }
 
-/** In-memory session only – cleared on tab close; never persisted unlocked. */
+/** In-memory session only – cleared on tab close / idle; never persisted unlocked. */
 let session: {
   venue: LiveVenue
   apiKey: string
   apiSecret: string
+  unlockedAt: number
 } | null = null
+
+let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+function armIdleTimer() {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => {
+    clearSessionCredentials()
+  }, SESSION_IDLE_MS)
+}
 
 export function setSessionCredentials(
   venue: LiveVenue,
   apiKey: string,
   apiSecret: string
 ) {
-  session = { venue, apiKey, apiSecret }
+  session = { venue, apiKey, apiSecret, unlockedAt: Date.now() }
+  armIdleTimer()
 }
 
 export function clearSessionCredentials() {
   session = null
+  if (idleTimer) {
+    clearTimeout(idleTimer)
+    idleTimer = null
+  }
 }
 
 export function getSessionCredentials(
   venue: LiveVenue
 ): { apiKey: string; apiSecret: string } | null {
   if (!session || session.venue !== venue) return null
+  if (Date.now() - session.unlockedAt > SESSION_IDLE_MS) {
+    clearSessionCredentials()
+    return null
+  }
+  armIdleTimer()
   return { apiKey: session.apiKey, apiSecret: session.apiSecret }
 }
+
+export const VAULT_NOTES = [
+  'AES-GCM + PBKDF2 (120k) at rest in localStorage – never plaintext secrets.',
+  'Unlocked keys live only in memory; auto-clear after 30m idle.',
+  'Prefer exchange keys with withdrawals disabled; rotate regularly.',
+] as const
