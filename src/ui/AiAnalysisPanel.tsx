@@ -1,5 +1,6 @@
 /**
  * AI Desk – modes, SMC, liquidity, chat, auto-draw, selectable AI API.
+ * AI replies link matched concepts to Learn glossary.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -33,6 +34,7 @@ import {
   type AiProviderId,
 } from '@/analysis/aiDesk/aiApi'
 import type { Drawing } from '@/drawings/types'
+import { GlossaryLinkedText, GlossaryHitChips } from '@/panels/learn/GlossaryLinkedText'
 
 interface ChatMsg {
   id: number
@@ -71,6 +73,24 @@ const QUICK = [
   'Disegna',
   'Help',
 ]
+
+/** Bold **chunks** + glossary linkify on AI text. */
+function AiRichText({ text }: { text: string }) {
+  const chunks = text.split('**')
+  return (
+    <>
+      {chunks.map((chunk, i) =>
+        i % 2 === 1 ? (
+          <strong key={i} className="text-[#eaecef]">
+            <GlossaryLinkedText text={chunk} />
+          </strong>
+        ) : (
+          <GlossaryLinkedText key={i} text={chunk} />
+        )
+      )}
+    </>
+  )
+}
 
 export function AiAnalysisPanel() {
   const candles = useMarketStore((s) => s.candles)
@@ -460,13 +480,22 @@ export function AiAnalysisPanel() {
                 AI · {mode} · {meta.label}
               </div>
             )}
-            {m.text.split('**').map((chunk, i) =>
-              i % 2 === 1 ? (
-                <strong key={i} className="text-[#eaecef]">
-                  {chunk}
-                </strong>
-              ) : (
-                <span key={i}>{chunk}</span>
+            {m.role === 'ai' ? (
+              <>
+                <AiRichText text={m.text} />
+                <div className="mt-1.5">
+                  <GlossaryHitChips texts={[m.text]} label="Concetti · Learn" />
+                </div>
+              </>
+            ) : (
+              m.text.split('**').map((chunk, i) =>
+                i % 2 === 1 ? (
+                  <strong key={i} className="text-[#eaecef]">
+                    {chunk}
+                  </strong>
+                ) : (
+                  <span key={i}>{chunk}</span>
+                )
               )
             )}
           </div>
