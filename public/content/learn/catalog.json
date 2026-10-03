@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "title": "Trading Desk Academy",
+  "categories": [
+    { "id": "order-flow", "label": "Order flow" },
+    { "id": "indicatori", "label": "Indicatori" },
+    { "id": "risk", "label": "Risk management" },
+    { "id": "psicologia", "label": "Psicologia" }
+  ],
+  "lessons": [
+    {
+      "id": "of-delta-basics",
+      "type": "lesson",
+      "category": "order-flow",
+      "title": "Delta e aggressione",
+      "summary": "Come leggere il delta candela e distinguere buy vs sell aggressivo.",
+      "body": "Il delta di una candela è la differenza tra volume aggressivo in acquisto e in vendita. Un delta fortemente positivo con prezzo che non sale può segnalare assorbimento. Usa il delta insieme al profilo volume: non tradarlo da solo."
+    },
+    {
+      "id": "of-footprint",
+      "type": "lesson",
+      "category": "order-flow",
+      "title": "Footprint in 3 punti",
+      "summary": "Imbalance, stacked imbalance e unfinished auction.",
+      "body": "1) Imbalance: prevalenza di un lato a un price level.\n2) Stacked imbalance: più livelli consecutivi nello stesso senso.\n3) Unfinished auction: estremo della candela senza chiusura aggressiva — spesso area di ritorno."
+    },
+    {
+      "id": "ind-vwap",
+      "type": "lesson",
+      "category": "indicatori",
+      "title": "VWAP come ancora intraday",
+      "summary": "Uso del VWAP come riferimento di fair value nella sessione.",
+      "body": "Il VWAP pesa il prezzo per volume. Sopra VWAP il flusso è tipicamente più costruttivo per i long di breve; sotto, per gli short. Le bande standard aiutano a misurare estensioni, non a predire inversioni certe."
+    },
+    {
+      "id": "ind-ema-structure",
+      "type": "lesson",
+      "category": "indicatori",
+      "title": "EMA e struttura",
+      "summary": "Allineare EMA multiple alla structure di swing.",
+      "body": "Le EMA non anticipano: descrivono trend. Preferisci usarle come filtro di contesto (es. prezzo sopra EMA 200 su TF superiore) e lasciare all'order flow il timing di entrata."
+    },
+    {
+      "id": "risk-r-multiple",
+      "type": "lesson",
+      "category": "risk",
+      "title": "R-multiple e expectancy",
+      "summary": "Misurare trade in unità di rischio (R).",
+      "body": "1R = distanza entry–stop in denaro. Un target a 2R con winrate 40% ha expectancy positiva se i costi sono contenuti. Tieni un journal con R realizzati, non solo P&L assoluto."
+    },
+    {
+      "id": "risk-position-size",
+      "type": "lesson",
+      "category": "risk",
+      "title": "Position sizing fisso-%",
+      "summary": "Rischiare una frazione fissa del capitale per trade.",
+      "body": "Regola base: rischio per trade ≤ 0.5–1% dell'equity. Size = (equity × risk%) / distanza stop. Aumentare size solo dopo evidenza statistica, non dopo una serie di win."
+    },
+    {
+      "id": "psy-process",
+      "type": "lesson",
+      "category": "psicologia",
+      "title": "Processo vs outcome",
+      "summary": "Valutare la qualità della decisione, non solo il risultato.",
+      "body": "Un trade in perdita eseguito secondo regole può essere buono; un win fuori piano è rumore tossico. Review: setup chiaro? size corretta? stop rispettato? Se sì, il processo è sano anche a R negativo."
+    },
+    {
+      "id": "psy-tilt",
+      "type": "lesson",
+      "category": "psicologia",
+      "title": "Riconoscere il tilt",
+      "summary": "Segnali di perdita di disciplina e circuit breaker.",
+      "body": "Sintomi: size raddoppiata, chase, chiudere winner troppo presto dopo una loss. Circuit breaker: stop trading dopo 2–3 R negativi consecutivi o dopo una regola violata."
+    }
+  ],
+  "glossary": [
+    {
+      "id": "g-delta",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "Delta",
+      "definition": "Volume aggressivo buy meno volume aggressivo sell su un intervallo o livello di prezzo."
+    },
+    {
+      "id": "g-cvd",
+      "type": "glossary",
+      "category": "order-flow",
+      "term": "CVD",
+      "definition": "Cumulative Volume Delta: somma progressiva del delta; utile per divergenze col prezzo."
+    },
+    {
+      "id": "g-vwap",
+      "type": "glossary",
+      "category": "indicatori",
+      "term": "VWAP",
+      "definition": "Volume Weighted Average Price: prezzo medio ponderato per volume dalla sessione o range scelto."
+    },
+    {
+      "id": "g-atr",
+      "type": "glossary",
+      "category": "indicatori",
+      "term": "ATR",
+      "definition": "Average True Range: misura di volatilità usata per stop e target dinamici."
+    },
+    {
+      "id": "g-r",
+      "type": "glossary",
+      "category": "risk",
+      "term": "R (R-multiple)",
+      "definition": "Unità di rischio definita dalla distanza entry–stop; P&L espresso in multipli di R."
+    },
+    {
+      "id": "g-drawdown",
+      "type": "glossary",
+      "category": "risk",
+      "term": "Drawdown",
+      "definition": "Calo del capitale dal picco precedente; da monitorare in % equity, non solo in ticket."
+    },
+    {
+      "id": "g-fomo",
+      "type": "glossary",
+      "category": "psicologia",
+      "term": "FOMO",
+      "definition": "Fear of missing out: impulso a entrare tardi senza setup, spesso dopo un movimento già esteso."
+    },
+    {
+      "id": "g-revenge",
+      "type": "glossary",
+      "category": "psicologia",
+      "term": "Revenge trading",
+      "definition": "Aumentare rischio o forzare entry per recuperare perdite recenti."
+    }
+  ],
+  "videos": [
+    {
+      "id": "v-of-intro",
+      "type": "video",
+      "category": "order-flow",
+      "title": "Intro order flow (embed)",
+      "summary": "Panoramica concetti base — sostituisci videoId con un contenuto tuo se serve.",
+      "videoId": "dQw4w9WgXcQ",
+      "durationMin": 8
+    },
+    {
+      "id": "v-risk-size",
+      "type": "video",
+      "category": "risk",
+      "title": "Position sizing in pratica",
+      "summary": "Esempio numerico di size su stop in tick/percentuale.",
+      "videoId": "dQw4w9WgXcQ",
+      "durationMin": 6
+    },
+    {
+      "id": "v-psy-journal",
+      "type": "video",
+      "category": "psicologia",
+      "title": "Journal e review settimanale",
+      "summary": "Come strutturare una review senza bias di hindsight.",
+      "videoId": "dQw4w9WgXcQ",
+      "durationMin": 7
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "q-of-1",
+      "type": "quiz",
+      "category": "order-flow",
+      "title": "Quiz order flow #1",
+      "questions": [
+        {
+          "id": "q1",
+          "prompt": "Il delta di una candela misura…",
+          "options": [
+            "Solo il volume totale",
+            "Buy aggressivo − sell aggressivo",
+            "Open − close",
+            "High − low"
+          ],
+          "answerIndex": 1
+        },
+        {
+          "id": "q2",
+          "prompt": "Un unfinished auction in footprint spesso indica…",
+          "options": [
+            "Chiusura di sessione",
+            "Area potenzialmente da riempire/ritestare",
+            "Funding rate negativo",
+            "Spread bid-ask zero"
+          ],
+          "answerIndex": 1
+        }
+      ]
+    },
+    {
+      "id": "q-risk-1",
+      "type": "quiz",
+      "category": "risk",
+      "title": "Quiz risk #1",
+      "questions": [
+        {
+          "id": "q1",
+          "prompt": "Con equity 10 000 e rischio 1% su stop da 50$, la size nozionale target rischio è…",
+          "options": ["50$", "100$", "200$", "1 000$"],
+          "answerIndex": 1
+        },
+        {
+          "id": "q2",
+          "prompt": "L'expectancy usa tipicamente…",
+          "options": [
+            "Solo winrate",
+            "Winrate e payoff medio (R)",
+            "Solo ATR",
+            "Solo Sharpe giornaliero"
+          ],
+          "answerIndex": 1
+        }
+      ]
+    },
+    {
+      "id": "q-psy-1",
+      "type": "quiz",
+      "category": "psicologia",
+      "title": "Quiz psicologia #1",
+      "questions": [
+        {
+          "id": "q1",
+          "prompt": "Valutare un trade soprattutto dall'outcome monetario…",
+          "options": [
+            "È sempre corretto",
+            "Ignora la qualità del processo",
+            "Elimina il bias",
+            "Sostituisce il journal"
+          ],
+          "answerIndex": 1
+        }
+      ]
+    }
+  ]
+}
