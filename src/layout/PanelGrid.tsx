@@ -32,7 +32,13 @@ import { PluginIndicatorPanel } from '@/plugins/PluginIndicatorPanel'
 import { MicrostructurePanel } from '@/analysis/microstructure'
 import { Viz3DPanel } from '@/analysis/viz3d'
 import { useMobileLayout } from '@/layout/useMobileLayout'
-import { NewsPanel, CalendarPanel, LiveTvPanel, getRegisteredPanel } from '@/panels'
+import {
+  NewsPanel,
+  CalendarPanel,
+  LiveTvPanel,
+  LearnPanel,
+  getRegisteredPanel,
+} from '@/panels'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -116,6 +122,8 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <CalendarPanel />
     case 'livetv':
       return <LiveTvPanel />
+    case 'learn':
+      return <LearnPanel />
     default: {
       const reg = getRegisteredPanel(kind)
       if (reg) {
@@ -150,6 +158,7 @@ const ADDABLE: WidgetKind[] = [
   'news',
   'calendar',
   'livetv',
+  'learn',
 ]
 
 export function PanelGrid({ width }: PanelGridProps) {
