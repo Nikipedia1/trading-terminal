@@ -83,6 +83,7 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
   const knownIdsRef = useRef<Set<string>>(new Set())
   const firstLoadDoneRef = useRef(false)
   const visibleRef = useRef(true)
+  const wasPausedRef = useRef(false)
 
   const [filter, setFilter] = useState<NewsAssetFilter>('all')
   const [feed, setFeed] = useState<NewsItem[]>(itemsProp ?? [])
@@ -133,7 +134,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
           if (Object.keys(fresh).length > 0) {
             setNewSince((prev) => {
               const next = { ...prev, ...fresh }
-              // Drop expired entries
               const cutoff = arrivedAt - NEW_BADGE_MS
               for (const id of Object.keys(next)) {
                 if ((next[id] ?? 0) < cutoff) delete next[id]
@@ -143,7 +143,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
           }
         }
 
-        // API already sorts newest first; keep order, new ids naturally near top
         setFeed(incoming)
         setWarnings(Array.isArray(data.warnings) ? data.warnings : [])
         setFetchedAt(data.fetchedAt ?? new Date().toISOString())
@@ -152,7 +151,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
         if ((e as { name?: string })?.name === 'AbortError') return
         const status = (e as { status?: number })?.status
         setError(networkErrorMessage(e, status))
-        // Keep last good feed; never invent headlines
       } finally {
         setLoading(false)
       }
@@ -172,13 +170,10 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     }
 
     const onVis = () => {
-      const el = rootRef.current
-      // If we cannot measure, only trust document visibility
-      if (!el) {
+      if (!rootRef.current) {
         updatePaused(document.visibilityState === 'visible')
         return
       }
-      // IO will refine; optimistic use doc visibility
       updatePaused(document.visibilityState === 'visible')
     }
 
@@ -190,7 +185,8 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
       io = new IntersectionObserver(
         (entries) => {
           const entry = entries[0]
-          const inView = !!entry?.isIntersecting && (entry.intersectionRatio ?? 0) > 0.05
+          const inView =
+            !!entry?.isIntersecting && (entry.intersectionRatio ?? 0) > 0.05
           updatePaused(inView)
         },
         { threshold: [0, 0.05, 0.25] }
@@ -206,7 +202,7 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     }
   }, [itemsProp])
 
-  // Poll only while visible; resume with immediate fetch when becoming visible again
+  // Initial load + poll every 45s while visible
   useEffect(() => {
     if (itemsProp) {
       setFeed(itemsProp)
@@ -228,13 +224,16 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     }
   }, [itemsProp, load])
 
-  // When unpausing, fetch immediately
+  // Fetch only on transition paused → visible (not on initial mount)
   useEffect(() => {
-    if (itemsProp || paused) return
-    void load()
+    if (itemsProp) return
+    if (wasPausedRef.current && !paused) {
+      void load()
+    }
+    wasPausedRef.current = paused
   }, [paused, itemsProp, load])
 
-  // Expire NEW badges every few seconds
+  // Expire NEW badges
   useEffect(() => {
     if (Object.keys(newSince).length === 0) return
     const id = window.setInterval(() => {
@@ -264,11 +263,10 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     [newSince, nowTick]
   )
 
-  const visible = useMemo(() => {
-    const filtered = feed.filter((n) => matchesFilter(n, filter))
-    // Keep API order (newest first); items with active NEW already tend to be on top
-    return filtered
-  }, [feed, filter])
+  const visible = useMemo(
+    () => feed.filter((n) => matchesFilter(n, filter)),
+    [feed, filter]
+  )
 
   return (
     <div
