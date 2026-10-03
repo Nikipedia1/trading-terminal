@@ -1,6 +1,7 @@
 /**
  * Professional 3D scene renderer — pure Canvas2D perspective.
  * Orbit: drag · Zoom: wheel · Real data only.
+ * Modes: terrain · candles · book depth · DOM ladder.
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -103,8 +104,6 @@ export function Viz3DScene({
 
     const drawPoly = (pts: Vec3[], fill: string, stroke?: string) => {
       const scr = pts.map((p) => project(p, cam, cx, cy))
-      // back-face approx by average depth
-      scr.sort(() => 0) // keep order
       ctx.beginPath()
       scr.forEach((s, i) => {
         if (i === 0) ctx.moveTo(s.x, s.y)
@@ -120,7 +119,6 @@ export function Viz3DScene({
       }
     }
 
-    // Grid floor
     if (cfg.showGrid) {
       ctx.strokeStyle = theme.grid
       ctx.lineWidth = 1
@@ -149,25 +147,20 @@ export function Viz3DScene({
     }
 
     if (m.mode === 'volume_terrain' && m.terrain.length) {
-      // Sort by depth for painter's algorithm
       const cells = [...m.terrain].sort((a, b) => {
-        const da = project({ x: a.tx, y: -0.8 + a.h * 0.9, z: a.ty * 0.7 }, cam, cx, cy)
-          .depth
-        const db = project({ x: b.tx, y: -0.8 + b.h * 0.9, z: b.ty * 0.7 }, cam, cx, cy)
-          .depth
+        const da = project({ x: a.tx, y: -0.8 + a.h * 0.9, z: a.ty * 0.7 }, cam, cx, cy).depth
+        const db = project({ x: b.tx, y: -0.8 + b.h * 0.9, z: b.ty * 0.7 }, cam, cx, cy).depth
         return db - da
       })
-      const cellW = 1.8 / Math.max(8, cfg.maxBars) * 0.85
-      const cellD = 1.4 / Math.max(8, cfg.priceBins) * 0.9
+      const cellW = (1.8 / Math.max(8, cfg.maxBars)) * 0.85
+      const cellD = (1.4 / Math.max(8, cfg.priceBins)) * 0.9
       for (const cell of cells) {
         const base = -0.85
         const hgt = Math.max(0.02, cell.h * 0.95)
         const corners = columnCorners(cell.tx, base, cellW, cellD, hgt)
-        // shift Z by ty
         const shifted = corners.map((p) => ({ ...p, z: p.z + cell.ty * 0.75 }))
         const buy = cell.buyFrac >= 0.5
         const col = buy ? theme.buy : theme.sell
-        // top face brighter
         const top = [shifted[4], shifted[5], shifted[6], shifted[7]]
         const front = [shifted[0], shifted[1], shifted[5], shifted[4]]
         const side = [shifted[1], shifted[2], shifted[6], shifted[5]]
@@ -183,7 +176,7 @@ export function Viz3DScene({
         const db = project({ x: b.tx, y: 0, z: 0 }, cam, cx, cy).depth
         return db - da
       })
-      const bw = 1.8 / Math.max(8, sorted.length) * 0.7
+      const bw = (1.8 / Math.max(8, sorted.length)) * 0.7
       for (const c of sorted) {
         const yOpen = normPrice(c.open, m.priceMin, m.priceMax)
         const yClose = normPrice(c.close, m.priceMin, m.priceMax)
@@ -193,7 +186,6 @@ export function Viz3DScene({
         const bodyHi = Math.max(yOpen, yClose)
         const bodyH = Math.max(0.02, bodyHi - bodyLo)
         const col = c.bull ? theme.buy : theme.sell
-        // wick
         const wickTop = project({ x: c.tx, y: yHigh, z: 0 }, cam, cx, cy)
         const wickBot = project({ x: c.tx, y: yLow, z: 0 }, cam, cx, cy)
         ctx.strokeStyle = theme.wick
@@ -202,7 +194,6 @@ export function Viz3DScene({
         ctx.moveTo(wickTop.x, wickTop.y)
         ctx.lineTo(wickBot.x, wickBot.y)
         ctx.stroke()
-        // body column
         const volH = (c.volume / m.volMax) * 0.35
         const corners = columnCorners(c.tx, bodyLo, bw, 0.12 + volH * 0.5, bodyH)
         const top = [corners[4], corners[5], corners[6], corners[7]]
@@ -230,7 +221,6 @@ export function Viz3DScene({
         drawPoly(front, hexAlpha(col, 0.45 * op))
         drawPoly(top, hexAlpha(col, 0.8 * op), hexAlpha(col, 1))
       }
-      // mid line
       const midA = project({ x: 0, y: -0.85, z: -0.9 }, cam, cx, cy)
       const midB = project({ x: 0, y: -0.85, z: 0.9 }, cam, cx, cy)
       ctx.strokeStyle = theme.accent
@@ -242,10 +232,67 @@ export function Viz3DScene({
       ctx.setLineDash([])
     }
 
-    // HUD
+    if (m.mode === 'dom_ladder' && m.dom && m.dom.length) {
+      const sorted = [...m.dom].sort((a, b) => {
+        const da = project({ x: 0, y: a.ty, z: 0 }, cam, cx, cy).depth
+        const db = project({ x: 0, y: b.ty, z: 0 }, cam, cx, cy).depth
+        return db - da
+      })
+      const rowH = Math.min(0.12, 1.6 / Math.max(8, sorted.length))
+      for (const row of sorted) {
+        const y = row.ty * 0.85
+        if (row.bidH > 0.001) {
+          const len = Math.max(0.04, row.bidH * 0.95)
+          const corners = columnCorners(-len / 2, y - rowH / 2, len, 0.08, rowH)
+          const top = [corners[4], corners[5], corners[6], corners[7]]
+          const front = [corners[0], corners[1], corners[5], corners[4]]
+          drawPoly(front, hexAlpha(theme.buy, 0.5 * op))
+          drawPoly(top, hexAlpha(theme.buy, 0.85 * op), hexAlpha(theme.buy, 1))
+        }
+        if (row.askH > 0.001) {
+          const len = Math.max(0.04, row.askH * 0.95)
+          const corners = columnCorners(len / 2, y - rowH / 2, len, 0.08, rowH)
+          const top = [corners[4], corners[5], corners[6], corners[7]]
+          const front = [corners[0], corners[1], corners[5], corners[4]]
+          drawPoly(front, hexAlpha(theme.sell, 0.5 * op))
+          drawPoly(top, hexAlpha(theme.sell, 0.85 * op), hexAlpha(theme.sell, 1))
+        }
+      }
+      if (m.mid > 0 && m.priceMax > m.priceMin) {
+        const my = ((m.mid - m.priceMin) / (m.priceMax - m.priceMin)) * 2 - 1
+        const a = project({ x: -1.0, y: my * 0.85, z: -0.3 }, cam, cx, cy)
+        const b = project({ x: 1.0, y: my * 0.85, z: 0.3 }, cam, cx, cy)
+        ctx.strokeStyle = theme.accent
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([5, 3])
+        ctx.beginPath()
+        ctx.moveTo(a.x, a.y)
+        ctx.lineTo(b.x, b.y)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.fillStyle = theme.accent
+        ctx.font = '10px ui-monospace, Menlo, monospace'
+        ctx.fillText(`MID ${m.mid.toFixed(2)}`, b.x + 4, b.y - 2)
+      }
+      const totalBid = m.totalBid ?? 0
+      const totalAsk = m.totalAsk ?? 0
+      const imb =
+        totalBid + totalAsk > 0
+          ? ((totalBid - totalAsk) / (totalBid + totalAsk)) * 100
+          : 0
+      ctx.font = '10px ui-monospace, Menlo, monospace'
+      ctx.textAlign = 'left'
+      ctx.fillStyle = theme.buy
+      ctx.fillText(`BID ${totalBid.toFixed(3)}`, 14, h - 28)
+      ctx.fillStyle = theme.sell
+      ctx.fillText(`ASK ${totalAsk.toFixed(3)}`, 14, h - 14)
+      ctx.fillStyle = imb >= 0 ? theme.buy : theme.sell
+      ctx.fillText(`IMB ${imb >= 0 ? '+' : ''}${imb.toFixed(1)}%`, 120, h - 14)
+    }
+
     if (cfg.showLabels) {
       ctx.fillStyle = 'rgba(11,14,17,0.75)'
-      ctx.fillRect(8, 8, Math.min(320, w - 16), 36)
+      ctx.fillRect(8, 8, Math.min(360, w - 16), 36)
       ctx.font = '11px ui-monospace, Menlo, monospace'
       ctx.fillStyle = theme.accent
       ctx.textAlign = 'left'
