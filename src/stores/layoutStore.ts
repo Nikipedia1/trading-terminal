@@ -225,3 +225,69 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   setPrimaryPanel: (id) => set({ primaryPanelId: id }),
 }))
+
+/* -------------------------------------------------------------------------- */
+/* Chart viewport sync (multi-panel)                                          */
+/* -------------------------------------------------------------------------- */
+
+export type SyncPayload = {
+  logicalRange?: { from: number; to: number }
+}
+
+type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
+
+const syncListeners = new Map<string, Map<string, SyncListener>>()
+
+/** ChartContainer calls subscribeSyncGroup(group, panelId, listener). */
+export function subscribeSyncGroup(
+  groupId: string,
+  panelId: string,
+  listener: SyncListener
+): () => void {
+  if (!groupId) return () => {}
+  let group = syncListeners.get(groupId)
+  if (!group) {
+    group = new Map()
+    syncListeners.set(groupId, group)
+  }
+  group.set(panelId, listener)
+  return () => {
+    group?.delete(panelId)
+    if (group && group.size === 0) syncListeners.delete(groupId)
+  }
+}
+
+export function publishSync(
+  groupId: string,
+  sourceId: string,
+  payload: SyncPayload
+) {
+  if (!groupId) return
+  const group = syncListeners.get(groupId)
+  if (!group) return
+  const msg = { ...payload, sourceId }
+  for (const [id, fn] of group) {
+    if (id === sourceId) continue
+    try {
+      fn(msg)
+    } catch {
+      /* */
+    }
+  }
+}
+
+const lastHighlight = new Map<
+  string,
+  { timeSec: number; price: number; aggressor?: 'buy' | 'sell' } | null
+>()
+
+export function setSyncHighlight(
+  groupId: string,
+  h: { timeSec: number; price: number; aggressor?: 'buy' | 'sell' } | null
+) {
+  lastHighlight.set(groupId, h)
+}
+
+export function getSyncHighlight(groupId: string) {
+  return lastHighlight.get(groupId) ?? null
+}
