@@ -1,6 +1,10 @@
 /** Professional 3D market visualization — types & presets. Real OHLCV / L2 only. */
 
-export type Viz3DMode = 'volume_terrain' | 'candle_columns' | 'book_depth'
+export type Viz3DMode =
+  | 'volume_terrain'
+  | 'candle_columns'
+  | 'book_depth'
+  | 'dom_ladder'
 
 export interface Viz3DConfig {
   mode: Viz3DMode
@@ -21,6 +25,8 @@ export interface Viz3DConfig {
   maxBars: number
   /** Price bins for volume terrain */
   priceBins: number
+  /** DOM / book levels per side */
+  domLevels: number
   /** Opacity of fills 0–1 */
   opacity: number
   /** Color scheme */
@@ -40,6 +46,7 @@ export const DEFAULT_VIZ3D_CONFIG: Viz3DConfig = {
   showLabels: true,
   maxBars: 80,
   priceBins: 32,
+  domLevels: 24,
   opacity: 0.85,
   theme: 'desk',
   syncVisible: true,
@@ -61,6 +68,10 @@ export const VIZ3D_PRESETS: Record<
     label: 'Book 3D',
     patch: { mode: 'book_depth', pitch: 35, yaw: 50, zoom: 1.1 },
   },
+  dom: {
+    label: 'DOM 3D',
+    patch: { mode: 'dom_ladder', pitch: 18, yaw: 25, zoom: 1.15, domLevels: 28 },
+  },
   neon: {
     label: 'Neon',
     patch: { theme: 'neon', opacity: 0.9 },
@@ -68,11 +79,8 @@ export const VIZ3D_PRESETS: Record<
 }
 
 export interface TerrainCell {
-  /** normalized 0..1 along time axis */
   tx: number
-  /** normalized 0..1 along price axis */
   ty: number
-  /** height 0..1 (volume intensity) */
   h: number
   buyFrac: number
   price: number
@@ -92,9 +100,7 @@ export interface CandleColumn {
 }
 
 export interface BookBar {
-  /** -1..1 side (bid negative, ask positive) */
   side: number
-  /** normalized price rank */
   ty: number
   h: number
   price: number
@@ -102,14 +108,34 @@ export interface BookBar {
   isBid: boolean
 }
 
+/** Classic DOM ladder row — one price, bid+ask sizes + cumulative */
+export interface DomRow {
+  /** normalized price rank -1..1 (low..high) */
+  ty: number
+  price: number
+  bidQty: number
+  askQty: number
+  /** 0..1 normalized for bar length */
+  bidH: number
+  askH: number
+  cumBid: number
+  cumAsk: number
+  /** bid/(bid+ask) at this level, 0.5 if empty */
+  imbalance: number
+}
+
 export interface Viz3DModel {
   mode: Viz3DMode
   terrain: TerrainCell[]
   candles: CandleColumn[]
   book: BookBar[]
+  dom: DomRow[]
   priceMin: number
   priceMax: number
   volMax: number
+  mid: number
+  totalBid: number
+  totalAsk: number
   ready: boolean
   barCount: number
   note: string
