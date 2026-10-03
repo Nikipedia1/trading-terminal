@@ -41,6 +41,7 @@ export const WIDGET_META: Record<
   viz3d: { title: '3D Pro', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
   news: { title: 'News', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   calendar: { title: 'Calendario', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  livetv: { title: 'Live TV', minW: 3, minH: 6, defaultW: 5, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
