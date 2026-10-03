@@ -1,8 +1,7 @@
 /**
- * GET /api/news – aggregate real RSS feeds into unified JSON.
- * Sources: CoinDesk, Cointelegraph, The Block, Reuters (via Google News RSS
- * when direct Reuters feeds are unavailable/blocked).
- * Cache-Control: max-age=30. Deduplicate by canonical URL. No synthetic items.
+ * GET /api/news – aggregate real RSS/Atom feeds into unified JSON.
+ * Crypto + macro sources. Cache 30s. Deduplicate by URL. No synthetic items.
+ * Partial upstream failures are reported in `warnings` (e.g. reuters HTTP 503).
  */
 
 import { cors, type Env } from './auth/_shared'
@@ -12,7 +11,6 @@ export interface NewsItemDto {
   title: string
   source: string
   url: string
-  /** ISO-8601 – clients may parse either; we emit ISO */
   publishedAt: string
   tags: string[]
 }
@@ -21,6 +19,8 @@ interface FeedSource {
   id: string
   name: string
   url: string
+  /** Optional fallback URL if primary fails */
+  fallbackUrl?: string
   hostFilter?: string
 }
 
@@ -28,7 +28,8 @@ const FEEDS: FeedSource[] = [
   {
     id: 'coindesk',
     name: 'CoinDesk',
-    url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',
+    url: 'https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml',
+    fallbackUrl: 'https://www.coindesk.com/arc/outboundfeeds/rss/',
   },
   {
     id: 'cointelegraph',
@@ -41,17 +42,34 @@ const FEEDS: FeedSource[] = [
     url: 'https://www.theblock.co/rss.xml',
   },
   {
+    id: 'decrypt',
+    name: 'Decrypt',
+    url: 'https://decrypt.co/feed',
+  },
+  {
+    id: 'cryptoslate',
+    name: 'CryptoSlate',
+    url: 'https://cryptoslate.com/feed/',
+  },
+  {
     id: 'reuters',
     name: 'Reuters',
-    url: 'https://news.google.com/rss/search?q=site:reuters.com+(business+OR+markets+OR+finance)&hl=en-US&gl=US&ceid=US:en',
+    // Direct Reuters often blocks bots; Google News RSS is a proxy (can 503).
+    url: 'https://news.google.com/rss/search?q=when:1d+site:reuters.com+(markets+OR+finance+OR+economy)&hl=en-US&gl=US&ceid=US:en',
+    fallbackUrl:
+      'https://news.google.com/rss/search?q=site:reuters.com+bitcoin+OR+crypto+OR+federal+reserve&hl=en-US&gl=US&ceid=US:en',
     hostFilter: 'reuters.com',
+  },
+  {
+    id: 'bbc-business',
+    name: 'BBC Business',
+    url: 'https://feeds.bbci.co.uk/news/business/rss.xml',
   },
 ]
 
 const UA =
-  'TradingTerminalNewsBot/1.0 (+https://github.com/Nikipedia1/trading-terminal; RSS aggregator)'
+  'Mozilla/5.0 (compatible; TradingTerminalNews/1.1; +https://github.com/Nikipedia1/trading-terminal)'
 
-/** Rich asset + macro recognition in titles (mirrored on client in assetTags.ts). */
 const TAG_RULES: { tag: string; re: RegExp }[] = [
   { tag: 'BTC', re: /\b(bitcoin|btc)\b/i },
   { tag: 'ETH', re: /\b(ethereum|ether|eth)\b/i },
@@ -95,12 +113,12 @@ const TAG_RULES: { tag: string; re: RegExp }[] = [
 function decodeEntities(s: string): string {
   return s
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
+    .replace(/'/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
     .trim()
@@ -159,7 +177,12 @@ function extractTags(title: string, sourceName: string): string[] {
   for (const rule of TAG_RULES) {
     if (rule.re.test(hay)) tags.add(rule.tag)
   }
-  if (sourceName === 'Reuters' && tags.size === 0) tags.add('macro')
+  if (
+    (sourceName === 'Reuters' || sourceName === 'BBC Business') &&
+    tags.size === 0
+  ) {
+    tags.add('macro')
+  }
   return [...tags]
 }
 
@@ -172,63 +195,131 @@ function hashId(url: string): string {
   return `n-${(h >>> 0).toString(16)}`
 }
 
+function pushItem(
+  items: NewsItemDto[],
+  source: FeedSource,
+  title: string,
+  link: string,
+  pubRaw: string
+) {
+  if (!title || !link) return
+  const url = canonicalUrl(link)
+  if (!url.startsWith('http')) return
+  if (source.hostFilter) {
+    try {
+      if (!new URL(url).hostname.includes(source.hostFilter)) return
+    } catch {
+      return
+    }
+  }
+  items.push({
+    id: hashId(url),
+    title,
+    source: source.name,
+    url,
+    publishedAt: parsePublished(pubRaw) ?? new Date().toISOString(),
+    tags: extractTags(title, source.name),
+  })
+}
+
 function parseRssItems(xml: string, source: FeedSource): NewsItemDto[] {
   const items: NewsItemDto[] = []
-  const blocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? []
-  for (const block of blocks) {
+
+  // RSS 2.0 <item>
+  const rssBlocks = xml.match(/<item[\s\S]*?<\/item>/gi) ?? []
+  for (const block of rssBlocks) {
     const title = pick(block, 'title')
     const link =
       pick(block, 'link') ||
       (block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1] ?? '')
-    const pub =
-      parsePublished(pick(block, 'pubDate', 'published', 'dc:date', 'updated')) ??
-      null
-    if (!title || !link) continue
-    const url = canonicalUrl(link)
-    if (!url.startsWith('http')) continue
-    if (source.hostFilter) {
-      try {
-        if (!new URL(url).hostname.includes(source.hostFilter)) continue
-      } catch {
-        continue
-      }
-    }
-    items.push({
-      id: hashId(url),
-      title,
-      source: source.name,
-      url,
-      publishedAt: pub ?? new Date().toISOString(),
-      tags: extractTags(title, source.name),
-    })
+    const pub = pick(block, 'pubDate', 'published', 'dc:date', 'updated')
+    pushItem(items, source, title, link, pub)
   }
+
+  // Atom <entry>
+  if (items.length === 0) {
+    const atomBlocks = xml.match(/<entry[\s\S]*?<\/entry>/gi) ?? []
+    for (const block of atomBlocks) {
+      const title = pick(block, 'title')
+      const link =
+        block.match(/<link[^>]+href=["']([^"']+)["'][^>]*>/i)?.[1] ??
+        pick(block, 'link') ||
+        pick(block, 'id')
+      const pub = pick(block, 'published', 'updated')
+      pushItem(items, source, title, link, pub)
+    }
+  }
+
   return items
+}
+
+async function fetchOnce(
+  url: string
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+        'User-Agent': UA,
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      // @ts-expect-error CF Workers cache option
+      cf: { cacheTtl: 30, cacheEverything: true },
+    })
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const text = await res.text()
+    if (!text || text.length < 40) return { ok: false, error: 'empty body' }
+    if (
+      !text.includes('<item') &&
+      !text.includes('<entry') &&
+      !text.includes('<rss') &&
+      !text.includes('<feed')
+    ) {
+      return { ok: false, error: 'not RSS/Atom' }
+    }
+    return { ok: true, text }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'fetch failed',
+    }
+  }
 }
 
 async function fetchFeed(source: FeedSource): Promise<{
   items: NewsItemDto[]
   error?: string
 }> {
-  try {
-    const res = await fetch(source.url, {
-      headers: {
-        Accept: 'application/rss+xml, application/xml, text/xml, */*',
-        'User-Agent': UA,
-      },
-      cf: { cacheTtl: 30, cacheEverything: true },
-    } as RequestInit)
-    if (!res.ok) return { items: [], error: `${source.id} HTTP ${res.status}` }
-    const text = await res.text()
-    if (!text.includes('<item') && !text.includes('<entry')) {
-      return { items: [], error: `${source.id} not RSS` }
+  let primary = await fetchOnce(source.url)
+
+  // One retry on transient 503/502
+  if (!primary.ok && /HTTP 50[23]/.test(primary.error)) {
+    await new Promise((r) => setTimeout(r, 400))
+    primary = await fetchOnce(source.url)
+  }
+
+  if (!primary.ok && source.fallbackUrl) {
+    const fb = await fetchOnce(source.fallbackUrl)
+    if (fb.ok) {
+      const items = parseRssItems(fb.text, source)
+      if (items.length > 0) return { items }
+      return { items: [], error: `${source.id} fallback empty` }
     }
-    return { items: parseRssItems(text, source) }
-  } catch (e) {
     return {
       items: [],
-      error: `${source.id}: ${e instanceof Error ? e.message : 'fetch failed'}`,
+      error: `${source.id} ${primary.error}; fallback ${fb.error}`,
     }
   }
+
+  if (!primary.ok) {
+    return { items: [], error: `${source.id} ${primary.error}` }
+  }
+
+  const items = parseRssItems(primary.text, source)
+  if (items.length === 0) {
+    return { items: [], error: `${source.id} parsed 0 items` }
+  }
+  return { items }
 }
 
 export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
