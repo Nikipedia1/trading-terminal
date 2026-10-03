@@ -11,6 +11,8 @@
   --green: #0ecb81;
   --red: #f6465d;
   --yellow: #f0b90b;
+  --nacs-gold: #f0b90b;
+  --nacs-gold-dim: #c99400;
 }
 
 html, body, #root {
@@ -22,6 +24,8 @@ html, body, #root {
   font-family: Inter, system-ui, sans-serif;
   font-size: 13px;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* High density scrollbars */
@@ -40,7 +44,6 @@ html, body, #root {
   background: #3a424d;
 }
 
-/* Utility for mono numbers – zero layout jitter */
 .font-mono-nums,
 .tabular-nums {
   font-variant-numeric: tabular-nums;
@@ -49,12 +52,10 @@ html, body, #root {
 }
 
 /* ── Density modes ── */
-/* research (default): full chrome */
 html[data-density='research'] .density-hide-research {
   display: none;
 }
 
-/* scalp: less chrome, more chart/DOM real-estate */
 html[data-density='scalp'] .density-chrome {
   display: none !important;
 }
@@ -62,18 +63,19 @@ html[data-density='scalp'] .density-compact {
   padding-top: 0.125rem !important;
   padding-bottom: 0.125rem !important;
 }
-html[data-density='scalp'] header h1 {
-  font-size: 11px;
+html[data-density='scalp'] header .nacs-header-brand {
+  transform: scale(0.92);
+  transform-origin: left center;
 }
 html[data-density='scalp'] .grid.grid-cols-3 {
   grid-template-columns: 1fr 280px;
 }
 
-/* react-grid-layout overrides for terminal look */
+/* react-grid-layout overrides */
 .react-grid-item.react-grid-placeholder {
-  background: rgba(30, 144, 255, 0.15) !important;
-  border: 1px dashed #1e90ff !important;
-  border-radius: 2px;
+  background: rgba(240, 185, 11, 0.08) !important;
+  border: 1px dashed rgba(240, 185, 11, 0.45) !important;
+  border-radius: 4px;
   opacity: 1 !important;
 }
 
@@ -86,4 +88,177 @@ html[data-density='scalp'] .grid.grid-cols-3 {
 }
 .react-resizable-handle:hover {
   opacity: 1;
+}
+
+/* ═══════════════════════════════════════════
+   NACS Lab Terminal – splash & 3D loader
+   ═══════════════════════════════════════════ */
+
+.nacs-splash {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240, 185, 11, 0.08), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(91, 141, 239, 0.06), transparent 50%),
+    #0b0e11;
+}
+
+.nacs-splash-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(30, 35, 41, 0.45) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 35, 41, 0.45) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 20%, transparent 75%);
+  pointer-events: none;
+}
+
+.nacs-splash-glow {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(240, 185, 11, 0.12), transparent 70%);
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  filter: blur(8px);
+}
+
+.nacs-loader-stage {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 600px;
+}
+
+.nacs-loader-stage--inline {
+  width: 36px;
+  height: 36px;
+  perspective: 200px;
+}
+
+.nacs-orbit {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  transform-style: preserve-3d;
+  animation: nacs-orbit-spin 6s linear infinite;
+}
+
+.nacs-orbit--sm {
+  width: 28px;
+  height: 28px;
+  animation-duration: 4s;
+}
+
+.nacs-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(240, 185, 11, 0.35);
+  border-radius: 50%;
+  transform: rotateX(72deg);
+  box-shadow: 0 0 12px rgba(240, 185, 11, 0.15);
+}
+
+.nacs-orbit-ring--2 {
+  transform: rotateX(72deg) rotateZ(60deg);
+  border-color: rgba(91, 141, 239, 0.3);
+  box-shadow: 0 0 10px rgba(91, 141, 239, 0.12);
+}
+
+.nacs-orbit-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f0b90b;
+  top: 0;
+  left: 50%;
+  margin-left: -3px;
+  box-shadow: 0 0 10px #f0b90b;
+  transform: translateZ(0);
+}
+
+.nacs-cube {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  transform-style: preserve-3d;
+  animation: nacs-cube-spin 2.8s ease-in-out infinite;
+}
+
+.nacs-cube--sm {
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  animation-duration: 2.2s;
+}
+
+.nacs-cube-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(240, 185, 11, 0.55);
+  background: rgba(240, 185, 11, 0.08);
+  backface-visibility: visible;
+}
+
+.nacs-cube--sm .nacs-cube-face {
+  border-width: 0.5px;
+}
+
+.nacs-cube-face--front  { transform: translateZ(14px); }
+.nacs-cube-face--back   { transform: rotateY(180deg) translateZ(14px); }
+.nacs-cube-face--right  { transform: rotateY(90deg) translateZ(14px); }
+.nacs-cube-face--left   { transform: rotateY(-90deg) translateZ(14px); }
+.nacs-cube-face--top    { transform: rotateX(90deg) translateZ(14px); }
+.nacs-cube-face--bottom { transform: rotateX(-90deg) translateZ(14px); }
+
+.nacs-cube--sm .nacs-cube-face--front  { transform: translateZ(6px); }
+.nacs-cube--sm .nacs-cube-face--back   { transform: rotateY(180deg) translateZ(6px); }
+.nacs-cube--sm .nacs-cube-face--right  { transform: rotateY(90deg) translateZ(6px); }
+.nacs-cube--sm .nacs-cube-face--left   { transform: rotateY(-90deg) translateZ(6px); }
+.nacs-cube--sm .nacs-cube-face--top    { transform: rotateX(90deg) translateZ(6px); }
+.nacs-cube--sm .nacs-cube-face--bottom { transform: rotateX(-90deg) translateZ(6px); }
+
+@keyframes nacs-cube-spin {
+  0%   { transform: rotateX(-20deg) rotateY(0deg); }
+  50%  { transform: rotateX(25deg) rotateY(180deg); }
+  100% { transform: rotateX(-20deg) rotateY(360deg); }
+}
+
+@keyframes nacs-orbit-spin {
+  from { transform: rotateZ(0deg); }
+  to   { transform: rotateZ(360deg); }
+}
+
+.nacs-progress-indeterminate {
+  width: 40%;
+  animation: nacs-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes nacs-progress-slide {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+/* Header bar polish */
+.nacs-app-header {
+  background: linear-gradient(180deg, #141a22 0%, #12161c 100%);
+  border-bottom: 1px solid #1e2329;
+  box-shadow: 0 1px 0 rgba(240, 185, 11, 0.04);
+}
+
+.nacs-guest-card {
+  background: linear-gradient(165deg, #12161c 0%, #0d1117 100%);
+  border: 1px solid #1e2329;
+  box-shadow:
+    0 0 0 1px rgba(240, 185, 11, 0.04),
+    0 24px 48px rgba(0, 0, 0, 0.45);
 }
