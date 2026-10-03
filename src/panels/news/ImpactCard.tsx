@@ -1,6 +1,7 @@
-/** AI impact card – disclaimer always visible. */
+/** AI impact card – disclaimer always visible · glossary links to Learn. */
 
 import type { NewsImpactAnalysis } from './types'
+import { GlossaryLinkedText, GlossaryHitChips } from '@/panels/learn/GlossaryLinkedText'
 
 const DIR_STYLE: Record<
   NewsImpactAnalysis['direzione'],
@@ -48,7 +49,9 @@ export function ImpactCard({
         )}
       </div>
 
-      <p className="text-[#eaecef]">{analysis.sintesi}</p>
+      <p className="text-[#eaecef]">
+        <GlossaryLinkedText text={analysis.sintesi} />
+      </p>
 
       <div className="flex flex-wrap items-center gap-1.5">
         <span className={`px-1.5 py-0.5 rounded border ${dir.className}`}>{dir.label}</span>
@@ -78,7 +81,9 @@ export function ImpactCard({
 
       <div>
         <div className="text-[#848e9c] text-[9px] uppercase tracking-wide">Meccanismo</div>
-        <p className="text-[#c8cdd3]">{analysis.meccanismo}</p>
+        <p className="text-[#c8cdd3]">
+          <GlossaryLinkedText text={analysis.meccanismo} />
+        </p>
       </div>
 
       {analysis.rischi?.length > 0 && (
@@ -86,7 +91,9 @@ export function ImpactCard({
           <div className="text-[#848e9c] text-[9px] uppercase tracking-wide">Rischi</div>
           <ul className="list-disc list-inside text-[#c8cdd3] space-y-0.5">
             {analysis.rischi.map((r, i) => (
-              <li key={i}>{r}</li>
+              <li key={i}>
+                <GlossaryLinkedText text={r} />
+              </li>
             ))}
           </ul>
         </div>
@@ -96,8 +103,19 @@ export function ImpactCard({
         <div className="text-[#848e9c] text-[9px] uppercase tracking-wide">
           Livelli da osservare
         </div>
-        <p className="text-[#c8cdd3]">{analysis.livelli_da_osservare}</p>
+        <p className="text-[#c8cdd3]">
+          <GlossaryLinkedText text={analysis.livelli_da_osservare} />
+        </p>
       </div>
+
+      <GlossaryHitChips
+        texts={[
+          analysis.sintesi,
+          analysis.meccanismo,
+          analysis.livelli_da_osservare,
+          ...(analysis.rischi ?? []),
+        ]}
+      />
     </div>
   )
 }

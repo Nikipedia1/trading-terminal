@@ -9,7 +9,9 @@ import type {
   LearnContentItem,
   LearnQuiz,
   LearnItemType,
+  LearnOpenDetail,
 } from './types'
+import { LEARN_OPEN_EVENT } from './types'
 import { getCompletedMap, setCompleted } from './progress'
 
 const CATALOG_URL = '/content/learn/catalog.json'
@@ -29,7 +31,10 @@ function itemTitle(it: LearnContentItem): string {
 
 function itemSearchText(it: LearnContentItem): string {
   if (it.type === 'lesson') return `${it.title} ${it.summary ?? ''} ${it.body}`
-  if (it.type === 'glossary') return `${it.term} ${it.definition}`
+  if (it.type === 'glossary') {
+    const aliases = (it.aliases ?? []).join(' ')
+    return `${it.term} ${aliases} ${it.definition}`
+  }
   if (it.type === 'video') return `${it.title} ${it.summary ?? ''}`
   return `${it.title} ${it.questions.map((q) => q.prompt).join(' ')}`
 }
@@ -86,6 +91,20 @@ export function LearnPanel() {
     return () => ac.abort()
   }, [load])
 
+  /** Deep-link from AI / news glossary chips. */
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const detail = (ev as CustomEvent<LearnOpenDetail>).detail
+      if (!detail?.glossaryId) return
+      setTypeFilter('glossary')
+      setCategory('all')
+      setQuery('')
+      setSelectedId(detail.glossaryId)
+    }
+    window.addEventListener(LEARN_OPEN_EVENT, onOpen)
+    return () => window.removeEventListener(LEARN_OPEN_EVENT, onOpen)
+  }, [])
+
   const items = useMemo(() => (catalog ? flattenCatalog(catalog) : []), [catalog])
 
   const filtered = useMemo(() => {
@@ -130,6 +149,11 @@ export function LearnPanel() {
       return (
         <div>
           <div className="text-sm font-semibold text-[#f0b90b] mb-1">{it.term}</div>
+          {(it.aliases?.length ?? 0) > 0 && (
+            <div className="text-[10px] text-[#848e9c] mb-1">
+              Alias: {(it.aliases ?? []).join(', ')}
+            </div>
+          )}
           <p className="text-[#eaecef] leading-relaxed">{it.definition}</p>
         </div>
       )
@@ -153,7 +177,6 @@ export function LearnPanel() {
         </div>
       )
     }
-    // quiz
     const quiz = it as LearnQuiz
     let score = 0
     if (quizSubmitted) {
@@ -173,8 +196,11 @@ export function LearnPanel() {
                 const chosen = quizAnswers[q.id] === oi
                 let extra = 'border-[#2b3139] text-[#c8cdd3]'
                 if (quizSubmitted) {
-                  if (oi === q.answerIndex) extra = 'border-terminal-green/50 text-terminal-green bg-terminal-green/10'
-                  else if (chosen) extra = 'border-terminal-red/50 text-terminal-red bg-terminal-red/10'
+                  if (oi === q.answerIndex)
+                    extra =
+                      'border-terminal-green/50 text-terminal-green bg-terminal-green/10'
+                  else if (chosen)
+                    extra = 'border-terminal-red/50 text-terminal-red bg-terminal-red/10'
                 } else if (chosen) {
                   extra = 'border-[#f0b90b]/50 text-[#f0b90b] bg-[#f0b90b]/10'
                 }
