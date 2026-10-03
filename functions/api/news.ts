@@ -12,7 +12,7 @@ export interface NewsItemDto {
   title: string
   source: string
   url: string
-  /** ISO-8601 or epoch ms string – clients may parse either; we emit ISO */
+  /** ISO-8601 – clients may parse either; we emit ISO */
   publishedAt: string
   tags: string[]
 }
@@ -21,7 +21,6 @@ interface FeedSource {
   id: string
   name: string
   url: string
-  /** Optional: only keep items whose link hostname matches (e.g. reuters.com) */
   hostFilter?: string
 }
 
@@ -41,7 +40,6 @@ const FEEDS: FeedSource[] = [
     name: 'The Block',
     url: 'https://www.theblock.co/rss.xml',
   },
-  // Direct reuters.com RSS is often blocked/404; Google News indexes real Reuters URLs.
   {
     id: 'reuters',
     name: 'Reuters',
@@ -53,12 +51,44 @@ const FEEDS: FeedSource[] = [
 const UA =
   'TradingTerminalNewsBot/1.0 (+https://github.com/Nikipedia1/trading-terminal; RSS aggregator)'
 
+/** Rich asset + macro recognition in titles (mirrored on client in assetTags.ts). */
 const TAG_RULES: { tag: string; re: RegExp }[] = [
   { tag: 'BTC', re: /\b(bitcoin|btc)\b/i },
-  { tag: 'ETH', re: /\b(ethereum|eth\b|ether)\b/i },
+  { tag: 'ETH', re: /\b(ethereum|ether|eth)\b/i },
+  { tag: 'SOL', re: /\b(solana|sol)\b/i },
+  { tag: 'BNB', re: /\b(binance coin|bnb)\b/i },
+  { tag: 'XRP', re: /\b(ripple|xrp)\b/i },
+  { tag: 'ADA', re: /\b(cardano|ada)\b/i },
+  { tag: 'DOGE', re: /\b(dogecoin|doge)\b/i },
+  { tag: 'AVAX', re: /\b(avalanche|avax)\b/i },
+  { tag: 'DOT', re: /\b(polkadot|dot)\b/i },
+  { tag: 'LINK', re: /\b(chainlink|link)\b/i },
+  { tag: 'TON', re: /\b(toncoin|ton)\b/i },
+  { tag: 'TRX', re: /\b(tron|trx)\b/i },
+  { tag: 'LTC', re: /\b(litecoin|ltc)\b/i },
+  { tag: 'ATOM', re: /\b(cosmos|atom)\b/i },
+  { tag: 'NEAR', re: /\b(near protocol|near)\b/i },
+  { tag: 'APT', re: /\b(aptos|apt)\b/i },
+  { tag: 'SUI', re: /\b(sui)\b/i },
+  { tag: 'ARB', re: /\b(arbitrum|arb)\b/i },
+  { tag: 'OP', re: /\b(optimism)\b/i },
+  { tag: 'MATIC', re: /\b(polygon|matic)\b/i },
+  { tag: 'PEPE', re: /\b(pepe)\b/i },
+  { tag: 'SHIB', re: /\b(shiba|shib)\b/i },
+  { tag: 'WIF', re: /\b(dogwifhat|wif)\b/i },
+  { tag: 'UNI', re: /\b(uniswap|uni)\b/i },
+  { tag: 'AAVE', re: /\b(aave)\b/i },
+  { tag: 'RENDER', re: /\b(render|rndr)\b/i },
+  { tag: 'TAO', re: /\b(bittensor|tao)\b/i },
+  { tag: 'FIL', re: /\b(filecoin|fil)\b/i },
+  { tag: 'FOMC', re: /\b(fomc|federal open market)\b/i },
+  { tag: 'CPI', re: /\b(cpi|consumer price index)\b/i },
+  { tag: 'ETF', re: /\b(etf|exchange[- ]traded fund)\b/i },
+  { tag: 'SEC', re: /\b(sec\b|securities and exchange)\b/i },
+  { tag: 'FED', re: /\b(federal reserve|\bfed\b|powell)\b/i },
   {
     tag: 'macro',
-    re: /\b(fed|fomc|inflation|cpi|gdp|treasury|rate cut|rate hike|recession|sec\b|etf|regulation|macro)\b/i,
+    re: /\b(inflation|gdp|treasury|rate cut|rate hike|recession|regulation|macro|interest rate)\b/i,
   },
 ]
 
@@ -89,7 +119,6 @@ function pick(block: string, ...tags: string[]): string {
   return ''
 }
 
-/** Google News often wraps the real URL in a google.com redirect. */
 function unwrapUrl(raw: string): string {
   const u = decodeEntities(raw).trim()
   if (!u) return ''
@@ -108,7 +137,6 @@ function canonicalUrl(raw: string): string {
   try {
     const u = new URL(unwrapUrl(raw))
     u.hash = ''
-    // strip common tracking params
     ;['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'].forEach(
       (k) => u.searchParams.delete(k)
     )
@@ -136,7 +164,6 @@ function extractTags(title: string, sourceName: string): string[] {
 }
 
 function hashId(url: string): string {
-  // FNV-1a 32-bit – stable short id from URL
   let h = 2166136261
   for (let i = 0; i < url.length; i++) {
     h ^= url.charCodeAt(i)
@@ -188,7 +215,6 @@ async function fetchFeed(source: FeedSource): Promise<{
         Accept: 'application/rss+xml, application/xml, text/xml, */*',
         'User-Agent': UA,
       },
-      // Cloudflare Workers: default cache is fine; we still set response Cache-Control
       cf: { cacheTtl: 30, cacheEverything: true },
     } as RequestInit)
     if (!res.ok) return { items: [], error: `${source.id} HTTP ${res.status}` }
@@ -224,7 +250,6 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     (a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt)
   )
 
-  // Never invent headlines: empty is OK if all upstreams fail
   const body = {
     items,
     fetchedAt: new Date().toISOString(),
@@ -236,7 +261,6 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     status: 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      // 30s edge/browser cache as requested
       'Cache-Control': 'public, max-age=30, s-maxage=30',
       ...cors(ctx.request),
     },

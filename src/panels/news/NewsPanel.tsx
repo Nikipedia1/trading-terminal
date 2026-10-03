@@ -1,11 +1,19 @@
 /**
  * News panel – live feed from GET /api/news (real RSS, no runtime mocks).
  * Poll every 45s; NEW badge on fresh items for 60s; pause when tab/panel hidden.
+ * Asset tags from titles; click switches marketStore.symbol; active-symbol first.
  * Optional `items` prop is only for unit tests.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { NewsApiResponse, NewsAssetFilter, NewsItem } from './types'
+import {
+  enrichTags,
+  matchesActiveSymbol,
+  symbolFromTitle,
+} from './assetTags'
+import { useMarketStore } from '@/stores/marketStore'
+import { useLayoutStore } from '@/stores/layoutStore'
 
 const FILTERS: { id: NewsAssetFilter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -14,9 +22,7 @@ const FILTERS: { id: NewsAssetFilter; label: string }[] = [
   { id: 'macro', label: 'Macro' },
 ]
 
-/** Poll interval while panel is visible */
 const POLL_MS = 45_000
-/** How long the NEW badge stays on a newly arrived item */
 const NEW_BADGE_MS = 60_000
 
 function publishedMs(v: string | number): number {
@@ -40,13 +46,14 @@ function formatTime(v: string | number): string {
   }
 }
 
-function itemTags(item: NewsItem): string[] {
-  return Array.isArray(item.tags) ? item.tags : []
-}
-
-function matchesFilter(item: NewsItem, filter: NewsAssetFilter): boolean {
+function matchesFilter(tags: string[], filter: NewsAssetFilter): boolean {
   if (filter === 'all') return true
-  return itemTags(item).some((t) => t.toUpperCase() === filter.toUpperCase())
+  if (filter === 'macro') {
+    return tags.some((t) =>
+      ['macro', 'FOMC', 'CPI', 'ETF', 'SEC', 'FED'].includes(t)
+    )
+  }
+  return tags.some((t) => t.toUpperCase() === filter.toUpperCase())
 }
 
 function networkErrorMessage(e: unknown, httpStatus?: number): string {
@@ -74,7 +81,6 @@ function networkErrorMessage(e: unknown, httpStatus?: number): string {
 }
 
 export interface NewsPanelProps {
-  /** Test-only injection – production always fetches /api/news. */
   items?: NewsItem[]
 }
 
@@ -85,16 +91,21 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
   const visibleRef = useRef(true)
   const wasPausedRef = useRef(false)
 
+  const activeSymbol = useMarketStore((s) => s.symbol)
+  const setSymbol = useMarketStore((s) => s.setSymbol)
+  const loadHistorical = useMarketStore((s) => s.loadHistorical)
+  const startLive = useMarketStore((s) => s.startLive)
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const updatePanel = useLayoutStore((s) => s.updatePanel)
+
   const [filter, setFilter] = useState<NewsAssetFilter>('all')
   const [feed, setFeed] = useState<NewsItem[]>(itemsProp ?? [])
-  /** id → timestamp when first seen as new (for NEW badge) */
   const [newSince, setNewSince] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(!itemsProp)
   const [error, setError] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [paused, setPaused] = useState(false)
-  /** tick to re-evaluate NEW badge expiry without refetch */
   const [nowTick, setNowTick] = useState(() => Date.now())
 
   const load = useCallback(
@@ -114,12 +125,14 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
           throw new Error('Invalid response')
         }
 
-        const incoming = data.items
+        const incoming = data.items.map((it) => ({
+          ...it,
+          tags: enrichTags(it.title, it.source, it.tags),
+        }))
         const known = knownIdsRef.current
         const arrivedAt = Date.now()
 
         if (!firstLoadDoneRef.current) {
-          // Seed known ids so the first paint is not all NEW
           for (const it of incoming) known.add(it.id)
           firstLoadDoneRef.current = true
           setNewSince({})
@@ -158,7 +171,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     [itemsProp]
   )
 
-  // Visibility: document tab + panel in viewport
   useEffect(() => {
     if (itemsProp) return
 
@@ -170,10 +182,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     }
 
     const onVis = () => {
-      if (!rootRef.current) {
-        updatePaused(document.visibilityState === 'visible')
-        return
-      }
       updatePaused(document.visibilityState === 'visible')
     }
 
@@ -202,10 +210,14 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     }
   }, [itemsProp])
 
-  // Initial load + poll every 45s while visible
   useEffect(() => {
     if (itemsProp) {
-      setFeed(itemsProp)
+      setFeed(
+        itemsProp.map((it) => ({
+          ...it,
+          tags: enrichTags(it.title, it.source, it.tags),
+        }))
+      )
       setLoading(false)
       return
     }
@@ -224,7 +236,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     }
   }, [itemsProp, load])
 
-  // Fetch only on transition paused → visible (not on initial mount)
   useEffect(() => {
     if (itemsProp) return
     if (wasPausedRef.current && !paused) {
@@ -233,7 +244,6 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     wasPausedRef.current = paused
   }, [paused, itemsProp, load])
 
-  // Expire NEW badges
   useEffect(() => {
     if (Object.keys(newSince).length === 0) return
     const id = window.setInterval(() => {
@@ -263,10 +273,45 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
     [newSince, nowTick]
   )
 
-  const visible = useMemo(
-    () => feed.filter((n) => matchesFilter(n, filter)),
-    [feed, filter]
+  /** Filter + pin headlines matching active chart symbol on top. */
+  const visible = useMemo(() => {
+    const filtered = feed.filter((n) => matchesFilter(n.tags ?? [], filter))
+    const related: NewsItem[] = []
+    const rest: NewsItem[] = []
+    for (const n of filtered) {
+      if (matchesActiveSymbol(n.tags ?? [], n.title, activeSymbol)) related.push(n)
+      else rest.push(n)
+    }
+    // both groups already newest-first from API
+    return [...related, ...rest]
+  }, [feed, filter, activeSymbol])
+
+  const applySymbolFromNews = useCallback(
+    (sym: string) => {
+      const v = sym.toUpperCase().replace(/[^A-Z0-9]/g, '')
+      if (!v || v === activeSymbol) return
+      setSymbol(v)
+      updatePanel(primaryPanelId, { symbol: v })
+      void loadHistorical().then(() => startLive())
+    },
+    [activeSymbol, setSymbol, updatePanel, primaryPanelId, loadHistorical, startLive]
   )
+
+  const onHeadlineClick = useCallback(
+    (e: React.MouseEvent, item: NewsItem) => {
+      const sym = symbolFromTitle(item.title, item.tags ?? [])
+      if (sym && sym !== activeSymbol) {
+        // Modifier or middle-click: only open URL (default). Primary click: switch symbol + open.
+        if (!e.metaKey && !e.ctrlKey && e.button === 0) {
+          applySymbolFromNews(sym)
+        }
+      }
+      // always allow default navigation to article (target=_blank)
+    },
+    [activeSymbol, applySymbolFromNews]
+  )
+
+  const activeBase = activeSymbol.replace(/USDT$/i, '').replace(/USD$/i, '')
 
   return (
     <div
@@ -306,6 +351,12 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
             paused
           </span>
         )}
+        <span
+          className="text-[9px] px-1.5 py-0.5 rounded bg-[#1e2329] text-[#f0b90b] border border-[#f0b90b]/30"
+          title="Headlines matching this pair are pinned to the top"
+        >
+          {activeBase || activeSymbol}
+        </span>
         <span className="ml-auto text-terminal-muted text-[10px]">
           {visible.length}/{feed.length}
           {fetchedAt ? ` · ${formatTime(fetchedAt)}` : ''}
@@ -345,10 +396,15 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
           <ul className="divide-y divide-terminal-border/60">
             {visible.map((n) => {
               const fresh = isNew(n.id)
+              const tags = n.tags ?? []
+              const related = matchesActiveSymbol(tags, n.title, activeSymbol)
+              const chartSym = symbolFromTitle(n.title, tags)
               return (
                 <li
                   key={n.id}
-                  className={`px-2 py-2 hover:bg-[#12161c]/80 ${fresh ? 'bg-[#f0b90b]/5' : ''}`}
+                  className={`px-2 py-2 hover:bg-[#12161c]/80 ${
+                    fresh ? 'bg-[#f0b90b]/5' : ''
+                  } ${related ? 'border-l-2 border-l-[#f0b90b]' : ''}`}
                 >
                   <div className="flex items-start gap-1.5">
                     {fresh && (
@@ -356,11 +412,25 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
                         NEW
                       </span>
                     )}
+                    {related && !fresh && (
+                      <span
+                        className="shrink-0 mt-0.5 text-[9px] font-semibold tracking-wide px-1 py-px rounded bg-[#1e2329] text-[#f0b90b] border border-[#f0b90b]/40"
+                        title={`Related to ${activeSymbol}`}
+                      >
+                        {activeBase}
+                      </span>
+                    )}
                     <a
                       href={n.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="block flex-1 text-[#eaecef] hover:text-[#f0b90b] font-medium leading-snug"
+                      title={
+                        chartSym
+                          ? `Open article · click switches chart to ${chartSym}`
+                          : 'Open article'
+                      }
+                      onClick={(e) => onHeadlineClick(e, n)}
                     >
                       {n.title}
                     </a>
@@ -371,11 +441,15 @@ export function NewsPanel({ items: itemsProp }: NewsPanelProps) {
                     <time dateTime={new Date(publishedMs(n.publishedAt)).toISOString()}>
                       {formatTime(n.publishedAt)}
                     </time>
-                    <span className="flex gap-0.5">
-                      {itemTags(n).map((a) => (
+                    <span className="flex gap-0.5 flex-wrap">
+                      {tags.map((a) => (
                         <span
                           key={a}
-                          className="px-1 rounded bg-[#1e2329] text-[#848e9c] border border-[#2b3139]"
+                          className={`px-1 rounded border ${
+                            a.toUpperCase() === activeBase
+                              ? 'bg-[#f0b90b]/15 text-[#f0b90b] border-[#f0b90b]/40'
+                              : 'bg-[#1e2329] text-[#848e9c] border-[#2b3139]'
+                          }`}
                         >
                           {a}
                         </span>
