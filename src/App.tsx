@@ -28,7 +28,8 @@ import { FEATURES } from '@/lib/features'
 import { useSessionModeStore } from '@/stores/sessionModeStore'
 import { useCloudLayoutSync } from '@/workspace/useCloudLayoutSync'
 import { useMobileLayout } from '@/layout/useMobileLayout'
-import { BrandLogo, SplashLoader, BRAND } from '@/brand'
+import { BrandLogo, SplashLoader, BootSequence, BRAND } from '@/brand'
+import { usePlanStore } from '@/billing/planStore'
 
 function StatusBadge() {
   const status = useMarketStore((s) => s.status)
@@ -338,7 +339,7 @@ function TerminalApp() {
     )
   }
   return (
-    <div className={`h-full flex flex-col pb-7 ${mobile ? 'tt-mobile-shell' : ''}`}>
+    <div className={`h-full flex flex-col pb-7 ${mobile ? 'tt-mobile-shell' : ''`}>
       <header className="nacs-app-header flex items-center justify-between px-4 py-2 density-compact">
         <div className="nacs-header-brand">
           <BrandLogo size="sm" />
@@ -420,7 +421,6 @@ function GuestEntry() {
         />
         <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-5 bg-[#0b0e11]/80 border border-[#2b3139]/90 backdrop-blur-md shadow-[0_24px_64px_rgba(0,0,0,0.55)]">
           <BrandLogo size="xl" layout="stack" fullLogo showWordmark />
-
           <div className="nacs-loader-stage" style={{ width: 88, height: 88 }} aria-hidden>
             <div className="nacs-orbit">
               <div className="nacs-orbit-ring" />
@@ -436,7 +436,6 @@ function GuestEntry() {
               <div className="nacs-orbit-dot" />
             </div>
           </div>
-
           <p className="text-[12px] text-[#848e9c] text-center leading-relaxed">
             Continue as guest for a read-only desk (charts & public data).
             Trading, bots, and live keys stay disabled until you sign in.
@@ -460,14 +459,53 @@ function GuestEntry() {
 
 export default function App() {
   const status = useAuthStore((s) => s.status)
+  const user = useAuthStore((s) => s.user)
   const refreshMe = useAuthStore((s) => s.refreshMe)
   const setMode = useSessionModeStore((s) => s.setMode)
+  const planId = usePlanStore((s) => s.planId)
+  const [bootDone, setBootDone] = useState(() => {
+    try {
+      return sessionStorage.getItem('nacs-boot-v1') === '1'
+    } catch {
+      return false
+    }
+  })
+
   useEffect(() => {
     void refreshMe()
   }, [refreshMe])
+
   useEffect(() => {
     if (status === 'authenticated') setMode('full')
   }, [status, setMode])
+
+  const finishBoot = () => {
+    try {
+      sessionStorage.setItem('nacs-boot-v1', '1')
+    } catch {
+      /* private mode */
+    }
+    setBootDone(true)
+  }
+
+  if (!bootDone) {
+    const sessionMode =
+      status === 'authenticated'
+        ? 'authenticated'
+        : status === 'unknown'
+          ? 'checking'
+          : 'guest'
+    return (
+      <BootSequence
+        onComplete={finishBoot}
+        userEmail={user?.email}
+        userRole={user?.role}
+        planId={planId}
+        sessionMode={sessionMode}
+      />
+    )
+  }
+
   if (status === 'unknown') {
     return <SplashLoader label="Checking secure session…" />
   }
