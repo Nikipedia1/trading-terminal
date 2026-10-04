@@ -8,6 +8,7 @@ import './livetv'
 import './learn'
 import './ops'
 import './onchain'
+import './quantlab'
 
 export {
   registerPanelType,
@@ -22,4 +23,5 @@ export { LiveTvPanel } from './livetv'
 export { LearnPanel } from './learn'
 export { OpsHealthPanel } from './ops'
 export { OnchainPanel } from './onchain'
+export { QuantLabPanel } from './quantlab'
 export type { NewsItem, NewsAssetFilter, NewsPanelProps } from './news'
