@@ -102,6 +102,7 @@ export type WidgetKind =
   | 'livetv'
   | 'learn'
   | 'ops'
+  | 'onchain'
 
 export interface WidgetPanelConfig {
   id: string
