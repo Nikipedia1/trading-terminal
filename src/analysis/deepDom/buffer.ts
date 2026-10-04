@@ -62,6 +62,11 @@ export class DomSnapshotBuffer {
     return out
   }
 
+  /** Alias used by DeepDomOverlay paint path */
+  getSnapshots(nowSec?: number, windowMinutes?: number): DomSnapshot[] {
+    return this.list(nowSec, windowMinutes)
+  }
+
   get size() {
     return this.count
   }
