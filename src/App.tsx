@@ -334,11 +334,7 @@ function TerminalApp() {
   usePrimarySync(!detach)
   if (detach) {
     return (
-      <DetachedApp
-        symbol={detach.symbol}
-        interval={detach.interval}
-        exchange={detach.exchange}
-      />
+      <DetachedApp symbol={detach.symbol} interval={detach.interval} exchange={detach.exchange} />
     )
   }
   return (
@@ -405,24 +401,24 @@ function GuestEntry() {
   }, [entered, setMode])
   if (!entered) {
     return (
-      <div className="nacs-splash min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden bg-[#05070a]">
-        <img
-          src={BRAND.splashHeroUrl}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover opacity-[0.35] pointer-events-none select-none"
-          draggable={false}
-        />
+      <div
+        className="min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden bg-[#05070a]"
+        style={{
+          backgroundImage: `url(${BRAND.splashHeroUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'radial-gradient(ellipse 65% 50% at 50% 40%, rgba(5,10,18,0.25) 0%, rgba(5,7,10,0.75) 55%, #05070a 100%)',
+              'radial-gradient(ellipse 55% 50% at 50% 45%, rgba(5,8,14,0.12) 0%, rgba(5,8,14,0.5) 65%, rgba(5,8,14,0.78) 100%)',
           }}
           aria-hidden
         />
-        <div className="nacs-splash-grid opacity-40" aria-hidden />
-        <div className="nacs-splash-glow" aria-hidden />
-        <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-5">
+        <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full max-h-[min(92vh,820px)] overflow-y-auto flex flex-col items-center gap-5 bg-[#0b0e11]/80 border border-[#2b3139]/90 backdrop-blur-md shadow-[0_24px_64px_rgba(0,0,0,0.55)]">
           <BrandLogo size="xl" layout="stack" fullLogo showWordmark />
 
           <div className="nacs-loader-stage" style={{ width: 88, height: 88 }} aria-hidden>
