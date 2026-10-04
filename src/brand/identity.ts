@@ -5,14 +5,15 @@ export const BRAND = {
   shortName: 'NACS Lab',
   tagline: 'Blockchain Trading Terminal',
   versionLabel: 'v0.2',
-  /** Square mark for header / favicon-adjacent UI */
-  logoMarkUrl: '/brand/nacs-mark.jpg',
-  /** Full horizontal logo (mark + wordmark) for splash / login */
-  logoFullUrl: '/brand/nacs-logo-full.jpg',
-  logoWordmarkUrl: '/brand/nacs-wordmark.jpg',
-  /** Loading / guest splash hero art */
-  splashHeroUrl: '/brand/splash-hero.jpg',
-  /** Legacy SVG (fallback) */
+  /**
+   * Assets in public/brand/ (uploaded filenames).
+   * 1791116462822.jpg = full logo (mark + wordmark)
+   * 1791116456775.jpg = splash / loading hero
+   */
+  logoMarkUrl: '/brand/1791116462822.jpg',
+  logoFullUrl: '/brand/1791116462822.jpg',
+  logoWordmarkUrl: '/brand/1791116462822.jpg',
+  splashHeroUrl: '/brand/1791116456775.jpg',
   logoMarkSvgUrl: '/brand/logo-mark.svg',
   faviconUrl: '/favicon.svg',
   legalEntity: 'NACS Lab',
