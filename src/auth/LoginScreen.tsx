@@ -31,7 +31,6 @@ export function LoginScreen({
   const [totpCode, setTotpCode] = useState('')
   const [resetToken, setResetToken] = useState('')
   const [resetMsg, setResetMsg] = useState<string | null>(null)
-  /** Honeypot – bots fill this; humans leave empty */
   const [company, setCompany] = useState('')
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -88,7 +87,8 @@ export function LoginScreen({
           <BrandLogo
             size={embedded ? 'lg' : 'xl'}
             layout="stack"
-            animated={false}
+            fullLogo
+            showWordmark
           />
           <p className="text-[11px] text-[#848e9c] text-center leading-relaxed max-w-xs">
             Secure session · passwords hashed server-side · keys never leave your browser unencrypted
@@ -133,7 +133,6 @@ export function LoginScreen({
       )}
 
       <form onSubmit={onSubmit} className={`${embedded ? 'mt-4' : 'p-6 pt-4'} space-y-3.5`}>
-        {/* Honeypot CAPTCHA */}
         <div className="absolute -left-[9999px] opacity-0" aria-hidden>
           <label>
             Company
@@ -166,20 +165,14 @@ export function LoginScreen({
                 onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               />
             </label>
-            <button
-              type="button"
-              className="text-[10px] text-[#848e9c] underline"
-              onClick={() => cancelTotp()}
-            >
+            <button type="button" className="text-[10px] text-[#848e9c] underline" onClick={() => cancelTotp()}>
               Cancel
             </button>
           </>
         ) : (
           <>
             <label className="block space-y-1.5">
-              <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
-                Email
-              </span>
+              <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">Email</span>
               <input
                 type="email"
                 autoComplete="username"
@@ -269,8 +262,7 @@ export function LoginScreen({
         </button>
         <DisclaimerBanner compact />
         <p className="text-[9px] text-[#5e6673] leading-snug text-center">
-          First registered account becomes{' '}
-          <strong className="text-[#848e9c]">admin</strong>. Rate-limited login · optional TOTP 2FA.
+          First registered account becomes <strong className="text-[#848e9c]">admin</strong>. Rate-limited login · optional TOTP 2FA.
         </p>
       </form>
     </div>
