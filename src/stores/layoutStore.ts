@@ -44,6 +44,7 @@ export const WIDGET_META: Record<
   livetv: { title: 'Live TV', minW: 3, minH: 6, defaultW: 5, defaultH: 12 },
   learn: { title: 'Learn', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
   ops: { title: 'Ops', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  onchain: { title: 'On-chain', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -125,63 +126,44 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (inLayout.has(p.id)) continue
       nextLayout = [
         ...nextLayout,
-        {
-          i: p.id,
-          x: 0,
-          y: maxY,
-          w: 6,
-          h: 12,
-          minW: 4,
-          minH: 4,
-        },
+        { i: p.id, x: 0, y: maxY, w: 6, h: 8, minW: 4, minH: 4 },
       ]
-      maxY += 12
+      maxY += 8
       inLayout.add(p.id)
     }
 
-    if (JSON.stringify(nextLayout) !== JSON.stringify(layout)) {
-      set({ layout: nextLayout })
-    }
+    set({ layout: nextLayout })
   },
 
   addPanel: () => {
-    const id = uid('chart')
-    const panel: ChartPanelConfig = {
+    const id = uid('panel')
+    const primary = get().panels.find((p) => p.id === get().primaryPanelId) ?? get().panels[0]
+    const newPanel: ChartPanelConfig = {
       id,
-      symbol: 'BTCUSDT',
-      interval: '1m',
-      exchange: 'binance',
+      symbol: primary?.symbol ?? 'BTCUSDT',
+      interval: primary?.interval ?? '1m',
+      exchange: primary?.exchange ?? 'binance',
       syncGroup: null,
     }
-    set((s) => {
-      const maxY = s.layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-      return {
-        panels: [...s.panels, panel],
-        layout: [
-          ...s.layout,
-          { i: id, x: 0, y: maxY, w: 6, h: 12, minW: 4, minH: 4 },
-        ],
-      }
-    })
+    const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+    set((s) => ({
+      panels: [...s.panels, newPanel],
+      layout: [...s.layout, { i: id, x: 0, y: maxY, w: 6, h: 8, minW: 4, minH: 4 }],
+    }))
   },
 
   addWidget: (kind) => {
-    const meta = WIDGET_META[kind]
-    const id = uid(kind)
-    const widget: WidgetPanelConfig = {
-      id,
-      kind,
-      title: meta.title,
-    }
-    set((s) => {
-      if (s.widgets.some((w) => w.kind === kind)) return s
-      const maxY = s.layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
-      return {
-        widgets: [...s.widgets, widget],
+    const existing = get().widgets.find((w) => w.kind === kind)
+    if (existing) {
+      const hasSlot = get().layout.some((l) => l.i === existing.id)
+      if (hasSlot) return
+      const meta = WIDGET_META[kind]
+      const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+      set((s) => ({
         layout: [
           ...s.layout,
           {
-            i: id,
+            i: existing.id,
             x: 0,
             y: maxY,
             w: meta.defaultW,
@@ -190,8 +172,28 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
             minH: meta.minH,
           },
         ],
-      }
-    })
+      }))
+      return
+    }
+    const meta = WIDGET_META[kind]
+    const id = uid(`widget-${kind}`)
+    const widget: WidgetPanelConfig = { id, kind, title: meta.title }
+    const maxY = get().layout.reduce((m, l) => Math.max(m, l.y + l.h), 0)
+    set((s) => ({
+      widgets: [...s.widgets, widget],
+      layout: [
+        ...s.layout,
+        {
+          i: id,
+          x: 0,
+          y: maxY,
+          w: meta.defaultW,
+          h: meta.defaultH,
+          minW: meta.minW,
+          minH: meta.minH,
+        },
+      ],
+    }))
   },
 
   removePanel: (id) => {
