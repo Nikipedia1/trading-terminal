@@ -103,6 +103,7 @@ export type WidgetKind =
   | 'learn'
   | 'ops'
   | 'onchain'
+  | 'quantlab'
 
 export interface WidgetPanelConfig {
   id: string
