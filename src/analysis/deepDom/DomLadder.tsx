@@ -78,36 +78,32 @@ export function DomLadder({ enabled, exchange, symbol, depth = 14 }: DomLadderPr
           }
         }
         for (const [p, q] of prevQty.current) {
-          if (!next.has(p) && q > 0) {
-            flash.current.set(p, { side: 'pull', until: now + 400 })
-          }
+          if (!next.has(p) && q > 0) flash.current.set(p, { side: 'pull', until: now + 400 })
         }
         prevQty.current = next
         setBook(b)
-        bump((n) => n + 1)
+        bump((x) => x + 1)
       },
-      onStatus: (s) => setStatus(s.status),
+      onStatus: (s) => setStatus(s.status === 'connected' ? 'live' : s.status),
+      onError: () => setStatus('err'),
     })
-    const id = window.setInterval(() => bump((n) => n + 1), 200)
-    return () => {
-      sub.unsubscribe()
-      window.clearInterval(id)
-    }
+    return () => sub.unsubscribe()
   }, [enabled, exchange, symbol])
+
+  useEffect(() => {
+    if (!enabled) return
+    const id = window.setInterval(() => bump((x) => x + 1), 200)
+    return () => window.clearInterval(id)
+  }, [enabled])
 
   if (!enabled) return null
 
   const tick = inferTick(book)
-  let asks = (book?.asks ?? []).slice()
-  let bids = (book?.bids ?? []).slice()
-  if (agg > 1) {
-    asks = aggregateLevels(asks, agg, tick).sort((a, b) => a.price - b.price)
-    bids = aggregateLevels(bids, agg, tick)
-  }
-  asks = asks.filter((l) => l.qty >= minSize).slice(0, depth).reverse()
-  bids = bids.filter((l) => l.qty >= minSize).slice(0, depth)
-
-  const maxQty = Math.max(...asks.map((l) => l.qty), ...bids.map((l) => l.qty), 0.0001)
+  let asks = book ? aggregateLevels(book.asks, agg, tick).filter((l) => l.qty >= minSize) : []
+  let bids = book ? aggregateLevels(book.bids, agg, tick).filter((l) => l.qty >= minSize) : []
+  asks = asks.slice(0, depth).reverse()
+  bids = bids.slice(0, depth)
+  const maxQty = Math.max(0.0001, ...asks.map((l) => l.qty), ...bids.map((l) => l.qty))
   const mid =
     book && book.bids[0] && book.asks[0]
       ? (book.bids[0].price + book.asks[0].price) / 2
@@ -130,13 +126,13 @@ export function DomLadder({ enabled, exchange, symbol, depth = 14 }: DomLadderPr
             ? 'rgba(168,85,247,0.25)'
             : 'rgba(14,203,129,0.25)'
     return (
-      <div key={`${side}-${l.price}`} className="relative h-[15px] flex items-center px-1">
+      <div key={`${side}-${l.price}`} className="relative h-[18px] flex items-center px-1.5">
         <div
           className="absolute inset-y-0 right-0"
           style={{ width: `${(l.qty / maxQty) * 100}%`, background: bg }}
         />
         <span
-          className={`relative w-[52px] tabular-nums ${
+          className={`relative w-[64px] tabular-nums text-[11px] ${
             side === 'ask' ? 'text-[#a855f7]' : 'text-[#0ecb81]'
           }`}
         >
@@ -148,8 +144,8 @@ export function DomLadder({ enabled, exchange, symbol, depth = 14 }: DomLadderPr
   }
 
   return (
-    <div className="absolute top-2 right-2 z-[8] w-[168px] pointer-events-auto select-none">
-      <div className="bg-[#0b0e11]/92 border border-[#2b3139] rounded-md overflow-hidden shadow-lg font-mono text-[10px]">
+    <div className="absolute top-2 right-2 z-[8] w-[200px] pointer-events-auto select-none">
+      <div className="bg-[#0b0e11]/94 border border-[#2b3139] rounded-md overflow-hidden shadow-lg font-mono text-[11px]">
         <div className="px-1.5 py-1 border-b border-[#2b3139] flex justify-between text-[#848e9c]">
           <span className="font-semibold text-[#eaecef]">DOM</span>
           <span>{status}</span>
@@ -204,7 +200,7 @@ export function DomLadder({ enabled, exchange, symbol, depth = 14 }: DomLadderPr
         </div>
 
         <div className="px-1.5 py-1 border-t border-[#2b3139] text-[8px] text-[#5e6673] leading-tight">
-          Flash = pull/refill vs prev sample. No MBO/queue.{" "}
+          Flash = pull/refill vs prev sample. No MBO/queue.{' '}
           {(L2_GRANULARITY_NOTES[exchange] || '').slice(0, 48)}
         </div>
       </div>
