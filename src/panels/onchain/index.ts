@@ -15,7 +15,9 @@ export { OnchainPanel } from './OnchainPanel'
 export type {
   OnchainSnapshot,
   OnchainTab,
-  OnchainBtc,
+  UtxoChainStats,
   OnchainEth,
+  OnchainSol,
   OnchainDefi,
+  AddressLookupResult,
 } from './types'
