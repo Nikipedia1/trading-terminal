@@ -7,6 +7,7 @@ import './calendar'
 import './livetv'
 import './learn'
 import './ops'
+import './onchain'
 
 export {
   registerPanelType,
@@ -20,4 +21,5 @@ export { CalendarPanel } from './calendar'
 export { LiveTvPanel } from './livetv'
 export { LearnPanel } from './learn'
 export { OpsHealthPanel } from './ops'
+export { OnchainPanel } from './onchain'
 export type { NewsItem, NewsAssetFilter, NewsPanelProps } from './news'
