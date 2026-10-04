@@ -38,6 +38,7 @@ import {
   LiveTvPanel,
   LearnPanel,
   OpsHealthPanel,
+  OnchainPanel,
   getRegisteredPanel,
 } from '@/panels'
 import 'react-grid-layout/css/styles.css'
@@ -127,6 +128,8 @@ function WidgetBodyInner({ kind }: { kind: WidgetKind }) {
       return <LearnPanel />
     case 'ops':
       return <OpsHealthPanel />
+    case 'onchain':
+      return <OnchainPanel />
     default: {
       const reg = getRegisteredPanel(kind)
       if (reg) {
@@ -163,6 +166,7 @@ const ADDABLE: WidgetKind[] = [
   'livetv',
   'learn',
   'ops',
+  'onchain',
 ]
 
 export function PanelGrid({ width }: PanelGridProps) {
