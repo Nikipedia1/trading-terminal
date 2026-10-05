@@ -276,6 +276,25 @@ export const CHART_THEME_PRESETS: Record<
       },
     },
   },
+  fuchsia: {
+    label: 'Fucsia / Bianco',
+    style: {
+      candle: {
+        upBody: '#ff2d95',
+        downBody: '#e8e8ed',
+        upBorder: '#ff5cad',
+        downBorder: '#ffffff',
+        upWick: '#ff2d95',
+        downWick: '#c7c7cc',
+      },
+      canvas: {
+        background: '#0c0a0e',
+        text: '#f5f5f7',
+        grid: '#2a1a28',
+        border: '#4a2040',
+      },
+    },
+  },
 }
 
 const STORAGE_KEY = 'tt-chart-style:v1'
