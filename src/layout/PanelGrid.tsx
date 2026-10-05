@@ -68,14 +68,16 @@ function renderWidget(kind: WidgetKind) {
       return <LiquidityPanel />
     case 'backtest':
       return <BacktestPanel />
-    case 'livekeys':
+    case 'live_keys':
       return <LiveKeysPanel />
-    case 'plugins':
+    case 'plugin_indicator':
       return <PluginIndicatorPanel />
-    case 'micro':
+    case 'microstructure':
       return <MicrostructurePanel />
     case 'viz3d':
       return <Viz3DPanel />
+    case 'quantlab':
+      return <QuantLabPanel />
     case 'news':
       return <NewsPanel />
     case 'calendar':
@@ -88,44 +90,65 @@ function renderWidget(kind: WidgetKind) {
       return <OpsHealthPanel />
     case 'onchain':
       return <OnchainPanel />
-    case 'quantlab':
-      return <QuantLabPanel />
     default: {
-      const reg = getRegisteredPanel(kind)
+      const reg = getRegisteredPanel(kind as string)
       if (reg) {
         const C = reg.component
         return <C />
       }
-      return null
+      return (
+        <div className="h-full flex items-center justify-center text-[11px] text-[#5e6673]">
+          Unknown panel: {String(kind)}
+        </div>
+      )
     }
   }
 }
 
 const ADDABLE: WidgetKind[] = [
-  'paper', 'book', 'tape', 'large', 'futures', 'alerts', 'journal', 'terminal',
-  'watchlist', 'ai', 'wallet', 'bots', 'admin', 'liquidity', 'backtest',
-  'livekeys', 'plugins', 'micro', 'viz3d', 'news', 'calendar', 'livetv',
-  'learn', 'ops', 'onchain', 'quantlab',
+  'book',
+  'tape',
+  'large',
+  'futures',
+  'paper',
+  'alerts',
+  'journal',
+  'terminal',
+  'watchlist',
+  'ai',
+  'wallet',
+  'bots',
+  'liquidity',
+  'backtest',
+  'microstructure',
+  'viz3d',
+  'quantlab',
+  'news',
+  'calendar',
+  'livetv',
+  'learn',
+  'ops',
+  'onchain',
+  'live_keys',
+  'plugin_indicator',
+  'admin',
 ]
 
-interface PanelGridProps {
-  width?: number
-}
-
-export function PanelGrid({ width }: PanelGridProps) {
+export function PanelGrid({ width }: { width?: number }) {
   const panels = useLayoutStore((s) => s.panels)
   const widgets = useLayoutStore((s) => s.widgets)
   const layout = useLayoutStore((s) => s.layout)
-  const setLayout = useLayoutStore((s) => s.setLayout)
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const addChartPanel = useLayoutStore((s) => s.addChartPanel)
   const addWidget = useLayoutStore((s) => s.addWidget)
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const removeWidget = useLayoutStore((s) => s.removeWidget)
+  const setLayout = useLayoutStore((s) => s.setLayout)
 
-  const layouts = useMemo(() => ({ lg: layout }), [layout])
+  const layouts = useMemo(() => ({ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }), [layout])
 
   return (
-    <div className="h-full w-full relative">
-      <div className="absolute top-1 right-2 z-30 flex gap-1">
+    <div className="h-full w-full flex flex-col min-h-0">
+      <div className="shrink-0 flex items-center gap-2 px-2 py-1 border-b border-[#2b3139]">
         <button
           type="button"
           className="text-[10px] px-2 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:text-[#f0b90b]"
@@ -171,8 +194,22 @@ export function PanelGrid({ width }: PanelGridProps) {
         ))}
         {widgets.map((w) => (
           <div key={w.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-hidden flex flex-col">
-            <div className="panel-drag-handle px-2 py-1 text-[10px] text-[#848e9c] border-b border-[#2b3139] cursor-move">
-              {w.title}
+            <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 min-h-[32px] text-[10px] text-[#848e9c] border-b border-[#2b3139] cursor-move select-none">
+              <span className="truncate font-semibold tracking-wide text-[#c8cdd5]">{w.title}</span>
+              <button
+                type="button"
+                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded border border-[#2b3139] bg-[#12161c] text-[#f6465d] text-sm font-bold leading-none hover:bg-[#f6465d]/15 hover:border-[#f6465d]/60 active:scale-95"
+                title="Chiudi pannello"
+                aria-label="Chiudi pannello"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  removeWidget(w.id)
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
+                ×
+              </button>
             </div>
             <div className="flex-1 min-h-0">{renderWidget(w.kind)}</div>
           </div>
