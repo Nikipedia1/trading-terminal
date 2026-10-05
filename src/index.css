@@ -63,8 +63,7 @@ html[data-density='scalp'] .density-compact {
   padding-bottom: 0.125rem !important;
 }
 html[data-density='scalp'] header .nacs-header-brand {
-  transform: scale(0.92);
-  transform-origin: left center;
+  /* keep full bar height — do not shrink logo */
 }
 html[data-density='scalp'] .grid.grid-cols-3 {
   grid-template-columns: 1fr 280px;
@@ -510,6 +509,35 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   background: linear-gradient(180deg, #141a22 0%, #12161c 100%);
   border-bottom: 1px solid #1e2329;
   box-shadow: 0 1px 0 rgba(240, 185, 11, 0.05);
+  min-height: 52px;
+}
+
+/* Logo flush to full header height — no pill / rounded badge */
+.nacs-header-brand {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  height: auto;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+.nacs-header-brand > div {
+  height: 100%;
+  align-self: stretch;
+}
+.nacs-header-logo-img {
+  display: block;
+  height: 100% !important;
+  max-height: 52px;
+  width: auto !important;
+  min-width: 52px;
+  object-fit: contain;
+  object-position: left center;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
 }
 
 .nacs-guest-card {
