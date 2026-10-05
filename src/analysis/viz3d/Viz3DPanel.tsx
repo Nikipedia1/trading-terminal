@@ -34,6 +34,7 @@ const THEME_OPTIONS: { id: Viz3DConfig['theme']; label: string }[] = [
   { id: 'gold', label: 'Gold' },
   { id: 'ice', label: 'Ice' },
   { id: 'cyber', label: 'Cyber' },
+  { id: 'fuchsia', label: 'Fucsia / Bianco' },
 ]
 
 export function Viz3DPanel({ exchange, symbol, candles }: Viz3DPanelProps) {

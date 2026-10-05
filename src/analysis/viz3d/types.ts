@@ -19,7 +19,7 @@ export interface Viz3DConfig {
   priceBins: number
   domLevels: number
   opacity: number
-  theme: 'desk' | 'neon' | 'mono' | 'aurora' | 'magma' | 'ocean' | 'matrix' | 'gold' | 'ice' | 'cyber'
+  theme: 'desk' | 'neon' | 'mono' | 'aurora' | 'magma' | 'ocean' | 'matrix' | 'gold' | 'ice' | 'cyber' | 'fuchsia'
   syncVisible: boolean
   /** Deep DOM (Deep Chart-style) options */
   dom: Dom3DOptions
