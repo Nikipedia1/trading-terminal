@@ -186,14 +186,16 @@ export function PanelGrid({ width }: { width?: number }) {
         width={width || 1200}
         onLayoutChange={(l) => setLayout(l)}
         draggableHandle=".panel-drag-handle"
+        isResizable
+        resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
       >
         {panels.map((p) => (
-          <div key={p.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-hidden">
+          <div key={p.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-visible">
             <ChartPanel config={p} isPrimary={p.id === primaryPanelId} />
           </div>
         ))}
         {widgets.map((w) => (
-          <div key={w.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-hidden flex flex-col">
+          <div key={w.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-visible flex flex-col">
             <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 min-h-[32px] text-[10px] text-[#848e9c] border-b border-[#2b3139] cursor-move select-none">
               <span className="truncate font-semibold tracking-wide text-[#c8cdd5]">{w.title}</span>
               <button
