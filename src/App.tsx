@@ -443,18 +443,52 @@ function GuestEntry() {
 
 export default function App() {
   const status = useAuthStore((s) => s.status)
+  const user = useAuthStore((s) => s.user)
   const refreshMe = useAuthStore((s) => s.refreshMe)
   const setMode = useSessionModeStore((s) => s.setMode)
   const planId = usePlanStore((s) => s.planId)
+  const [bootDone, setBootDone] = useState(() => {
+    try {
+      return sessionStorage.getItem('nacs-boot-done') === '1'
+    } catch {
+      return false
+    }
+  })
+
   useEffect(() => {
     void refreshMe()
   }, [refreshMe])
+
   useEffect(() => {
     if (status === 'authenticated') setMode('full')
   }, [status, setMode])
+
+  /* Full professional boot (splash progress + terminal) — once per tab session */
+  if (!bootDone) {
+    const sessionMode =
+      status === 'authenticated' ? 'authenticated' : status === 'unknown' ? 'checking' : 'guest'
+    return (
+      <BootSequence
+        userEmail={user?.email}
+        userRole={user?.role}
+        planId={planId}
+        sessionMode={sessionMode}
+        onComplete={() => {
+          try {
+            sessionStorage.setItem('nacs-boot-done', '1')
+          } catch {
+            /* ignore */
+          }
+          setBootDone(true)
+        }}
+      />
+    )
+  }
+
   if (status === 'unknown') {
     return <SplashLoader label="Checking secure session…" />
   }
+
   if (status !== 'authenticated') {
     if (FEATURES.allowGuest) {
       return (
@@ -465,6 +499,7 @@ export default function App() {
     }
     return <LoginScreen />
   }
+
   return (
     <ErrorBoundary name="terminal" key={planId}>
       <TerminalApp />
