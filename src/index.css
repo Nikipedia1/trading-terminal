@@ -3,30 +3,65 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0b0e11;
-  --panel: #12161c;
-  --border: #1e2329;
-  --text: #eaecef;
-  --muted: #848e9c;
-  --green: #0ecb81;
-  --red: #f6465d;
-  --yellow: #f0b90b;
+  /* ── NACS Lab design tokens (locked to SplashLoader) ── */
+  --nacs-void: #05070a;
+  --nacs-bg: #0b0e11;
+  --nacs-panel: #12161c;
+  --nacs-elevated: #161b22;
+  --nacs-hover: #1a1f27;
+  --nacs-border: #1e2329;
+  --nacs-border-strong: #2b3139;
+  --nacs-text: #eaecef;
+  --nacs-secondary: #c8cdd5;
+  --nacs-muted: #848e9c;
+  --nacs-dim: #7a8494;
+  --nacs-faint: #5e6673;
   --nacs-gold: #f0b90b;
   --nacs-gold-dim: #c99400;
   --nacs-gold-bright: #ffe08a;
+  --nacs-blue: #5b8def;
+  --nacs-green: #0ecb81;
+  --nacs-red: #f6465d;
+  --nacs-radius: 0.75rem;
+  --nacs-radius-sm: 0.5rem;
+  --nacs-glow-gold: 0 0 24px rgba(240, 185, 11, 0.28);
+  --nacs-card-shadow: 0 0 0 1px rgba(240, 185, 11, 0.06), 0 24px 64px rgba(0, 0, 0, 0.55);
+
+  /* legacy aliases */
+  --bg: var(--nacs-bg);
+  --panel: var(--nacs-panel);
+  --border: var(--nacs-border);
+  --text: var(--nacs-text);
+  --muted: var(--nacs-muted);
+  --green: var(--nacs-green);
+  --red: var(--nacs-red);
+  --yellow: var(--nacs-gold);
 }
 
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: var(--bg);
-  color: var(--text);
+  background-color: var(--nacs-void);
+  color: var(--nacs-text);
   font-family: Inter, system-ui, sans-serif;
   font-size: 13px;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+/* Desk ambient — same language as splash (gold + blue haze on void) */
+body {
+  background:
+    radial-gradient(ellipse 90% 45% at 50% -15%, rgba(240, 185, 11, 0.07), transparent 55%),
+    radial-gradient(ellipse 50% 35% at 95% 90%, rgba(91, 141, 239, 0.05), transparent 50%),
+    var(--nacs-void);
+}
+
+#root {
+  background: transparent;
 }
 
 ::-webkit-scrollbar {
@@ -34,10 +69,10 @@ html, body, #root {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg);
+  background: var(--nacs-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b3139;
+  background: var(--nacs-border-strong);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -124,6 +159,209 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   height: 8px;
   border-right: 2px solid #f0b90b;
   border-bottom: 2px solid #f0b90b;
+}
+
+/* ═══════════════════════════════════════════
+   NACS Lab – shared UI (from SplashLoader)
+   ═══════════════════════════════════════════ */
+
+.nacs-desk {
+  background: transparent;
+  color: var(--nacs-text);
+}
+
+.nacs-surface {
+  background: var(--nacs-bg);
+  border: 1px solid var(--nacs-border);
+}
+
+.nacs-panel,
+.nacs-card {
+  background: linear-gradient(165deg, #12161c 0%, #0d1117 100%);
+  border: 1px solid var(--nacs-border-strong);
+  border-radius: var(--nacs-radius);
+  box-shadow: var(--nacs-card-shadow);
+}
+
+.nacs-panel-flat {
+  background: var(--nacs-panel);
+  border: 1px solid var(--nacs-border);
+  border-radius: var(--nacs-radius-sm);
+}
+
+.nacs-glass {
+  background: rgba(11, 14, 17, 0.75);
+  border: 1px solid rgba(43, 49, 57, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 1rem;
+  box-shadow: var(--nacs-card-shadow);
+}
+
+.nacs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: var(--nacs-radius-sm);
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.nacs-btn:active {
+  transform: scale(0.99);
+}
+
+.nacs-btn-primary {
+  background: var(--nacs-gold);
+  color: var(--nacs-bg);
+  border: none;
+  box-shadow: var(--nacs-glow-gold);
+}
+
+.nacs-btn-primary:hover {
+  background: #f5c93a;
+}
+
+.nacs-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.nacs-btn-ghost {
+  background: transparent;
+  color: var(--nacs-muted);
+  border: 1px solid var(--nacs-border);
+}
+
+.nacs-btn-ghost:hover {
+  color: var(--nacs-text);
+  border-color: rgba(240, 185, 11, 0.35);
+}
+
+.nacs-btn-danger {
+  background: rgba(246, 70, 93, 0.15);
+  color: var(--nacs-red);
+  border: 1px solid rgba(246, 70, 93, 0.35);
+}
+
+.nacs-btn-success {
+  background: rgba(14, 203, 129, 0.15);
+  color: var(--nacs-green);
+  border: 1px solid rgba(14, 203, 129, 0.35);
+}
+
+.nacs-input,
+.nacs-select {
+  background: var(--nacs-bg);
+  border: 1px solid var(--nacs-border-strong);
+  border-radius: var(--nacs-radius-sm);
+  color: var(--nacs-text);
+  color-scheme: dark;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.nacs-input::placeholder {
+  color: var(--nacs-faint);
+}
+
+.nacs-input:focus,
+.nacs-select:focus {
+  border-color: var(--nacs-gold);
+  box-shadow: 0 0 0 1px rgba(240, 185, 11, 0.3);
+}
+
+.nacs-label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nacs-muted);
+}
+
+.nacs-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  border: 1px solid var(--nacs-border);
+  background: var(--nacs-bg);
+  color: var(--nacs-secondary);
+}
+
+.nacs-chip-gold {
+  border-color: rgba(240, 185, 11, 0.4);
+  color: var(--nacs-gold);
+  background: rgba(240, 185, 11, 0.08);
+}
+
+.nacs-divider {
+  border: none;
+  border-top: 1px solid var(--nacs-border);
+  margin: 0.5rem 0;
+}
+
+.nacs-gold-bar {
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--nacs-gold-dim), var(--nacs-gold), var(--nacs-gold-bright));
+}
+
+/* Grid panels — match splash card chrome */
+.react-grid-item > .nacs-widget-shell,
+.nacs-widget-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #12161c 0%, #0e1218 100%);
+  border: 1px solid var(--nacs-border);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.nacs-widget-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nacs-secondary);
+  background: linear-gradient(180deg, #161b22 0%, #12161c 100%);
+  border-bottom: 1px solid var(--nacs-border);
+  box-shadow: 0 1px 0 rgba(240, 185, 11, 0.04);
+}
+
+/* Form controls in desk — unify native selects/inputs without rewriting every panel */
+.nacs-desk input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.nacs-desk select,
+.nacs-desk textarea {
+  background-color: var(--nacs-bg);
+  border-color: var(--nacs-border-strong);
+  color: var(--nacs-text);
+  color-scheme: dark;
+}
+
+.nacs-desk input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
+.nacs-desk select:focus,
+.nacs-desk textarea:focus {
+  border-color: var(--nacs-gold);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(240, 185, 11, 0.25);
+}
+
+.nacs-desk ::selection {
+  background: rgba(240, 185, 11, 0.35);
+  color: var(--nacs-text);
 }
 
 /* ═══════════════════════════════════════════
@@ -293,7 +531,7 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   background:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(240, 185, 11, 0.1), transparent 55%),
     radial-gradient(ellipse 60% 40% at 80% 100%, rgba(91, 141, 239, 0.07), transparent 50%),
-    #0b0e11;
+    var(--nacs-void);
 }
 
 .nacs-splash-grid {
@@ -512,9 +750,12 @@ html[data-density='scalp'] .grid.grid-cols-3 {
 
 .nacs-app-header {
   background: linear-gradient(180deg, #141a22 0%, #12161c 100%);
-  border-bottom: 1px solid #1e2329;
-  box-shadow: 0 1px 0 rgba(240, 185, 11, 0.05);
+  border-bottom: 1px solid var(--nacs-border);
+  box-shadow:
+    0 1px 0 rgba(240, 185, 11, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.25);
   min-height: 56px;
+  backdrop-filter: blur(8px);
 }
 
 /* Single logo block — large orange, no double frame */
