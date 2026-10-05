@@ -10,6 +10,7 @@ export type Viz3DThemeId =
   | 'gold'
   | 'ice'
   | 'cyber'
+  | 'fuchsia'
 
 export interface Viz3DThemeColors {
   bg: string
@@ -122,5 +123,15 @@ export const VIZ3D_THEMES: Record<Viz3DThemeId, Viz3DThemeColors> = {
     label: '#94a3b8',
     accent: '#a78bfa',
     face: 'rgba(12,10,24,0.9)',
+  },
+  fuchsia: {
+    bg: '#0c0a0e',
+    grid: 'rgba(255,45,149,0.22)',
+    buy: '#ff2d95',
+    sell: '#e8e8ed',
+    wick: '#c7c7cc',
+    label: '#f5f5f7',
+    accent: '#ff5cad',
+    face: 'rgba(42,20,38,0.9)',
   },
 }
