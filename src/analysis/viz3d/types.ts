@@ -19,7 +19,7 @@ export interface Viz3DConfig {
   priceBins: number
   domLevels: number
   opacity: number
-  theme: 'desk' | 'neon' | 'mono'
+  theme: 'desk' | 'neon' | 'mono' | 'aurora' | 'magma' | 'ocean' | 'matrix' | 'gold' | 'ice' | 'cyber'
   syncVisible: boolean
   /** Deep DOM (Deep Chart-style) options */
   dom: Dom3DOptions
@@ -98,25 +98,19 @@ export const VIZ3D_PRESETS: Record<
 > = {
   terrain: {
     label: 'Terrain',
-    patch: { mode: 'volume_terrain', pitch: 32, yaw: 40, zoom: 1 },
+    patch: { mode: 'volume_terrain', maxBars: 80, priceBins: 32 },
   },
-  candles: {
-    label: 'Candles 3D',
-    patch: { mode: 'candle_columns', pitch: 22, yaw: 35, zoom: 1.05 },
+  columns: {
+    label: 'Columns',
+    patch: { mode: 'candle_columns', maxBars: 60 },
   },
   book: {
-    label: 'Book 3D',
-    patch: { mode: 'book_depth', pitch: 35, yaw: 50, zoom: 1.1 },
+    label: 'Book',
+    patch: { mode: 'book_depth', domLevels: 24 },
   },
-  deepDom: {
+  dom: {
     label: 'Deep DOM',
-    patch: {
-      mode: 'dom_ladder',
-      pitch: 16,
-      yaw: 28,
-      zoom: 1.2,
-      dom: { ...DEFAULT_DOM3D_OPTIONS },
-    },
+    patch: { mode: 'dom_ladder', theme: 'neon', opacity: 0.9 },
   },
   neon: {
     label: 'Neon',
@@ -124,82 +118,51 @@ export const VIZ3D_PRESETS: Record<
   },
 }
 
-export interface TerrainCell {
-  tx: number
-  ty: number
-  h: number
-  buyFrac: number
+export interface Viz3DCell {
   price: number
-  time: number
   volume: number
+  buyFrac: number
 }
 
-export interface CandleColumn {
-  tx: number
+export interface Viz3DCandleCol {
+  time: number
   open: number
   high: number
   low: number
   close: number
   volume: number
-  time: number
   bull: boolean
 }
 
-export interface BookBar {
-  side: number
-  ty: number
-  h: number
+export interface Viz3DBookLevel {
   price: number
-  qty: number
+  size: number
   isBid: boolean
 }
 
-export interface DomRow {
-  ty: number
+export interface Viz3DDomBubble {
   price: number
-  bidQty: number
-  askQty: number
-  bidH: number
-  askH: number
-  cumBid: number
-  cumAsk: number
-  imbalance: number
-  /** pull | refill flash hint */
-  flash: 'pull' | 'refill' | null
+  size: number
+  quote: number
+  aggressor: 'buy' | 'sell'
+  ageMs: number
 }
 
-/** Aggressor trade bubble — Deep Chart style */
-export interface DomBubble {
-  id: string
-  /** normalized X along recent time (-1..1) */
-  tx: number
-  /** normalized price Y */
-  ty: number
+export interface Viz3DDomWall {
   price: number
-  time: number
-  /** 0..1 radius factor */
-  r: number
-  quoteQty: number
-  baseQty: number
-  aggressor: 'buy' | 'sell'
-  clusterCount: number
+  size: number
+  side: 'bid' | 'ask'
+  flash?: 'pull' | 'refill'
 }
 
 export interface Viz3DModel {
-  mode: Viz3DMode
-  terrain: TerrainCell[]
-  candles: CandleColumn[]
-  book: BookBar[]
-  dom: DomRow[]
-  bubbles: DomBubble[]
+  cells: Viz3DCell[]
+  candles: Viz3DCandleCol[]
+  book: Viz3DBookLevel[]
+  domWalls: Viz3DDomWall[]
+  domBubbles: Viz3DDomBubble[]
+  mid: number | null
   priceMin: number
   priceMax: number
   volMax: number
-  mid: number
-  spread: number
-  totalBid: number
-  totalAsk: number
-  ready: boolean
-  barCount: number
-  note: string
 }
