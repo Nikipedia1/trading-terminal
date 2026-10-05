@@ -193,15 +193,17 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
         <button
           type="button"
-          className="ml-auto text-xxs px-1.5 py-0.5 rounded text-terminal-red/80 hover:text-terminal-red"
-          title="Remove panel"
+          className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded border border-[#2b3139] bg-[#12161c] text-[#f6465d] text-sm font-bold leading-none hover:bg-[#f6465d]/15 hover:border-[#f6465d]/60 active:scale-95"
+          title="Chiudi pannello"
+          aria-label="Chiudi pannello"
           onClick={(e) => {
             e.stopPropagation()
             removePanel(id)
           }}
           onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
         >
-          −
+          ×
         </button>
       </div>
 
