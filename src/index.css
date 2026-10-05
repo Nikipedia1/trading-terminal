@@ -76,15 +76,54 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   opacity: 1 !important;
 }
 
+/* Resize on all 4 sides + corners — larger hit targets */
+.react-grid-item > .react-resizable-handle {
+  z-index: 20;
+  opacity: 0.55;
+}
+.react-grid-item > .react-resizable-handle:hover {
+  opacity: 1;
+}
 .react-grid-item > .react-resizable-handle::after {
   border-color: #848e9c !important;
 }
 
-.react-resizable-handle {
-  opacity: 0.5;
+.react-resizable-handle-n,
+.react-resizable-handle-s {
+  height: 12px !important;
+  margin-left: -6px;
 }
-.react-resizable-handle:hover {
-  opacity: 1;
+.react-resizable-handle-e,
+.react-resizable-handle-w {
+  width: 12px !important;
+  margin-top: -6px;
+}
+.react-resizable-handle-n { cursor: ns-resize; top: 0; }
+.react-resizable-handle-s { cursor: ns-resize; bottom: 0; }
+.react-resizable-handle-e { cursor: ew-resize; right: 0; }
+.react-resizable-handle-w { cursor: ew-resize; left: 0; }
+
+.react-resizable-handle-se,
+.react-resizable-handle-sw,
+.react-resizable-handle-ne,
+.react-resizable-handle-nw {
+  width: 16px !important;
+  height: 16px !important;
+}
+.react-resizable-handle-se { cursor: se-resize; }
+.react-resizable-handle-sw { cursor: sw-resize; }
+.react-resizable-handle-ne { cursor: ne-resize; }
+.react-resizable-handle-nw { cursor: nw-resize; }
+
+.react-grid-item > .react-resizable-handle-se::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #f0b90b;
+  border-bottom: 2px solid #f0b90b;
 }
 
 /* ═══════════════════════════════════════════
@@ -286,7 +325,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   top: 42%;
   left: 50%;
   transform: translate(-50%, -50%);
-  pointer-events: none;
   filter: blur(10px);
   animation: nacs-glow-breathe 4s ease-in-out infinite;
 }
@@ -399,7 +437,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   margin-left: -2.5px;
 }
 
-/* Nested cube */
 .nacs-cube {
   position: absolute;
   top: 50%;
@@ -449,7 +486,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
 .nacs-cube--nested .nacs-cube-face--top    { transform: rotateX(90deg) translateZ(11px); }
 .nacs-cube--nested .nacs-cube-face--bottom { transform: rotateX(-90deg) translateZ(11px); }
 
-/* Pyramid */
 .nacs-pyramid {
   position: absolute;
   top: 50%;
@@ -512,7 +548,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   min-height: 52px;
 }
 
-/* Logo flush to full header height — no pill / rounded badge */
 .nacs-header-brand {
   display: flex;
   align-items: stretch;
