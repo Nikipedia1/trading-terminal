@@ -55,7 +55,7 @@ export function VolumeProfileOverlay({
   const vaTarget = (config as { vaTarget?: number }).vaTarget ?? 0.7
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !exchange || !symbol) return
     return retainTradeBuffer(exchange, symbol)
   }, [enabled, exchange, symbol])
 
@@ -76,7 +76,7 @@ export function VolumeProfileOverlay({
   }, [bridge])
 
   const rebuild = useCallback(() => {
-    if (!enabled) {
+    if (!enabled || !exchange || !symbol) {
       developingRef.current = null
       fixedRef.current = null
       return
@@ -93,7 +93,7 @@ export function VolumeProfileOverlay({
     )
 
     const fixedWin = (config as { fixed?: ProfileWindow | null }).fixed
-    if (fixedWin) {
+    if (fixedWin && fixedWin !== ('none' as any)) {
       const fixRange = resolveWindowRange(fixedWin as any, from, to)
       const fixTrades = queryTradesInRange(exchange, symbol, fixRange.fromSec, fixRange.toSec)
       fixedRef.current = buildVolumeProfile(
@@ -110,7 +110,7 @@ export function VolumeProfileOverlay({
     const dev = developingRef.current
     if (dev) {
       setHint(
-        `${PROFILE_WINDOW_LABELS[developingWindow as keyof typeof PROFILE_WINDOW_LABELS] || developingWindow} · ${dev.buckets.length} bins · POC ${dev.poc}`
+        `${PROFILE_WINDOW_LABELS[developingWindow as keyof typeof PROFILE_WINDOW_LABELS] || developingWindow} · ${dev.buckets?.length ?? 0} bins · POC ${dev.poc}`
       )
     }
   }, [enabled, exchange, symbol, developingWindow, vaTarget, config, getVisibleRange])
@@ -131,7 +131,7 @@ export function VolumeProfileOverlay({
     maxBarW: number,
     muted: boolean
   ) => {
-    if (!model.buckets.length) return
+    if (!model?.buckets?.length) return
     const maxVol = Math.max(...model.buckets.map((b) => b.volume), 0.0001)
     const capW = Math.max(48, Math.min(maxBarW, w * 0.22))
     for (const b of model.buckets) {
@@ -193,10 +193,10 @@ export function VolumeProfileOverlay({
 
     const fixed = fixedRef.current
     const dev = developingRef.current
-    if (fixed && fixed.buckets.length > 0 && fixed.totalVolume > 0) {
+    if (fixed && fixed.buckets?.length > 0 && fixed.totalVolume > 0) {
       paintProfileBars(ctx, bridge, fixed, w, h, BAR_MAX_FIXED, true)
     }
-    if (dev && dev.buckets.length > 0 && dev.totalVolume > 0) {
+    if (dev && dev.buckets?.length > 0 && dev.totalVolume > 0) {
       paintProfileBars(ctx, bridge, dev, w, h, BAR_MAX_DEV, false)
       const drawLevel = (price: number, color: string, label: string) => {
         const y = bridge.priceToCoordinate(price)
