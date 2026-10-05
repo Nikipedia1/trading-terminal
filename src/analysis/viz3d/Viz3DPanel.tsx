@@ -8,7 +8,7 @@ import type { ExchangeId } from '@/types'
 import { useChartViewportStore } from '@/stores/chartViewportStore'
 import { useMarketStore } from '@/stores/marketStore'
 import { subscribeOrderBookFeed } from '@/data/shared'
-import { buildViz3DModel } from './buildModel'
+import { buildViz3DModel } from './compute'
 import { Viz3DScene } from './Viz3DScene'
 import {
   DEFAULT_VIZ3D_CONFIG,
@@ -26,7 +26,10 @@ interface Viz3DPanelProps {
 }
 
 export function Viz3DPanel({ panelId, exchange, symbol, candles }: Viz3DPanelProps) {
-  const [cfg, setCfg] = useState<Viz3DConfig>(() => ({ ...DEFAULT_VIZ3D_CONFIG, dom: { ...DEFAULT_DOM3D_OPTIONS } }))
+  const [cfg, setCfg] = useState<Viz3DConfig>(() => ({
+    ...DEFAULT_VIZ3D_CONFIG,
+    dom: { ...DEFAULT_DOM3D_OPTIONS },
+  }))
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bookSnap, setBookSnap] = useState<import('@/data/shared').OrderBookSnapshot | null>(null)
 
@@ -60,10 +63,6 @@ export function Viz3DPanel({ panelId, exchange, symbol, candles }: Viz3DPanelPro
 
   const patch = useCallback((p: Partial<Viz3DConfig>) => {
     setCfg((c) => ({ ...c, ...p }))
-  }, [])
-
-  const patchDom = useCallback((p: Partial<Dom3DOptions>) => {
-    setCfg((c) => ({ ...c, dom: { ...c.dom, ...p } }))
   }, [])
 
   return (
@@ -101,7 +100,13 @@ export function Viz3DPanel({ panelId, exchange, symbol, candles }: Viz3DPanelPro
             key={id}
             type="button"
             className="text-[9px] px-1.5 py-0.5 rounded border border-[#2b3139] hover:border-[#f0b90b]/50"
-            onClick={() => setCfg((c) => ({ ...c, ...p.patch, dom: p.patch.dom ? { ...DEFAULT_DOM3D_OPTIONS, ...p.patch.dom } : c.dom }))}
+            onClick={() =>
+              setCfg((c) => ({
+                ...c,
+                ...p.patch,
+                dom: p.patch.dom ? { ...DEFAULT_DOM3D_OPTIONS, ...p.patch.dom } : c.dom,
+              }))
+            }
           >
             {p.label}
           </button>
