@@ -470,29 +470,58 @@ export default function App() {
       return false
     }
   })
+
   useEffect(() => {
     void refreshMe()
   }, [refreshMe])
+
   useEffect(() => {
-    if (user) setMode('authenticated')
-  }, [user, setMode])
+    if (status === 'authenticated') setMode('full')
+  }, [status, setMode])
+
+  const finishBoot = () => {
+    try {
+      sessionStorage.setItem('nacs-boot-v1', '1')
+    } catch {
+      /* private mode */
+    }
+    setBootDone(true)
+  }
+
   if (!bootDone) {
+    const sessionMode =
+      status === 'authenticated'
+        ? 'authenticated'
+        : status === 'unknown'
+          ? 'checking'
+          : 'guest'
     return (
       <BootSequence
-        onDone={() => {
-          try {
-            sessionStorage.setItem('nacs-boot-v1', '1')
-          } catch {}
-          setBootDone(true)
-        }}
+        onComplete={finishBoot}
+        userEmail={user?.email}
+        userRole={user?.role}
+        planId={planId}
+        sessionMode={sessionMode}
       />
     )
   }
-  if (status === 'loading' || status === 'idle') {
-    return <SplashLoader />
+
+  if (status === 'unknown') {
+    return <SplashLoader label="Checking secure session…" />
   }
-  if (!user && FEATURES.authGate) {
-    return <GuestEntry />
+  if (status !== 'authenticated') {
+    if (FEATURES.allowGuest) {
+      return (
+        <ErrorBoundary name="terminal-guest">
+          <GuestEntry />
+        </ErrorBoundary>
+      )
+    }
+    return (
+      <ErrorBoundary name="auth">
+        <LoginScreen />
+      </ErrorBoundary>
+    )
   }
   return (
     <ErrorBoundary name="terminal">
