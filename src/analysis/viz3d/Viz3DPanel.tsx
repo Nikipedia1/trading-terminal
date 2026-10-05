@@ -27,23 +27,23 @@ const MODES: { id: Viz3DMode; label: string }[] = [
 ]
 
 function filterByRange(
-  candles: Candle[],
+  candles: Candle[] | undefined | null,
   fromSec: number | null,
   toSec: number | null,
   syncVisible: boolean,
   maxBars: number
 ): Candle[] {
-  if (!syncVisible || fromSec == null || toSec == null || !(toSec > fromSec)) {
-    return (candles ?? []).slice(-Math.max(8, maxBars))
-  }
   const list = candles ?? []
+  if (!syncVisible || fromSec == null || toSec == null || !(toSec > fromSec)) {
+    return list.slice(-Math.max(8, maxBars))
+  }
   const inRange = list.filter((c) => c.time >= fromSec && c.time <= toSec)
   if (inRange.length >= 4) return inRange
   return list.filter((c) => c.time <= toSec).slice(-Math.max(8, maxBars))
 }
 
 export function Viz3DPanel() {
-  const primaryPanelId = useLayoutStore((s) => s.primaryChartId)
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
   const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
   const symbol = primary?.symbol ?? 'BTCUSDT'
@@ -52,21 +52,23 @@ export function Viz3DPanel() {
 
   const { candles, status } = usePanelMarket(symbol, interval, exchange)
   const book = useMarketStore((s) => s.orderBook)
-  const trades = useMarketStore((s) => s.recentTrades)
+  const trades = useMarketStore((s) => s.trades)
+
+  const fromSec = useChartViewportStore((s) => s.fromSec)
+  const toSec = useChartViewportStore((s) => s.toSec)
 
   const [cfg, setCfg] = useState<Viz3DConfig>(() => ({
     ...DEFAULT_VIZ3D_CONFIG,
+    syncVisible: true,
     dom: { ...DEFAULT_DOM3D_OPTIONS },
   }))
 
-  const viewport = useChartViewportStore((s) =>
-    primaryPanelId ? s.byPanel[primaryPanelId] : undefined
-  )
-  const fromSec = viewport?.fromSec ?? null
-  const toSec = viewport?.toSec ?? null
+  const patch = useCallback((p: Partial<Viz3DConfig>) => {
+    setCfg((c) => ({ ...c, ...p }))
+  }, [])
 
   const scopedCandles = useMemo(
-    () => filterByRange(candles ?? [], fromSec, toSec, cfg.syncVisible, cfg.maxBars),
+    () => filterByRange(candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars),
     [candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars]
   )
 
@@ -75,18 +77,20 @@ export function Viz3DPanel() {
     [scopedCandles, book, cfg, trades]
   )
 
-  const patch = useCallback((p: Partial<Viz3DConfig>) => {
-    setCfg((c) => ({ ...c, ...p }))
-  }, [])
-
-  const patchDom = useCallback((p: Partial<Dom3DOptions>) => {
-    setCfg((c) => ({ ...c, dom: { ...c.dom, ...p } }))
-  }, [])
+  useEffect(() => {
+    useChartViewportStore.getState().setViewport({
+      panelId: primaryPanelId,
+      symbol,
+      interval,
+    })
+  }, [primaryPanelId, symbol, interval])
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[#eaecef]">
-      <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#1e2329] shrink-0 flex-wrap">
-        <span className="text-[10px] font-semibold text-[#f0b90b] tracking-wide">3D PRO</span>
+    <div className="h-full w-full flex flex-col bg-[#0b0e11] min-h-0 text-[#eaecef]">
+      <div className="shrink-0 flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b border-[#2b3139]">
+        <span className="text-[10px] font-semibold tracking-wide text-[#f0b90b] uppercase">
+          3D Pro
+        </span>
         <span className="text-[10px] text-[#848e9c] font-mono">
           {symbol} · {interval}
         </span>
@@ -150,7 +154,9 @@ export function Viz3DPanel() {
           />
           Spin
         </label>
-        <span className="text-[9px] text-[#5e6673]">{status}</span>
+        <span className="text-[9px] text-[#5e6673]">
+          {status === 'connected' ? `LIVE · ${scopedCandles.length}` : String(status)}
+        </span>
       </div>
       <div className="flex-1 min-h-0 relative">
         <Viz3DScene model={model} config={cfg} onCameraChange={patch} className="absolute inset-0" />
