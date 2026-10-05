@@ -17,6 +17,7 @@ import {
   type Viz3DMode,
   type Dom3DOptions,
 } from './types'
+import { VIZ3D_THEMES } from './themes'
 import type { Candle } from '@/types'
 
 const MODES: { id: Viz3DMode; label: string }[] = [
@@ -85,8 +86,13 @@ export function Viz3DPanel() {
     })
   }, [primaryPanelId, symbol, interval])
 
+  const themeBg = (VIZ3D_THEMES[cfg.theme as keyof typeof VIZ3D_THEMES] ?? VIZ3D_THEMES.desk).bg
+
   return (
-    <div className="h-full w-full flex flex-col bg-[#0b0e11] min-h-0 text-[#eaecef]">
+    <div
+      className="h-full w-full flex flex-col min-h-0 text-[#eaecef] transition-colors duration-300"
+      style={{ backgroundColor: themeBg }}
+    >
       <div className="shrink-0 flex flex-wrap items-center gap-1.5 px-2 py-1.5 border-b border-[#2b3139]">
         <span className="text-[10px] font-semibold tracking-wide text-[#f0b90b] uppercase">
           3D Pro
