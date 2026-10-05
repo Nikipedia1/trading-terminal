@@ -14,7 +14,7 @@ interface BrandLogoProps {
 }
 
 const SIZE = {
-  sm: { box: 42, text: 'text-[13px]', sub: 'text-[9px]', fullH: 40 },
+  sm: { box: 48, text: 'text-[13px]', sub: 'text-[9px]', fullH: 48 },
   md: { box: 36, text: 'text-[14px]', sub: 'text-[9px]', fullH: 36 },
   lg: { box: 64, text: 'text-xl', sub: 'text-[11px]', fullH: 56 },
   xl: { box: 88, text: 'text-2xl', sub: 'text-[12px]', fullH: 72 },
@@ -65,6 +65,13 @@ export function BrandLogo({
 
   const mark = use3d ? (
     <LogoMark3D size={s.box} animated className="shrink-0" />
+  ) : size === 'sm' ? (
+    <img
+      src={BRAND.logoMarkUrl}
+      alt={BRAND.name}
+      className="nacs-header-logo-img shrink-0 h-full w-auto max-h-full object-contain bg-transparent"
+      draggable={false}
+    />
   ) : (
     <img
       src={BRAND.logoMarkUrl}
@@ -97,7 +104,11 @@ export function BrandLogo({
   return (
     <div
       className={`flex ${
-        layout === 'stack' ? 'flex-col items-center gap-3' : 'items-center gap-2.5'
+        layout === 'stack'
+          ? 'flex-col items-center gap-3'
+          : size === 'sm'
+            ? 'items-stretch h-full'
+            : 'items-center gap-2.5'
       } ${className}`}
     >
       {mark}
