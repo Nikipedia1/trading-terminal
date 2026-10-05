@@ -76,7 +76,8 @@ export function BrandLogo({
     />
   )
 
-  const wordmark = showWordmark && (
+  // Header (sm): logo mark only — no "NACS Lab" text
+  const wordmark = showWordmark && size !== 'sm' && (
     <div className={`min-w-0 leading-tight ${layout === 'stack' ? 'text-center' : ''}`}>
       <div className={`${s.text} font-bold tracking-[0.04em] truncate`}>
         <span className="text-[#f0b90b]">NACS</span>
