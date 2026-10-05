@@ -14,8 +14,8 @@ interface BrandLogoProps {
 }
 
 const SIZE = {
-  sm: { box: 48, text: 'text-[13px]', sub: 'text-[9px]', fullH: 48 },
-  md: { box: 36, text: 'text-[14px]', sub: 'text-[9px]', fullH: 36 },
+  sm: { box: 56, text: 'text-[13px]', sub: 'text-[9px]', fullH: 52 },
+  md: { box: 40, text: 'text-[14px]', sub: 'text-[9px]', fullH: 40 },
   lg: { box: 64, text: 'text-xl', sub: 'text-[11px]', fullH: 56 },
   xl: { box: 88, text: 'text-2xl', sub: 'text-[12px]', fullH: 72 },
 } as const
@@ -42,11 +42,11 @@ export function BrandLogo({
           src={BRAND.logoFullUrl}
           alt={BRAND.name}
           height={s.fullH}
-          className="shrink-0 object-contain"
+          className={`shrink-0 object-contain ${size === 'sm' ? 'nacs-header-logo-img' : ''}`}
           style={{
             height: s.fullH,
             width: 'auto',
-            maxWidth: size === 'xl' ? 420 : size === 'lg' ? 280 : 200,
+            maxWidth: size === 'xl' ? 420 : size === 'lg' ? 280 : size === 'sm' ? 240 : 200,
           }}
           draggable={false}
         />
@@ -67,9 +67,10 @@ export function BrandLogo({
     <LogoMark3D size={s.box} animated className="shrink-0" />
   ) : size === 'sm' ? (
     <img
-      src={BRAND.logoMarkUrl}
+      src={BRAND.logoFullUrl}
       alt={BRAND.name}
-      className="nacs-header-logo-img shrink-0 h-full w-auto max-h-full object-contain bg-transparent"
+      className="nacs-header-logo-img shrink-0 object-contain bg-transparent"
+      style={{ height: 52, width: 'auto', maxWidth: 220 }}
       draggable={false}
     />
   ) : (
@@ -83,32 +84,23 @@ export function BrandLogo({
     />
   )
 
-  // Header (sm): logo mark only — no "NACS Lab" text beside mark
+  // Header (sm): logo only — no separate text box
   const wordmark = showWordmark && size !== 'sm' && (
     <div className={`min-w-0 leading-tight ${layout === 'stack' ? 'text-center' : ''}`}>
       <div className={`${s.text} font-bold tracking-[0.04em] truncate`}>
         <span className="text-[#f0b90b]">NACS</span>
         <span className="text-[#eaecef]"> Lab</span>
-        {size !== 'sm' && (
-          <span className="font-semibold text-[#eaecef]"> Terminal</span>
-        )}
       </div>
-      {size !== 'sm' && (
-        <div className={`${s.sub} text-[#a0a8b4] tracking-[0.14em] uppercase mt-0.5`}>
-          {BRAND.tagline}
-        </div>
-      )}
+      <div className={`${s.sub} text-[#a0a8b4] tracking-[0.14em] uppercase truncate`}>
+        {BRAND.tagline}
+      </div>
     </div>
   )
 
   return (
     <div
       className={`flex ${
-        layout === 'stack'
-          ? 'flex-col items-center gap-3'
-          : size === 'sm'
-            ? 'items-stretch h-full'
-            : 'items-center gap-2.5'
+        layout === 'stack' ? 'flex-col items-center gap-2' : 'items-center gap-2'
       } ${className}`}
     >
       {mark}

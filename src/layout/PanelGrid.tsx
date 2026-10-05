@@ -105,42 +105,11 @@ function renderWidget(kind: WidgetKind) {
   }
 }
 
-const ADDABLE: WidgetKind[] = [
-  'book',
-  'tape',
-  'large',
-  'futures',
-  'paper',
-  'alerts',
-  'journal',
-  'terminal',
-  'watchlist',
-  'ai',
-  'wallet',
-  'bots',
-  'liquidity',
-  'backtest',
-  'microstructure',
-  'viz3d',
-  'quantlab',
-  'news',
-  'calendar',
-  'livetv',
-  'learn',
-  'ops',
-  'onchain',
-  'live_keys',
-  'plugin_indicator',
-  'admin',
-]
-
 export function PanelGrid({ width }: { width?: number }) {
   const panels = useLayoutStore((s) => s.panels)
   const widgets = useLayoutStore((s) => s.widgets)
   const layout = useLayoutStore((s) => s.layout)
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
-  const addChartPanel = useLayoutStore((s) => s.addChartPanel)
-  const addWidget = useLayoutStore((s) => s.addWidget)
   const removeWidget = useLayoutStore((s) => s.removeWidget)
   const setLayout = useLayoutStore((s) => s.setLayout)
 
@@ -148,35 +117,6 @@ export function PanelGrid({ width }: { width?: number }) {
 
   return (
     <div className="h-full w-full flex flex-col min-h-0">
-      <div className="shrink-0 flex items-center gap-2 px-2 py-1 border-b border-[#2b3139]">
-        <button
-          type="button"
-          className="text-[10px] px-2 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:text-[#f0b90b]"
-          onClick={() => addChartPanel()}
-        >
-          + Chart
-        </button>
-        <div className="relative group">
-          <button
-            type="button"
-            className="text-[10px] px-2 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:text-[#f0b90b]"
-          >
-            + Panel
-          </button>
-          <div className="hidden group-hover:block absolute right-0 top-full mt-1 bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-xl p-1 z-50 max-h-64 overflow-y-auto min-w-[140px]">
-            {ADDABLE.map((k) => (
-              <button
-                key={k}
-                type="button"
-                className="block w-full text-left text-[10px] px-2 py-1 text-[#c8cdd5] hover:bg-[#1e2329] rounded"
-                onClick={() => addWidget(k)}
-              >
-                {WIDGET_META[k]?.title ?? k}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
       <ResponsiveGrid
         className="layout"
         layouts={layouts}
