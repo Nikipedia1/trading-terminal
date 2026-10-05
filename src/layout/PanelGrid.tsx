@@ -91,11 +91,8 @@ function renderWidget(kind: WidgetKind) {
     case 'onchain':
       return <OnchainPanel />
     default: {
-      const reg = getRegisteredPanel(kind as string)
-      if (reg) {
-        const C = reg.component
-        return <C />
-      }
+      const Custom = getRegisteredPanel(kind)
+      if (Custom) return <Custom />
       return (
         <div className="h-full flex items-center justify-center text-[11px] text-[#5e6673]">
           Unknown panel: {String(kind)}
@@ -105,50 +102,48 @@ function renderWidget(kind: WidgetKind) {
   }
 }
 
-export function PanelGrid({ width }: { width?: number }) {
+export function PanelGrid({ width, height }: { width: number; height: number }) {
   const panels = useLayoutStore((s) => s.panels)
   const widgets = useLayoutStore((s) => s.widgets)
-  const layout = useLayoutStore((s) => s.layout)
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const layouts = useLayoutStore((s) => s.layouts)
+  const setLayouts = useLayoutStore((s) => s.setLayouts)
   const removeWidget = useLayoutStore((s) => s.removeWidget)
-  const setLayout = useLayoutStore((s) => s.setLayout)
 
-  const layouts = useMemo(() => ({ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }), [layout])
+  const cols = useMemo(() => ({ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }), [])
 
   return (
     <div className="h-full w-full flex flex-col min-h-0">
       <ResponsiveGrid
         className="layout"
+        width={width}
         layouts={layouts}
         breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        cols={{ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }}
-        rowHeight={24}
-        width={width || 1200}
-        onLayoutChange={(l) => setLayout(l)}
+        cols={cols}
+        rowHeight={Math.max(24, Math.floor(height / 24))}
+        margin={[6, 6]}
+        containerPadding={[6, 6]}
         draggableHandle=".panel-drag-handle"
-        isResizable
-        resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
+        onLayoutChange={(_layout, all) => setLayouts(all)}
+        compactType="vertical"
+        preventCollision={false}
       >
         {panels.map((p) => (
-          <div key={p.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-visible">
-            <ChartPanel config={p} isPrimary={p.id === primaryPanelId} />
+          <div key={p.id} className="nacs-widget-shell overflow-visible">
+            <ChartPanel config={p} />
           </div>
         ))}
         {widgets.map((w) => (
-          <div key={w.id} className="bg-[#0b0e11] border border-[#2b3139] rounded overflow-visible flex flex-col">
-            <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 min-h-[32px] text-[10px] text-[#848e9c] border-b border-[#2b3139] cursor-move select-none">
+          <div key={w.id} className="nacs-widget-shell overflow-visible">
+            <div className="panel-drag-handle nacs-widget-title cursor-move select-none min-h-[32px]">
               <span className="truncate font-semibold tracking-wide text-[#c8cdd5]">{w.title}</span>
               <button
                 type="button"
-                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded border border-[#2b3139] bg-[#12161c] text-[#f6465d] text-sm font-bold leading-none hover:bg-[#f6465d]/15 hover:border-[#f6465d]/60 active:scale-95"
-                title="Chiudi pannello"
-                aria-label="Chiudi pannello"
+                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded border border-terminal-border bg-terminal-bg text-terminal-red text-sm font-bold leading-none hover:bg-terminal-red/15 hover:border-terminal-red/60 active:scale-95"
+                title="Close panel"
                 onClick={(e) => {
                   e.stopPropagation()
                   removeWidget(w.id)
                 }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
               >
                 ×
               </button>
@@ -160,3 +155,5 @@ export function PanelGrid({ width }: { width?: number }) {
     </div>
   )
 }
+
+void WIDGET_META
