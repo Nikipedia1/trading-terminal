@@ -14,7 +14,7 @@ interface BrandLogoProps {
 }
 
 const SIZE = {
-  sm: { box: 26, text: 'text-[12px]', sub: 'text-[8px]', fullH: 28 },
+  sm: { box: 42, text: 'text-[13px]', sub: 'text-[9px]', fullH: 40 },
   md: { box: 36, text: 'text-[14px]', sub: 'text-[9px]', fullH: 36 },
   lg: { box: 64, text: 'text-xl', sub: 'text-[11px]', fullH: 56 },
   xl: { box: 88, text: 'text-2xl', sub: 'text-[12px]', fullH: 72 },
@@ -71,14 +71,14 @@ export function BrandLogo({
       alt={BRAND.name}
       width={s.box}
       height={s.box}
-      className="shrink-0 rounded-[10px] shadow-[0_0_28px_rgba(240,185,11,0.28)] ring-1 ring-[#f0b90b]/25 object-cover bg-black"
+      className="shrink-0 rounded-[12px] shadow-[0_0_32px_rgba(240,185,11,0.4)] ring-2 ring-[#f0b90b]/35 object-cover bg-black"
       draggable={false}
     />
   )
 
-  // Header (sm): logo mark only — no "NACS Lab" text
+  // Header (sm): logo mark only — no "NACS Lab" text beside mark
   const wordmark = showWordmark && size !== 'sm' && (
-    <div className={`min-w-0 leading-tight ${layout === 'stack' ? 'text-center' : ''}`}>
+    <div className={`min-w-0 leading-tight ${layout === 'stack' ? 'text-center' : ''`}>
       <div className={`${s.text} font-bold tracking-[0.04em] truncate`}>
         <span className="text-[#f0b90b]">NACS</span>
         <span className="text-[#eaecef]"> Lab</span>
