@@ -1,14 +1,29 @@
-/** Shared microstructure types + feedKey */
+/**
+ * Shared market microstructure types for analysis modules.
+ * Real data only – never invent fills or book levels.
+ */
 
+import type { ConnectionStatus, ExchangeId, MarketError } from '@/types'
+
+/** Aggressor = side that crossed the spread (took liquidity). */
 export type AggressorSide = 'buy' | 'sell'
 
+/**
+ * Normalized tick from public trade stream.
+ * Binance: isBuyerMaker true → aggressor is seller (hit the bid).
+ */
 export interface AggressorTrade {
   id: string
-  time: number
+  exchange: ExchangeId
+  symbol: string
   price: number
   qty: number
-  side: AggressorSide
-  isBuyerMaker?: boolean
+  /** Exchange event time (ms) */
+  time: number
+  /** true if buyer was maker → seller was aggressor */
+  isBuyerMaker: boolean
+  /** Derived: buy = market buy (lifted ask), sell = market sell (hit bid) */
+  aggressor: AggressorSide
 }
 
 export interface BookLevel {
@@ -16,42 +31,47 @@ export interface BookLevel {
   qty: number
 }
 
+/** Local L2 book maintained by applying snapshot + diffs */
 export interface LocalOrderBook {
-  bids: BookLevel[]
-  asks: BookLevel[]
-  ts: number
-}
-
-export interface OrderBookSnapshot {
-  bids: BookLevel[]
-  asks: BookLevel[]
+  exchange: ExchangeId
+  symbol: string
+  /** Last applied update id / sequence (exchange-specific) */
+  lastUpdateId: number
+  bids: Map<number, number> // price → qty
+  asks: Map<number, number>
+  /** Wall-clock of last successful apply */
+  updatedAt: number
+  /** True after snapshot synced and at least one valid diff applied (or snapshot only) */
   ready: boolean
-  ts?: number
 }
 
-export type FeedStatus =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'error'
-  | 'disconnected'
+/** Serializable snapshot for UI consumers */
+export interface OrderBookSnapshot {
+  exchange: ExchangeId
+  symbol: string
+  lastUpdateId: number
+  bids: BookLevel[] // sorted desc by price
+  asks: BookLevel[] // sorted asc by price
+  updatedAt: number
+  ready: boolean
+}
+
+export type FeedStatus = ConnectionStatus
 
 export interface FeedStatusEvent {
-  key: string
   status: FeedStatus
   detail?: string
 }
 
 export interface FeedErrorEvent {
-  key: string
-  error: string
+  error: MarketError
+}
+
+export function feedKey(exchange: ExchangeId, symbol: string): string {
+  return `${exchange}:${(symbol ?? '').toUpperCase()}`
 }
 
 export function aggressorFromBuyerMaker(isBuyerMaker: boolean): AggressorSide {
+  // Binance / common convention: m=true → buyer is maker → seller aggressive
   return isBuyerMaker ? 'sell' : 'buy'
-}
-
-export function feedKey(exchange: string, symbol: string): string {
-  return `${exchange}:${(symbol ?? '').toUpperCase()}`
 }
