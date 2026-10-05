@@ -2,7 +2,7 @@
  * 3D Pro desk widget — Deep DOM (Deep Chart style): walls + bubbles + full settings.
  */
 
-import { useMemo, useState, useCallback, useEffect } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
@@ -15,10 +15,11 @@ import {
   VIZ3D_PRESETS,
   type Viz3DConfig,
   type Viz3DMode,
-  type Dom3DOptions,
 } from './types'
 import { VIZ3D_THEMES } from './themes'
+import { Viz3DDrawOverlay } from './Viz3DDrawOverlay'
 import type { Candle } from '@/types'
+import type { Drawing } from '@/drawings/types'
 
 const MODES: { id: Viz3DMode; label: string }[] = [
   { id: 'volume_terrain', label: 'Volume Terrain' },
@@ -58,6 +59,8 @@ export function Viz3DPanel() {
   const fromSec = useChartViewportStore((s) => s.fromSec)
   const toSec = useChartViewportStore((s) => s.toSec)
 
+  const sceneWrapRef = useRef<HTMLDivElement>(null)
+  const [drawings, setDrawings] = useState<Drawing[]>([])
   const [cfg, setCfg] = useState<Viz3DConfig>(() => ({
     ...DEFAULT_VIZ3D_CONFIG,
     syncVisible: true,
@@ -164,8 +167,20 @@ export function Viz3DPanel() {
           {status === 'connected' ? `LIVE · ${scopedCandles.length}` : String(status)}
         </span>
       </div>
-      <div className="flex-1 min-h-0 relative">
-        <Viz3DScene model={model} config={cfg} onCameraChange={patch} className="absolute inset-0" />
+      <div ref={sceneWrapRef} className="flex-1 min-h-0 relative">
+        <Viz3DScene
+          model={model}
+          config={cfg}
+          drawings={drawings}
+          onCameraChange={patch}
+          className="absolute inset-0"
+        />
+        <Viz3DDrawOverlay
+          symbol={symbol}
+          model={model}
+          containerRef={sceneWrapRef}
+          onDrawingsChange={setDrawings}
+        />
       </div>
     </div>
   )
