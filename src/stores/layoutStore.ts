@@ -46,6 +46,7 @@ export const WIDGET_META: Record<
   ops: { title: 'Ops', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   onchain: { title: 'On-chain', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
   quantlab: { title: 'Quant Lab', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
+  battlefield: { title: 'Battlefield', minW: 5, minH: 10, defaultW: 8, defaultH: 16 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
