@@ -104,6 +104,7 @@ export type WidgetKind =
   | 'ops'
   | 'onchain'
   | 'quantlab'
+  | 'battlefield'
 
 export interface WidgetPanelConfig {
   id: string
