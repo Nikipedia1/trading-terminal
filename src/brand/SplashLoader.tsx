@@ -56,7 +56,7 @@ export function SplashLoader({
     <div
       className="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden bg-[#05070a]"
       style={{
-        backgroundImage: `url(${BRAND.splashHeroUrl})`,
+        backgroundImage: 'url(' + BRAND.splashHeroUrl + ')',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
