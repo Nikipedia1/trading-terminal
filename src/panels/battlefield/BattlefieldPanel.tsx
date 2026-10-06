@@ -1,28 +1,21 @@
 /**
- * BTC Battlefield — order-book walls + bull/bear units on isometric terrain.
- * Driven by live orderBook + trades from marketStore (no mock market data).
+ * Battlefield 3D — video-game style arena driven by live order book + tape.
+ * Orbit / pan / zoom with mouse (or touch). Bulls vs bears on deformable terrain.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { useMarketStore } from '@/stores/marketStore'
 
 interface Unit {
   id: number
   side: 'bull' | 'bear'
-  x: number
-  y: number
+  mesh: THREE.Mesh
   vx: number
-  vy: number
+  vz: number
   hp: number
-  size: number
   kind: 'infantry' | 'tank' | 'heavy'
   age: number
-}
-
-interface Explosion {
-  x: number
-  y: number
-  t: number
-  r: number
 }
 
 interface FeedItem {
@@ -32,36 +25,32 @@ interface FeedItem {
   time: number
 }
 
-function sumNotional(levels: { price: number; qty: number }[], n: number): number {
+function sumNotional(
+  levels: { price: number; qty: number }[] | undefined,
+  n: number
+): number {
+  if (!levels?.length) return 0
   let s = 0
   for (let i = 0; i < Math.min(n, levels.length); i++) {
-    s += levels[i].price * levels[i].qty
+    s += levels[i]!.price * levels[i]!.qty
   }
   return s
 }
 
-function isoProject(x: number, y: number, z: number, w: number, h: number) {
-  const sx = (x - y) * 0.866
-  const sy = (x + y) * 0.5 - z
-  return {
-    px: w * 0.5 + sx * (w * 0.038),
-    py: h * 0.62 + sy * (h * 0.028),
-  }
+function fmtM(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`
+  return `$${n.toFixed(0)}`
 }
 
-function terrainHeight(
-  x: number,
-  y: number,
-  midX: number,
-  sellStrength: number,
-  buyStrength: number
-): number {
-  const distSide = Math.abs(x - midX)
-  const wall = x < midX ? sellStrength : buyStrength
-  const ridge = Math.max(0, (distSide - 2) / 10)
+function terrainY(x: number, z: number, buyS: number, sellS: number): number {
+  const ridgeBuy = Math.max(0, (x - 2) / 14) * buyS * 3.2
+  const ridgeSell = Math.max(0, (-x - 2) / 14) * sellS * 3.2
   const noise =
-    Math.sin(x * 0.7 + y * 0.4) * 0.35 + Math.sin(x * 1.3 - y * 0.9) * 0.2
-  return ridge * wall * 4.5 + noise * 0.4
+    Math.sin(x * 0.55 + z * 0.4) * 0.25 + Math.sin(x * 1.1 - z * 0.7) * 0.15
+  return ridgeBuy + ridgeSell + noise
 }
 
 export function BattlefieldPanel() {
@@ -69,383 +58,428 @@ export function BattlefieldPanel() {
   const trades = useMarketStore((s) => s.trades)
   const ticker = useMarketStore((s) => s.ticker)
   const symbol = useMarketStore((s) => s.symbol)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  const mountRef = useRef<HTMLDivElement>(null)
   const unitsRef = useRef<Unit[]>([])
-  const explRef = useRef<Explosion[]>([])
   const feedRef = useRef<FeedItem[]>([])
-  const lastTradeId = useRef<string>('')
+  const lastTradeId = useRef('')
   const uid = useRef(1)
+  const buySRef = useRef(0.5)
+  const sellSRef = useRef(0.5)
   const [feedTick, setFeedTick] = useState(0)
+  const [hint, setHint] = useState(true)
+  const orderBookLive = useRef(orderBook)
+  orderBookLive.current = orderBook
+  const spawnQueue = useRef<
+    { side: 'bull' | 'bear'; kind: Unit['kind']; hp: number }[]
+  >([])
 
   const walls = useMemo(() => {
-    const bids = orderBook?.bids ?? []
-    const asks = orderBook?.asks ?? []
-    const buy = sumNotional(bids, 25)
-    const sell = sumNotional(asks, 25)
-    return { buy, sell, bids, asks }
+    const buy = sumNotional(orderBook?.bids, 25)
+    const sell = sumNotional(orderBook?.asks, 25)
+    const tot = buy + sell || 1
+    buySRef.current = buy / tot
+    sellSRef.current = sell / tot
+    return { buy, sell }
   }, [orderBook])
 
   const price = ticker?.lastPrice ?? orderBook?.bids?.[0]?.price ?? 0
   const chg = ticker?.priceChangePercent ?? 0
+  const contested =
+    walls.buy > walls.sell * 1.15
+      ? 'BULLS ADVANCING'
+      : walls.sell > walls.buy * 1.15
+        ? 'BEARS ADVANCING'
+        : 'CONTESTED'
 
   useEffect(() => {
     if (!trades.length) return
-    const recent = trades.slice(0, 12)
-    for (const tr of recent) {
+    for (const tr of trades.slice(0, 16)) {
       if (tr.id === lastTradeId.current) break
-      const quote = tr.price * tr.qty
-      if (quote < 8_000) continue
-      const isBuy = !tr.isBuyerMaker
-      const side: 'bull' | 'bear' = isBuy ? 'bull' : 'bear'
+      const notional = tr.price * tr.qty
+      if (notional < 8_000) continue
+      const bull = !tr.isBuyerMaker
       const kind: Unit['kind'] =
-        quote > 200_000 ? 'heavy' : quote > 50_000 ? 'tank' : 'infantry'
-      const size = kind === 'heavy' ? 3.2 : kind === 'tank' ? 2.4 : 1.4
-      const baseX = side === 'bull' ? 14 + Math.random() * 4 : 2 + Math.random() * 4
-      const baseY = 4 + Math.random() * 10
-      unitsRef.current.push({
-        id: uid.current++,
-        side,
-        x: baseX,
-        y: baseY,
-        vx: side === 'bull' ? -0.04 - Math.random() * 0.03 : 0.04 + Math.random() * 0.03,
-        vy: (Math.random() - 0.5) * 0.02,
-        hp: kind === 'heavy' ? 5 : kind === 'tank' ? 3 : 1,
-        size,
+        notional > 250_000 ? 'heavy' : notional > 50_000 ? 'tank' : 'infantry'
+      feedRef.current = [
+        {
+          id: `${tr.id}-${Date.now()}`,
+          text: `${bull ? 'BULL' : 'BEAR'} ${kind.toUpperCase()} · $${(notional / 1000).toFixed(1)}k @ ${tr.price.toFixed(2)}`,
+          side: bull ? 'bull' : 'bear',
+          time: Date.now(),
+        },
+        ...feedRef.current,
+      ].slice(0, 24)
+      setFeedTick((t) => t + 1)
+      spawnQueue.current.push({
+        side: bull ? 'bull' : 'bear',
         kind,
-        age: 0,
+        hp: kind === 'heavy' ? 4 : kind === 'tank' ? 2.5 : 1,
       })
-      feedRef.current.unshift({
-        id: tr.id + String(Date.now()),
-        text: `${kind === 'heavy' ? 'Large' : 'Agg'} ${isBuy ? 'buy' : 'sell'} · $${(quote / 1000).toFixed(1)}K`,
-        side,
-        time: Date.now(),
-      })
-      if (feedRef.current.length > 18) feedRef.current.pop()
-      if (quote > 100_000) {
-        explRef.current.push({
-          x: baseX + (side === 'bull' ? -1 : 1),
-          y: baseY,
-          t: 0,
-          r: 1.2,
-        })
-      }
     }
-    lastTradeId.current = recent[0]?.id ?? lastTradeId.current
-    setFeedTick((x) => x + 1)
-    if (unitsRef.current.length > 80) {
-      unitsRef.current = unitsRef.current.slice(-80)
-    }
+    if (trades[0]) lastTradeId.current = trades[0].id
   }, [trades])
 
   useEffect(() => {
-    let raf = 0
-    const loop = () => {
-      const canvas = canvasRef.current
-      if (canvas) draw(canvas)
-      raf = requestAnimationFrame(loop)
+    const mount = mountRef.current
+    if (!mount) return
+
+    const w0 = mount.clientWidth || 640
+    const h0 = mount.clientHeight || 360
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color(0x05070a)
+    scene.fog = new THREE.FogExp2(0x05070a, 0.018)
+
+    const camera = new THREE.PerspectiveCamera(50, w0 / h0, 0.1, 200)
+    camera.position.set(18, 14, 22)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setSize(w0, h0)
+    renderer.shadowMap.enabled = true
+    mount.appendChild(renderer.domElement)
+
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.08
+    controls.minDistance = 8
+    controls.maxDistance = 55
+    controls.maxPolarAngle = Math.PI * 0.48
+    controls.target.set(0, 1, 0)
+    controls.update()
+
+    const amb = new THREE.AmbientLight(0x6a7a88, 0.45)
+    scene.add(amb)
+    const sun = new THREE.DirectionalLight(0xfff2d6, 1.05)
+    sun.position.set(12, 22, 8)
+    sun.castShadow = true
+    sun.shadow.mapSize.set(1024, 1024)
+    scene.add(sun)
+    const rimBull = new THREE.PointLight(0x0ecb81, 1.2, 40)
+    rimBull.position.set(10, 6, 0)
+    scene.add(rimBull)
+    const rimBear = new THREE.PointLight(0xf6465d, 1.2, 40)
+    rimBear.position.set(-10, 6, 0)
+    scene.add(rimBear)
+
+    const grid = new THREE.GridHelper(40, 40, 0x1e2a22, 0x12181c)
+    grid.position.y = 0.02
+    scene.add(grid)
+
+    const tSeg = 48
+    const terrainGeo = new THREE.PlaneGeometry(36, 28, tSeg, tSeg)
+    terrainGeo.rotateX(-Math.PI / 2)
+    const terrainMat = new THREE.MeshStandardMaterial({
+      color: 0x0e1512,
+      roughness: 0.92,
+      metalness: 0.08,
+      flatShading: true,
+    })
+    const terrain = new THREE.Mesh(terrainGeo, terrainMat)
+    terrain.receiveShadow = true
+    scene.add(terrain)
+
+    const updateTerrain = () => {
+      const pos = terrainGeo.attributes.position as THREE.BufferAttribute
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i)
+        const z = pos.getZ(i)
+        pos.setY(i, terrainY(x, z, buySRef.current, sellSRef.current))
+      }
+      pos.needsUpdate = true
+      terrainGeo.computeVertexNormals()
+    }
+    updateTerrain()
+
+    const wallGroup = new THREE.Group()
+    scene.add(wallGroup)
+    const rebuildWalls = () => {
+      while (wallGroup.children.length) {
+        const c = wallGroup.children.pop()!
+        const mesh = c as THREE.Mesh
+        mesh.geometry?.dispose()
+        wallGroup.remove(c)
+      }
+      const bids = orderBookLive.current?.bids ?? []
+      const asks = orderBookLive.current?.asks ?? []
+      const maxN = Math.max(
+        ...bids.slice(0, 12).map((l) => l.price * l.qty),
+        ...asks.slice(0, 12).map((l) => l.price * l.qty),
+        1
+      )
+      const place = (
+        levels: { price: number; qty: number }[],
+        side: 'bull' | 'bear'
+      ) => {
+        levels.slice(0, 12).forEach((l, i) => {
+          const h = 0.4 + ((l.price * l.qty) / maxN) * 6
+          const geo = new THREE.BoxGeometry(0.7, h, 1.1)
+          const mat = new THREE.MeshStandardMaterial({
+            color: side === 'bull' ? 0x0ecb81 : 0xf6465d,
+            emissive: side === 'bull' ? 0x043d28 : 0x4a1018,
+            emissiveIntensity: 0.35,
+            roughness: 0.55,
+            metalness: 0.25,
+            transparent: true,
+            opacity: 0.88,
+          })
+          const m = new THREE.Mesh(geo, mat)
+          m.castShadow = true
+          const x = side === 'bull' ? 6 + i * 0.85 : -6 - i * 0.85
+          m.position.set(x, h / 2 + 0.05, -4 + (i % 3) * 2.2)
+          wallGroup.add(m)
+        })
+      }
+      place(bids, 'bull')
+      place(asks, 'bear')
+    }
+    rebuildWalls()
+
+    const flagGeo = new THREE.ConeGeometry(0.45, 1.4, 4)
+    const flagMat = new THREE.MeshStandardMaterial({
+      color: 0xf0b90b,
+      emissive: 0xf0b90b,
+      emissiveIntensity: 0.4,
+    })
+    const flag = new THREE.Mesh(flagGeo, flagMat)
+    flag.position.set(0, 1.2, 0)
+    scene.add(flag)
+
+    const unitMatBull = new THREE.MeshStandardMaterial({
+      color: 0x0ecb81,
+      emissive: 0x0a5c3a,
+      emissiveIntensity: 0.3,
+    })
+    const unitMatBear = new THREE.MeshStandardMaterial({
+      color: 0xf6465d,
+      emissive: 0x5c1018,
+      emissiveIntensity: 0.3,
+    })
+
+    function spawnUnit(side: 'bull' | 'bear', kind: Unit['kind'], hp: number) {
+      const size = kind === 'heavy' ? 0.55 : kind === 'tank' ? 0.42 : 0.28
+      const geo =
+        kind === 'heavy'
+          ? new THREE.DodecahedronGeometry(size)
+          : kind === 'tank'
+            ? new THREE.BoxGeometry(size * 1.4, size, size * 1.8)
+            : new THREE.SphereGeometry(size, 10, 10)
+      const mesh = new THREE.Mesh(
+        geo,
+        side === 'bull' ? unitMatBull : unitMatBear
+      )
+      mesh.castShadow = true
+      const x = side === 'bull' ? 8 + Math.random() * 4 : -8 - Math.random() * 4
+      const z = (Math.random() - 0.5) * 16
+      mesh.position.set(x, size + 0.2, z)
+      scene.add(mesh)
+      unitsRef.current.push({
+        id: uid.current++,
+        side,
+        mesh,
+        vx: side === 'bull' ? -0.04 - Math.random() * 0.03 : 0.04 + Math.random() * 0.03,
+        vz: (Math.random() - 0.5) * 0.02,
+        hp,
+        kind,
+        age: 0,
+      })
     }
 
-    const draw = (canvas: HTMLCanvasElement) => {
-      const parent = canvas.parentElement
-      const w = parent?.clientWidth || 800
-      const h = Math.max(320, parent?.clientHeight || 420)
-      const dpr = Math.min(2, window.devicePixelRatio || 1)
-      if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
-        canvas.width = Math.floor(w * dpr)
-        canvas.height = Math.floor(h * dpr)
-        canvas.style.width = `${w}px`
-        canvas.style.height = `${h}px`
-      }
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    for (let i = 0; i < 8; i++) {
+      spawnUnit(i % 2 === 0 ? 'bull' : 'bear', 'infantry', 1)
+    }
 
-      const g = ctx.createLinearGradient(0, 0, 0, h)
-      g.addColorStop(0, '#0a1210')
-      g.addColorStop(1, '#0d1a12')
-      ctx.fillStyle = g
-      ctx.fillRect(0, 0, w, h)
+    let raf = 0
+    let last = performance.now()
+    let wallTick = 0
 
-      const midX = 10
-      const sellS = Math.min(1.4, walls.sell / 80_000_000)
-      const buyS = Math.min(1.4, walls.buy / 80_000_000)
+    const onResize = () => {
+      if (!mount) return
+      const w = mount.clientWidth
+      const h = mount.clientHeight
+      if (w < 2 || h < 2) return
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      renderer.setSize(w, h)
+    }
+    const ro = new ResizeObserver(onResize)
+    ro.observe(mount)
 
-      const grid = 20
-      for (let gy = 0; gy < grid; gy++) {
-        for (let gx = 0; gx < grid; gx++) {
-          const x0 = gx
-          const y0 = gy
-          const z00 = terrainHeight(x0, y0, midX, sellS, buyS)
-          const z10 = terrainHeight(x0 + 1, y0, midX, sellS, buyS)
-          const z01 = terrainHeight(x0, y0 + 1, midX, sellS, buyS)
-          const z11 = terrainHeight(x0 + 1, y0 + 1, midX, sellS, buyS)
-          const p00 = isoProject(x0, y0, z00, w, h)
-          const p10 = isoProject(x0 + 1, y0, z10, w, h)
-          const p01 = isoProject(x0, y0 + 1, z01, w, h)
-          const p11 = isoProject(x0 + 1, y0 + 1, z11, w, h)
-          const onSell = x0 + 0.5 < midX
-          const base = onSell ? [34, 72, 48] : [42, 88, 52]
-          const shade = 0.85 + (z00 + z11) * 0.04
-          ctx.fillStyle = `rgb(${base[0] * shade},${base[1] * shade},${base[2] * shade})`
-          ctx.beginPath()
-          ctx.moveTo(p00.px, p00.py)
-          ctx.lineTo(p10.px, p10.py)
-          ctx.lineTo(p11.px, p11.py)
-          ctx.lineTo(p01.px, p01.py)
-          ctx.closePath()
-          ctx.fill()
-        }
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+
+      while (spawnQueue.current.length) {
+        const s = spawnQueue.current.shift()!
+        spawnUnit(s.side, s.kind, s.hp)
       }
 
-      ctx.strokeStyle = 'rgba(60,70,55,0.9)'
-      ctx.lineWidth = 6
-      const roadPts: { px: number; py: number }[] = []
-      for (let y = 0; y <= 20; y += 0.5) {
-        const z = terrainHeight(midX, y, midX, sellS, buyS) * 0.3
-        roadPts.push(isoProject(midX, y, z + 0.05, w, h))
-      }
-      ctx.beginPath()
-      roadPts.forEach((p, i) => (i ? ctx.lineTo(p.px, p.py) : ctx.moveTo(p.px, p.py)))
-      ctx.stroke()
-      ctx.setLineDash([8, 8])
-      ctx.strokeStyle = 'rgba(200,200,180,0.35)'
-      ctx.lineWidth = 1.5
-      ctx.stroke()
-      ctx.setLineDash([])
-
-      for (let i = 0; i < 40; i++) {
-        const tx = (i * 7.3) % 19 + 0.5
-        const ty = (i * 3.7) % 18 + 1
-        if (Math.abs(tx - midX) < 1.2) continue
-        const tz = terrainHeight(tx, ty, midX, sellS, buyS)
-        const p = isoProject(tx, ty, tz, w, h)
-        ctx.fillStyle = '#1a3d28'
-        ctx.beginPath()
-        ctx.moveTo(p.px, p.py - 8)
-        ctx.lineTo(p.px - 4, p.py)
-        ctx.lineTo(p.px + 4, p.py)
-        ctx.fill()
+      wallTick += dt
+      if (wallTick > 1.2) {
+        wallTick = 0
+        rebuildWalls()
+        updateTerrain()
       }
 
-      for (const pond of [
-        { x: 4, y: 6 },
-        { x: 16, y: 12 },
-      ]) {
-        const z = terrainHeight(pond.x, pond.y, midX, sellS, buyS) * 0.5
-        const p = isoProject(pond.x, pond.y, z, w, h)
-        ctx.fillStyle = 'rgba(40,90,140,0.55)'
-        ctx.beginPath()
-        ctx.ellipse(p.px, p.py, 18, 10, 0, 0, Math.PI * 2)
-        ctx.fill()
-      }
+      flag.rotation.y += dt * 1.2
+      flag.position.y = 1.1 + Math.sin(now * 0.003) * 0.12
 
       const units = unitsRef.current
       for (const u of units) {
-        u.x += u.vx
-        u.y += u.vy
-        u.age += 1
-        const targetX = midX + (u.side === 'bull' ? -0.8 : 0.8)
-        u.vx += (targetX - u.x) * 0.0015
-        u.vx *= 0.98
-        if (u.y < 1) u.vy = Math.abs(u.vy)
-        if (u.y > 18) u.vy = -Math.abs(u.vy)
+        u.age += dt
+        u.mesh.position.x += u.vx * (60 * dt)
+        u.mesh.position.z += u.vz * (60 * dt)
+        const y =
+          terrainY(
+            u.mesh.position.x,
+            u.mesh.position.z,
+            buySRef.current,
+            sellSRef.current
+          ) + (u.kind === 'heavy' ? 0.55 : u.kind === 'tank' ? 0.42 : 0.28)
+        u.mesh.position.y = y
+        u.mesh.rotation.y += dt * (u.side === 'bull' ? 2 : -2)
+        if (Math.abs(u.mesh.position.x) > 16) u.vx *= -1
+        if (Math.abs(u.mesh.position.z) > 12) u.vz *= -1
       }
 
       for (let i = 0; i < units.length; i++) {
         for (let j = i + 1; j < units.length; j++) {
-          const a = units[i]
-          const b = units[j]
+          const a = units[i]!
+          const b = units[j]!
           if (a.side === b.side) continue
-          const dx = a.x - b.x
-          const dy = a.y - b.y
-          if (dx * dx + dy * dy < 0.55) {
-            a.hp -= 0.04
-            b.hp -= 0.04
-            if (Math.random() < 0.02) {
-              explRef.current.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, t: 0, r: 0.8 })
-            }
+          const dx = a.mesh.position.x - b.mesh.position.x
+          const dz = a.mesh.position.z - b.mesh.position.z
+          const d2 = dx * dx + dz * dz
+          if (d2 < 0.7) {
+            a.hp -= dt * 0.8
+            b.hp -= dt * 0.8
+            a.vx += dx * 0.002
+            a.vz += dz * 0.002
+            b.vx -= dx * 0.002
+            b.vz -= dz * 0.002
           }
         }
       }
-      unitsRef.current = units.filter((u) => u.hp > 0 && u.age < 900 && u.x > -2 && u.x < 22)
 
-      for (const u of unitsRef.current) {
-        const z = terrainHeight(u.x, u.y, midX, sellS, buyS)
-        const p = isoProject(u.x, u.y, z + 0.3, w, h)
-        const col = u.side === 'bull' ? '#0ecb81' : '#f6465d'
-        ctx.fillStyle = col
-        if (u.kind === 'heavy') {
-          ctx.fillRect(p.px - 5, p.py - 5, 10, 8)
-          ctx.fillStyle = '#111'
-          ctx.fillRect(p.px - 2, p.py - 8, 4, 4)
-        } else if (u.kind === 'tank') {
-          ctx.beginPath()
-          ctx.ellipse(p.px, p.py, 6, 4, 0, 0, Math.PI * 2)
-          ctx.fill()
-        } else {
-          ctx.beginPath()
-          ctx.arc(p.px, p.py, 2.5 * u.size, 0, Math.PI * 2)
-          ctx.fill()
+      for (let i = units.length - 1; i >= 0; i--) {
+        const u = units[i]!
+        if (u.hp <= 0 || u.age > 45) {
+          scene.remove(u.mesh)
+          u.mesh.geometry.dispose()
+          units.splice(i, 1)
         }
       }
 
-      explRef.current = explRef.current
-        .map((e) => ({ ...e, t: e.t + 0.05 }))
-        .filter((e) => e.t < 1)
-      for (const e of explRef.current) {
-        const z = terrainHeight(e.x, e.y, midX, sellS, buyS)
-        const p = isoProject(e.x, e.y, z, w, h)
-        const alpha = 1 - e.t
-        ctx.strokeStyle = `rgba(255,180,40,${alpha})`
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.arc(p.px, p.py, 4 + e.t * 16 * e.r, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.fillStyle = `rgba(255,100,20,${alpha * 0.4})`
-        ctx.beginPath()
-        ctx.arc(p.px, p.py, 2 + e.t * 8, 0, Math.PI * 2)
-        ctx.fill()
+      if (units.length < 6 && Math.random() < 0.02) {
+        spawnUnit(Math.random() > 0.5 ? 'bull' : 'bear', 'infantry', 1)
       }
 
-      const bearL = isoProject(4, 2, terrainHeight(4, 2, midX, sellS, buyS) + 1, w, h)
-      const bullL = isoProject(16, 2, terrainHeight(16, 2, midX, sellS, buyS) + 1, w, h)
-      ctx.font = 'bold 12px ui-sans-serif, system-ui'
-      ctx.fillStyle = '#f6465d'
-      ctx.fillText('Bears', bearL.px - 18, bearL.py - 8)
-      ctx.fillStyle = '#0ecb81'
-      ctx.fillText('Bulls', bullL.px - 14, bullL.py - 8)
+      controls.update()
+      renderer.render(scene, camera)
+      raf = requestAnimationFrame(tick)
     }
+    raf = requestAnimationFrame(tick)
 
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [walls.buy, walls.sell])
-
-  const contested =
-    walls.buy > 0 && walls.sell > 0
-      ? Math.abs(walls.buy - walls.sell) / Math.max(walls.buy, walls.sell) < 0.25
-        ? 'Contested'
-        : walls.buy > walls.sell
-          ? 'Bulls press'
-          : 'Bears press'
-      : '—'
-
-  const fmtM = (n: number) =>
-    n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}K` : `$${n.toFixed(0)}`
-
-  const depthCanvasRef = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const canvas = depthCanvasRef.current
-    if (!canvas) return
-    const w = canvas.parentElement?.clientWidth || 220
-    const h = 90
-    const dpr = devicePixelRatio || 1
-    canvas.width = w * dpr
-    canvas.height = h * dpr
-    canvas.style.width = `${w}px`
-    canvas.style.height = `${h}px`
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.fillStyle = '#0b0e11'
-    ctx.fillRect(0, 0, w, h)
-    const bids = walls.bids.slice(0, 30)
-    const asks = walls.asks.slice(0, 30)
-    let cumB = 0
-    let cumA = 0
-    const maxQ = Math.max(
-      bids.reduce((s, l) => s + l.qty, 0),
-      asks.reduce((s, l) => s + l.qty, 0),
-      1
-    )
-    const mid = w / 2
-    ctx.strokeStyle = '#0ecb81'
-    ctx.beginPath()
-    bids.forEach((l, i) => {
-      cumB += l.qty
-      const x = mid - ((i + 1) / 30) * (mid - 8)
-      const y = h - 8 - (cumB / maxQ) * (h - 16)
-      if (i === 0) ctx.moveTo(mid, h - 8)
-      ctx.lineTo(x, y)
-    })
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(14,203,129,0.15)'
-    ctx.lineTo(8, h - 8)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = '#f6465d'
-    ctx.beginPath()
-    asks.forEach((l, i) => {
-      cumA += l.qty
-      const x = mid + ((i + 1) / 30) * (mid - 8)
-      const y = h - 8 - (cumA / maxQ) * (h - 16)
-      if (i === 0) ctx.moveTo(mid, h - 8)
-      ctx.lineTo(x, y)
-    })
-    ctx.stroke()
-    ctx.fillStyle = '#848e9c'
-    ctx.font = '9px monospace'
-    ctx.fillText('AGGREGATED SPOT DEPTH', 8, 12)
-  }, [walls])
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      controls.dispose()
+      unitsRef.current.forEach((u) => {
+        scene.remove(u.mesh)
+        u.mesh.geometry.dispose()
+      })
+      unitsRef.current = []
+      renderer.dispose()
+      if (renderer.domElement.parentNode === mount) {
+        mount.removeChild(renderer.domElement)
+      }
+    }
+  }, [])
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-[#0a0f0c] text-[#eaecef]">
-      <div className="flex flex-wrap items-center gap-3 px-3 py-2 border-b border-[#1e2a22] shrink-0">
+    <div className="h-full flex flex-col min-h-0 bg-[#05070a] text-[#eaecef] select-none">
+      <div className="flex flex-wrap items-center gap-3 px-3 py-2 border-b border-[#1e2a22] shrink-0 bg-[#0a0f0c]/90">
         <div>
           <div className="text-[9px] text-[#5e6673] uppercase tracking-wider">
-            {symbol} · AGGREGATED SPOT
+            {symbol} · Battlefield 3D · LIVE
           </div>
           <div className="text-lg font-mono font-bold tabular-nums">
-            {price ? `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+            {price
+              ? `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+              : '—'}
           </div>
         </div>
-        <div className={`text-[11px] font-mono ${chg >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'}`}>
+        <div
+          className={`text-[11px] font-mono ${
+            chg >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
+          }`}
+        >
           {chg >= 0 ? '+' : ''}
           {chg.toFixed(2)}%
         </div>
         <div className="ml-auto flex items-center gap-4 text-[11px]">
           <div className="text-right">
             <div className="text-[9px] text-[#f6465d] uppercase">Sell wall</div>
-            <div className="font-mono font-semibold text-[#f6465d]">{fmtM(walls.sell)}</div>
+            <div className="font-mono font-semibold text-[#f6465d]">
+              {fmtM(walls.sell)}
+            </div>
           </div>
-          <div className="px-2 py-0.5 rounded border border-[#2b3139] text-[#f0b90b] text-[10px] font-semibold">
+          <div className="px-2 py-0.5 rounded border border-[#f0b90b]/40 text-[#f0b90b] text-[10px] font-semibold tracking-wide">
             {contested}
           </div>
           <div className="text-left">
             <div className="text-[9px] text-[#0ecb81] uppercase">Buy wall</div>
-            <div className="font-mono font-semibold text-[#0ecb81]">{fmtM(walls.buy)}</div>
+            <div className="font-mono font-semibold text-[#0ecb81]">
+              {fmtM(walls.buy)}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-[240px] relative">
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+      <div className="flex-1 min-h-[280px] relative">
+        <div ref={mountRef} className="absolute inset-0" />
+        {hint && (
+          <button
+            type="button"
+            className="absolute bottom-3 left-3 z-10 text-[10px] px-2 py-1 rounded bg-[#0b0e11]/85 border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef]"
+            onClick={() => setHint(false)}
+          >
+            🖱 Drag orbit · Scroll zoom · Right-drag pan · Tap to dismiss
+          </button>
+        )}
+        <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 text-[9px] font-mono pointer-events-none">
+          <span className="px-1.5 py-0.5 rounded bg-[#0ecb81]/15 text-[#0ecb81] border border-[#0ecb81]/30">
+            ● BULL = aggressive buy
+          </span>
+          <span className="px-1.5 py-0.5 rounded bg-[#f6465d]/15 text-[#f6465d] border border-[#f6465d]/30">
+            ● BEAR = aggressive sell
+          </span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-t border-[#1e2a22] shrink-0 max-h-[140px]">
-        <div className="p-2 border-r border-[#1e2a22]">
-          <canvas ref={depthCanvasRef} className="w-full block" />
-        </div>
-        <div className="p-2 overflow-y-auto text-[10px] font-mono">
-          <div className="text-[9px] text-[#5e6673] uppercase mb-1">Market feed · LIVE</div>
-          {feedTick >= 0 && feedRef.current.length === 0 ? (
-            <div className="text-[#5e6673]">Waiting for large trades…</div>
-          ) : (
-            feedRef.current.slice(0, 8).map((f) => (
-              <div
-                key={f.id}
-                className={`py-0.5 ${
-                  f.side === 'bull'
-                    ? 'text-[#0ecb81]'
-                    : f.side === 'bear'
-                      ? 'text-[#f6465d]'
-                      : 'text-[#f0b90b]'
-                }`}
-              >
-                ● {f.text}
-              </div>
-            ))
-          )}
-        </div>
+      <div className="border-t border-[#1e2a22] shrink-0 max-h-[120px] overflow-y-auto p-2 text-[10px] font-mono bg-[#080b09]">
+        <div className="text-[9px] text-[#5e6673] uppercase mb-1">Combat feed · LIVE</div>
+        {feedTick >= 0 && feedRef.current.length === 0 ? (
+          <div className="text-[#5e6673]">
+            Waiting for large tape hits — Start Live on the desk…
+          </div>
+        ) : (
+          feedRef.current.slice(0, 10).map((f) => (
+            <div
+              key={f.id}
+              className={
+                f.side === 'bull'
+                  ? 'text-[#0ecb81] py-0.5'
+                  : f.side === 'bear'
+                    ? 'text-[#f6465d] py-0.5'
+                    : 'text-[#f0b90b] py-0.5'
+              }
+            >
+              ● {f.text}
+            </div>
+          ))
+        )}
       </div>
     </div>
   )
