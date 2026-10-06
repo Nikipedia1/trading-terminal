@@ -1,4 +1,4 @@
-/** Panel grid – charts + widgets. Quant Lab registered. */
+/** Panel grid – charts + widgets */
 import { useMemo } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout'
 import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
@@ -15,12 +15,13 @@ import { WalletPanel } from '@/wallet/WalletPanel'
 import { BotsPanel } from '@/bots/BotsPanel'
 import { AdminPanel } from '@/auth/AdminPanel'
 import { LiquidityPanel } from '@/ui/liquidity/LiquidityPanel'
-import { BacktestPanel } from '@/bots/backtest/BacktestPanel'
+import { BacktestPanel } from '@/backtest/BacktestPanel'
 import { LiveKeysPanel } from '@/live/LiveKeysPanel'
 import { PluginIndicatorPanel } from '@/plugins/PluginIndicatorPanel'
 import { MicrostructurePanel } from '@/analysis/microstructure/MicrostructurePanel'
 import { Viz3DPanel } from '@/analysis/viz3d'
 import { QuantLabPanel } from '@/panels/quantlab/QuantLabPanel'
+import { BattlefieldPanel } from '@/panels/battlefield/BattlefieldPanel'
 import { NewsPanel } from '@/panels/news'
 import { CalendarPanel } from '@/panels/calendar'
 import { LiveTvPanel } from '@/panels/livetv'
@@ -68,16 +69,18 @@ function renderWidget(kind: WidgetKind) {
       return <LiquidityPanel />
     case 'backtest':
       return <BacktestPanel />
-    case 'live_keys':
+    case 'livekeys':
       return <LiveKeysPanel />
-    case 'plugin_indicator':
+    case 'plugins':
       return <PluginIndicatorPanel />
-    case 'microstructure':
+    case 'micro':
       return <MicrostructurePanel />
     case 'viz3d':
       return <Viz3DPanel />
     case 'quantlab':
       return <QuantLabPanel />
+    case 'battlefield':
+      return <BattlefieldPanel />
     case 'news':
       return <NewsPanel />
     case 'calendar':
@@ -91,8 +94,11 @@ function renderWidget(kind: WidgetKind) {
     case 'onchain':
       return <OnchainPanel />
     default: {
-      const Custom = getRegisteredPanel(kind)
-      if (Custom) return <Custom />
+      const reg = getRegisteredPanel(kind)
+      if (reg) {
+        const C = reg.component
+        return <C />
+      }
       return (
         <div className="h-full flex items-center justify-center text-[11px] text-[#5e6673]">
           Unknown panel: {String(kind)}
