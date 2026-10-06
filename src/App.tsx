@@ -343,7 +343,7 @@ function TerminalApp() {
   )
 }
 
-const QUICK_PANELS = ['book', 'tape', 'viz3d', 'news', 'terminal', 'watchlist'] as const
+const QUICK_PANELS = ['battlefield', 'book', 'tape', 'viz3d', 'quantlab', 'news', 'terminal'] as const
 
 function DeskAddControls() {
   const addChartPanel = useLayoutStore((s) => s.addChartPanel)
@@ -405,7 +405,7 @@ function GuestEntry() {
       <div
         className="min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden bg-[#05070a]"
         style={{
-          backgroundImage: `url(${BRAND.splashHeroUrl})`,
+          backgroundImage: 'url(' + BRAND.splashHeroUrl + ')',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
@@ -449,7 +449,7 @@ export default function App() {
   const planId = usePlanStore((s) => s.planId)
   const [bootDone, setBootDone] = useState(() => {
     try {
-      return sessionStorage.getItem('nacs-boot-done') === '1'
+      return sessionStorage.getItem('nacs-boot-v1') === '1'
     } catch {
       return false
     }
@@ -463,24 +463,29 @@ export default function App() {
     if (status === 'authenticated') setMode('full')
   }, [status, setMode])
 
-  /* Full professional boot (splash progress + terminal) — once per tab session */
+  const finishBoot = () => {
+    try {
+      sessionStorage.setItem('nacs-boot-v1', '1')
+    } catch {
+      /* private mode */
+    }
+    setBootDone(true)
+  }
+
   if (!bootDone) {
     const sessionMode =
-      status === 'authenticated' ? 'authenticated' : status === 'unknown' ? 'checking' : 'guest'
+      status === 'authenticated'
+        ? 'authenticated'
+        : status === 'unknown'
+          ? 'checking'
+          : 'guest'
     return (
       <BootSequence
+        onComplete={finishBoot}
         userEmail={user?.email}
         userRole={user?.role}
         planId={planId}
         sessionMode={sessionMode}
-        onComplete={() => {
-          try {
-            sessionStorage.setItem('nacs-boot-done', '1')
-          } catch {
-            /* ignore */
-          }
-          setBootDone(true)
-        }}
       />
     )
   }
@@ -488,7 +493,6 @@ export default function App() {
   if (status === 'unknown') {
     return <SplashLoader label="Checking secure session…" />
   }
-
   if (status !== 'authenticated') {
     if (FEATURES.allowGuest) {
       return (
@@ -497,11 +501,14 @@ export default function App() {
         </ErrorBoundary>
       )
     }
-    return <LoginScreen />
+    return (
+      <ErrorBoundary name="auth">
+        <LoginScreen />
+      </ErrorBoundary>
+    )
   }
-
   return (
-    <ErrorBoundary name="terminal" key={planId}>
+    <ErrorBoundary name="terminal">
       <TerminalApp />
     </ErrorBoundary>
   )
