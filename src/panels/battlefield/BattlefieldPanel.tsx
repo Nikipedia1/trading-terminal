@@ -1,6 +1,6 @@
 /**
  * Battlefield 3D — game-like arena: green/red territories, depth mountains (toggle),
- * defined unit models, live order-book walls + tape spawns.
+ * road / rocks / trees, defined unit models, live order-book walls + tape spawns.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -52,6 +52,76 @@ function groundNoise(x: number, z: number): number {
     Math.sin(x * 0.35 + z * 0.22) * 0.12 +
     Math.sin(x * 0.9 - z * 0.55) * 0.06
   )
+}
+
+function makeTree(scale = 1): THREE.Group {
+  const g = new THREE.Group()
+  const trunkMat = new THREE.MeshStandardMaterial({
+    color: 0x4a3422,
+    roughness: 0.9,
+    metalness: 0.05,
+  })
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x1a6b3a,
+    emissive: 0x0a3d20,
+    emissiveIntensity: 0.08,
+    roughness: 0.85,
+  })
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08 * scale, 0.12 * scale, 0.7 * scale, 6),
+    trunkMat
+  )
+  trunk.position.y = 0.35 * scale
+  trunk.castShadow = true
+  const foliage = new THREE.Mesh(
+    new THREE.ConeGeometry(0.45 * scale, 0.9 * scale, 7),
+    leafMat
+  )
+  foliage.position.y = 0.95 * scale
+  foliage.castShadow = true
+  const foliage2 = new THREE.Mesh(
+    new THREE.ConeGeometry(0.32 * scale, 0.65 * scale, 7),
+    leafMat
+  )
+  foliage2.position.y = 1.35 * scale
+  foliage2.castShadow = true
+  g.add(trunk, foliage, foliage2)
+  return g
+}
+
+function makeRock(scale = 1): THREE.Group {
+  const g = new THREE.Group()
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x5a5e66,
+    roughness: 0.95,
+    metalness: 0.1,
+    flatShading: true,
+  })
+  const a = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35 * scale, 0), mat)
+  a.position.y = 0.2 * scale
+  a.rotation.set(0.3, 0.5, 0.1)
+  a.castShadow = true
+  a.receiveShadow = true
+  const b = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22 * scale, 0), mat)
+  b.position.set(0.28 * scale, 0.12 * scale, 0.1 * scale)
+  b.rotation.set(-0.2, 0.8, 0.4)
+  b.castShadow = true
+  g.add(a, b)
+  return g
+}
+
+function makeBush(scale = 1): THREE.Mesh {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x145c32,
+    emissive: 0x0a2e18,
+    emissiveIntensity: 0.1,
+    roughness: 0.9,
+    flatShading: true,
+  })
+  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28 * scale, 0), mat)
+  m.position.y = 0.18 * scale
+  m.castShadow = true
+  return m
 }
 
 function makeUnitModel(side: 'bull' | 'bear', kind: UnitKind): THREE.Group {
@@ -302,6 +372,91 @@ export function BattlefieldPanel() {
     const grid = new THREE.GridHelper(36, 36, 0x1e2a22, 0x12181c)
     grid.position.y = 0.06
     scene.add(grid)
+
+    // —— Road (along contested mid, Z axis) ——
+    const roadMat = new THREE.MeshStandardMaterial({
+      color: 0x2a2e35,
+      roughness: 0.92,
+      metalness: 0.08,
+    })
+    const road = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 26), roadMat)
+    road.position.set(0, 0.08, 0)
+    road.receiveShadow = true
+    scene.add(road)
+    const dashMat = new THREE.MeshStandardMaterial({
+      color: 0xf0b90b,
+      emissive: 0xf0b90b,
+      emissiveIntensity: 0.2,
+    })
+    for (let i = -11; i <= 11; i += 2) {
+      const dash = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.9), dashMat)
+      dash.position.set(0, 0.12, i)
+      scene.add(dash)
+    }
+    const shoulderMat = new THREE.MeshStandardMaterial({
+      color: 0x3d3830,
+      roughness: 1,
+    })
+    const shL = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.05, 26), shoulderMat)
+    shL.position.set(-1.25, 0.07, 0)
+    const shR = shL.clone()
+    shR.position.x = 1.25
+    scene.add(shL, shR)
+
+    // —— Trees, rocks, bushes ——
+    const decor = new THREE.Group()
+    scene.add(decor)
+    const treeSpots: [number, number, number][] = [
+      [14, 8, 1.1],
+      [16, -6, 1.25],
+      [12, 11, 0.9],
+      [15, 3, 1.0],
+      [13, -11, 1.15],
+      [-14, 7, 1.05],
+      [-16, -5, 1.2],
+      [-12, 10, 0.95],
+      [-15, -9, 1.1],
+      [-13, 2, 1.0],
+      [8, 12, 0.85],
+      [-8, 12, 0.85],
+      [9, -12, 0.9],
+      [-9, -12, 0.9],
+    ]
+    for (const [x, z, sc] of treeSpots) {
+      const tree = makeTree(sc)
+      tree.position.set(x, groundNoise(x, z), z)
+      tree.rotation.y = Math.random() * Math.PI * 2
+      decor.add(tree)
+    }
+    const rockSpots: [number, number, number][] = [
+      [5, 6, 1.2],
+      [6, -4, 0.9],
+      [-5, 5, 1.1],
+      [-6, -7, 1.0],
+      [4, 10, 0.7],
+      [-4, -10, 0.8],
+      [11, 0, 1.3],
+      [-11, 1, 1.15],
+      [7, -9, 0.85],
+      [-7, 8, 0.95],
+      [2.5, 4, 0.6],
+      [-2.5, -3, 0.65],
+    ]
+    for (const [x, z, sc] of rockSpots) {
+      const rock = makeRock(sc)
+      rock.position.set(x, groundNoise(x, z), z)
+      rock.rotation.y = Math.random() * Math.PI
+      decor.add(rock)
+    }
+    for (let i = 0; i < 18; i++) {
+      const side = i % 2 === 0 ? 1 : -1
+      const x = side * (3.5 + (i % 5) * 1.8 + Math.random())
+      const z = -12 + (i * 1.4) % 24
+      if (Math.abs(x) < 2.5) continue
+      const bush = makeBush(0.7 + Math.random() * 0.5)
+      bush.position.set(x, groundNoise(x, z), z)
+      decor.add(bush)
+    }
 
     const mountainGroup = new THREE.Group()
     scene.add(mountainGroup)
@@ -659,7 +814,7 @@ export function BattlefieldPanel() {
             ● RED zone = asks / bears
           </span>
           <span className="px-1.5 py-0.5 rounded bg-[#f0b90b]/15 text-[#f0b90b] border border-[#f0b90b]/30">
-            ● GOLD strip = contested mid
+            ● ROAD = contested mid
           </span>
         </div>
       </div>
