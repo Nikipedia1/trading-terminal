@@ -137,19 +137,44 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       kind,
       title: meta.title,
     }
+    const w = Math.min(meta.defaultW, 6)
+    const h = meta.defaultH
+    const layout = get().layout
+    const occupiedRight = layout.some((it) => it.x + it.w > 6 && it.y < 14)
     const item: GridLayoutItem = {
       i: id,
-      x: (get().layout.length * 2) % 12,
-      y: Infinity,
-      w: meta.defaultW,
-      h: meta.defaultH,
+      x: occupiedRight ? 0 : 6,
+      y: occupiedRight ? Infinity : 0,
+      w,
+      h,
       minW: meta.minW,
       minH: meta.minH,
     }
-    set((s) => ({
-      widgets: [...s.widgets, widget],
-      layout: [...s.layout, item],
-    }))
+    set((s) => {
+      let nextLayout = [...s.layout]
+      if (!occupiedRight) {
+        nextLayout = nextLayout.map((it) => {
+          if (it.w >= 10 && it.x === 0) {
+            return { ...it, w: 6 }
+          }
+          return it
+        })
+      }
+      nextLayout = [...nextLayout, item]
+      return {
+        widgets: [...s.widgets, widget],
+        layout: nextLayout,
+      }
+    })
+    try {
+      queueMicrotask(() => {
+        document
+          .querySelector(`[data-panel-id="${id}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      })
+    } catch {
+      /* */
+    }
   },
 
   removeWidget: (id) => {
