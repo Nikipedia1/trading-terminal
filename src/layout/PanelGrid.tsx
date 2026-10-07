@@ -32,6 +32,7 @@ import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { LargeTradesWidget } from '@/ui/OrderBookWidget'
 import { getRegisteredPanel } from '@/panels'
 import type { WidgetKind } from '@/types'
+import { WidgetChartLinkShell } from '@/hooks/ChartLinkContext'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
@@ -157,9 +158,11 @@ export function PanelGrid({ width }: { width?: number }) {
                 ×
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
               <ErrorBoundary name={w.kind}>
-                {renderWidget(w.kind)}
+                <WidgetChartLinkShell>
+                  {renderWidget(w.kind)}
+                </WidgetChartLinkShell>
               </ErrorBoundary>
             </div>
           </div>
