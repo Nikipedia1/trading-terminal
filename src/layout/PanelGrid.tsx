@@ -32,6 +32,7 @@ import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { LargeTradesWidget } from '@/ui/OrderBookWidget'
 import { getRegisteredPanel } from '@/panels'
 import type { WidgetKind } from '@/types'
+import { ErrorBoundary } from '@/ui/ErrorBoundary'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -94,7 +95,7 @@ function renderWidget(kind: WidgetKind) {
     case 'onchain':
       return <OnchainPanel />
     default: {
-      const reg = getRegisteredPanel(kind)
+      const reg = getRegisteredPanel(kind as string)
       if (reg) {
         const C = reg.component
         return <C />
@@ -138,7 +139,7 @@ export function PanelGrid({ width }: { width?: number }) {
           </div>
         ))}
         {widgets.map((w) => (
-          <div key={w.id} className="nacs-widget-shell overflow-visible flex flex-col">
+          <div key={w.id} data-panel-id={w.id} className="nacs-widget-shell overflow-visible flex flex-col">
             <div className="panel-drag-handle nacs-widget-title cursor-move select-none min-h-[32px]">
               <span className="truncate font-semibold tracking-wide text-[#c8cdd5]">{w.title}</span>
               <button
@@ -156,7 +157,11 @@ export function PanelGrid({ width }: { width?: number }) {
                 ×
               </button>
             </div>
-            <div className="flex-1 min-h-0">{renderWidget(w.kind)}</div>
+            <div className="flex-1 min-h-0 overflow-auto">
+              <ErrorBoundary name={w.kind}>
+                {renderWidget(w.kind)}
+              </ErrorBoundary>
+            </div>
           </div>
         ))}
       </ResponsiveGrid>
