@@ -1,11 +1,14 @@
 /**
  * AI Desk – modes, SMC, liquidity, chat, auto-draw, selectable AI API.
  * AI replies link matched concepts to Learn glossary.
+ * Drawings target the Chart-linked panel (or primary fallback).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
+import { useResolvedChartLink } from '@/hooks/ChartLinkContext'
+import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useDrawingStore } from '@/drawings/drawingStore'
 import { analyzeCandles, reportToDrawings, type TaReport } from '@/analysis/aiDesk/taEngine'
 import {
@@ -74,7 +77,6 @@ const QUICK = [
   'Help',
 ]
 
-/** Bold **chunks** + glossary linkify on AI text. */
 function AiRichText({ text }: { text: string }) {
   const chunks = text.split('**')
   return (
@@ -93,13 +95,34 @@ function AiRichText({ text }: { text: string }) {
 }
 
 export function AiAnalysisPanel() {
-  const candles = useMarketStore((s) => s.candles)
-  const symbol = useMarketStore((s) => s.symbol)
-  const interval = useMarketStore((s) => s.interval)
+  const link = useResolvedChartLink('follow')
+  const panels = useLayoutStore((s) => s.panels)
+  const storePrimary = useLayoutStore((s) => s.primaryPanelId)
+  const targetPanelId =
+    (link.linkedPanelId && panels.some((p) => p.id === link.linkedPanelId)
+      ? link.linkedPanelId
+      : null) ||
+    storePrimary ||
+    panels[0]?.id ||
+    ''
+  const targetPanel = panels.find((p) => p.id === targetPanelId) ?? panels[0]
+  const symbol = (targetPanel?.symbol || link.symbol || 'BTCUSDT').toUpperCase()
+  const interval = targetPanel?.interval || link.interval
+  const exchange = targetPanel?.exchange || link.exchange || 'binance'
+  const primaryPanelId = targetPanelId
+
+  const { candles: linkedCandles } = usePanelMarket(symbol, interval, exchange)
+  const marketCandles = useMarketStore((s) => s.candles)
+  const marketSymbol = useMarketStore((s) => s.symbol)
+  const candles =
+    linkedCandles.length >= 8
+      ? linkedCandles
+      : marketSymbol.toUpperCase() === symbol
+        ? marketCandles
+        : linkedCandles
   const ticker = useMarketStore((s) => s.ticker)
   const orderBook = useMarketStore((s) => s.orderBook)
   const trades = useMarketStore((s) => s.trades)
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const addDrawing = useDrawingStore((s) => s.addDrawing)
   const clearDrawings = useDrawingStore((s) => s.clearDrawings)
   const getDrawings = useDrawingStore((s) => s.getDrawings)
@@ -116,7 +139,7 @@ export function AiAnalysisPanel() {
     {
       id: ++msgSeq,
       role: 'sys',
-      text: 'AI Desk · API + mode. Analyze include Liquidity (High/Low, imbalance, long/short). Auto-draw sul chart.',
+      text: 'AI Desk · Analyze / Auto-draw sul chart collegato (barra Chart sopra).',
     },
   ])
   const [input, setInput] = useState('')
@@ -153,7 +176,9 @@ export function AiAnalysisPanel() {
 
   const applyDraw = useCallback(
     (r: TaReport, s: SmcReport, l: LiquidityReport) => {
-      loadFromStorage(primaryPanelId, symbol)
+      if (!primaryPanelId) return 0
+      const sym = symbol.toUpperCase()
+      loadFromStorage(primaryPanelId, sym)
       const classic = filterClassic(reportToDrawings(r, 'AI'), opts)
       const smcDraws = smcToDrawings(s, {
         fvg: opts.fvg,
@@ -177,20 +202,29 @@ export function AiAnalysisPanel() {
         anchor
       )
       const all = [...classic, ...smcDraws, ...liqDraws]
-      for (const d of all) addDrawing(primaryPanelId, symbol, d)
+      for (const d of all) addDrawing(primaryPanelId, sym, d)
       return all.length
     },
     [opts, primaryPanelId, symbol, addDrawing, loadFromStorage, candles]
   )
 
   const onAutoDraw = useCallback(() => {
+    if (!primaryPanelId) {
+      push('sys', 'Nessun chart collegato — usa la barra Chart o apri un grafico')
+      return
+    }
+    if (candles.length < 8) {
+      push('sys', 'Poche candele — Load History sul chart collegato')
+      return
+    }
     const { r, s, l } = ensure()
     const n = applyDraw(r, s, l)
-    push('sys', `Auto-draw: ${n} oggetti su ${symbol} (TA+SMC+Liquidity)`)
-  }, [ensure, applyDraw, push, symbol])
+    push('sys', `Auto-draw: ${n} oggetti su ${symbol} (panel ${primaryPanelId.slice(-8)})`)
+  }, [ensure, applyDraw, push, symbol, primaryPanelId, candles.length])
 
   const onClear = useCallback(() => {
-    clearDrawings(primaryPanelId, symbol)
+    if (!primaryPanelId) return
+    clearDrawings(primaryPanelId, symbol.toUpperCase())
     push('sys', 'Disegni cancellati')
   }, [clearDrawings, primaryPanelId, symbol, push])
 
@@ -209,7 +243,14 @@ export function AiAnalysisPanel() {
         ...l.summary,
       ].join('\n')
     )
-  }, [ensure, push])
+    if (primaryPanelId && candles.length >= 8) {
+      const n = applyDraw(r, s, l)
+      if (n > 0) push('sys', `Auto-draw: ${n} oggetti → chart ${symbol}`)
+      else push('sys', 'Nessun oggetto da disegnare (opzioni draw / dati)')
+    } else {
+      push('sys', 'Collega un chart e carica history prima di disegnare')
+    }
+  }, [ensure, push, applyDraw, primaryPanelId, candles.length, symbol])
 
   const send = useCallback(
     async (raw: string) => {
@@ -223,7 +264,7 @@ export function AiAnalysisPanel() {
         const { text: reply, source } = await callAiChat(text, api, mode, r, s, l)
         push('ai', reply)
         push('sys', `via ${source}`)
-        if (/\b(disegn|draw|traccia)\b/i.test(text)) {
+        if (/\b(disegn|draw|traccia|auto-?draw)\b/i.test(text)) {
           const n = applyDraw(r, s, l)
           push('sys', `Draw: ${n} oggetti`)
         }
@@ -265,7 +306,7 @@ export function AiAnalysisPanel() {
     push('sys', `API → ${meta.label}`)
   }
 
-  const existing = getDrawings(primaryPanelId, symbol).length
+  const existing = primaryPanelId ? getDrawings(primaryPanelId, symbol).length : 0
   const meta = AI_PROVIDERS.find((p) => p.id === api.provider) ?? AI_PROVIDERS[0]
 
   return (
