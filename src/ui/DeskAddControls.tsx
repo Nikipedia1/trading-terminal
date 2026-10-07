@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
 import type { WidgetKind } from '@/types'
 
@@ -66,13 +67,17 @@ function labelFor(k: WidgetKind): string {
   return LABELS[k] ?? WIDGET_META[k]?.title ?? k
 }
 
+type MenuPos = { top: number; left: number; width: number }
+
 export function DeskAddControls() {
   const addChartPanel = useLayoutStore((s) => s.addChartPanel)
   const addWidget = useLayoutStore((s) => s.addWidget)
   const widgets = useLayoutStore((s) => s.widgets)
   const [open, setOpen] = useState(false)
   const [flash, setFlash] = useState<string | null>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<MenuPos | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const allKinds = useMemo(() => {
     const keys = Object.keys(WIDGET_META) as WidgetKind[]
@@ -87,22 +92,51 @@ export function DeskAddControls() {
     })
   }, [])
 
+  const updatePos = () => {
+    const btn = btnRef.current
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    const width = 240
+    const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
+    const top = Math.min(r.bottom + 6, window.innerHeight - 120)
+    setPos({ top, left, width })
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return
+    updatePos()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onResize = () => updatePos()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onResize, true)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onResize, true)
+    }
+  }, [open])
+
   useEffect(() => {
     if (!open) return
     const onDoc = (e: MouseEvent | TouchEvent) => {
-      const el = rootRef.current
-      if (!el) return
-      if (e.target instanceof Node && !el.contains(e.target)) {
-        setOpen(false)
-      }
+      const t = e.target
+      if (!(t instanceof Node)) return
+      if (menuRef.current?.contains(t)) return
+      if (btnRef.current?.contains(t)) return
+      setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('touchstart', onDoc)
+    const id = window.setTimeout(() => {
+      document.addEventListener('mousedown', onDoc)
+      document.addEventListener('touchstart', onDoc)
+    }, 0)
     document.addEventListener('keydown', onKey)
     return () => {
+      window.clearTimeout(id)
       document.removeEventListener('mousedown', onDoc)
       document.removeEventListener('touchstart', onDoc)
       document.removeEventListener('keydown', onKey)
@@ -114,17 +148,102 @@ export function DeskAddControls() {
     addWidget(kind)
     const after = useLayoutStore.getState().widgets.length
     const title = labelFor(kind)
-    if (after > before) {
-      setFlash(`Aperto: ${title}`)
-    } else {
-      setFlash(`Non aggiunto: ${title}`)
-    }
+    setFlash(after > before ? `Aperto: ${title}` : `Non aggiunto: ${title}`)
     setOpen(false)
     window.setTimeout(() => setFlash(null), 2200)
   }
 
+  const menuMaxH = Math.max(
+    180,
+    Math.min(420, (typeof window !== 'undefined' ? window.innerHeight : 600) - (pos?.top ?? 80) - 16),
+  )
+
+  const menu =
+    open && pos
+      ? createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="nacs-panel-menu"
+            style={{
+              position: 'fixed',
+              top: pos.top,
+              left: pos.left,
+              width: pos.width,
+              maxHeight: menuMaxH,
+              zIndex: 99999,
+              overflowY: 'auto',
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+              background: '#0b0e11',
+              border: '1px solid #2b3139',
+              borderRadius: 8,
+              boxShadow: '0 16px 48px rgba(0,0,0,0.65)',
+              padding: '4px 0',
+              pointerEvents: 'auto',
+            }}
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 1,
+                padding: '8px 12px',
+                fontSize: 10,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: '#5e6673',
+                background: '#0b0e11',
+                borderBottom: '1px solid #1e2329',
+              }}
+            >
+              Tutti i pannelli · {allKinds.length}
+            </div>
+            {allKinds.map((k) => {
+              const openCount = widgets.filter((w) => w.kind === k).length
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  role="menuitem"
+                  className="nacs-panel-menu-item"
+                  style={{
+                    display: 'flex',
+                    width: '100%',
+                    alignItems: 'center',
+                    gap: 8,
+                    textAlign: 'left',
+                    fontSize: 13,
+                    padding: '10px 12px',
+                    color: '#eaecef',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    pick(k)
+                  }}
+                >
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {labelFor(k)}
+                  </span>
+                  {openCount > 0 ? (
+                    <span style={{ fontSize: 10, color: '#848e9c' }}>{openCount} open</span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>,
+          document.body,
+        )
+      : null
+
   return (
-    <div className="relative flex items-center gap-1.5 mr-1" ref={rootRef}>
+    <div className="relative flex items-center gap-1.5 mr-1">
       <button
         type="button"
         className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 hover:text-[#f0b90b] font-medium"
@@ -140,52 +259,49 @@ export function DeskAddControls() {
       >
         ⚔ Battlefield
       </button>
-      <div className="relative">
-        <button
-          type="button"
-          className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 hover:text-[#f0b90b] font-medium"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-        >
-          + Panel
-        </button>
-        {open && (
+      <button
+        ref={btnRef}
+        type="button"
+        className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 hover:text-[#f0b90b] font-medium"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        + Panel
+      </button>
+      {menu}
+      {flash &&
+        createPortal(
           <div
-            className="absolute right-0 top-full mt-1 bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-xl py-1 z-[200] max-h-[min(70vh,420px)] overflow-y-auto min-w-[210px]"
-            role="menu"
+            style={{
+              position: 'fixed',
+              bottom: 64,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 100000,
+              padding: '8px 14px',
+              borderRadius: 8,
+              border: '1px solid rgba(240,185,11,0.4)',
+              background: '#12161c',
+              color: '#f0b90b',
+              fontSize: 12,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+            }}
           >
-            <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-[#5e6673] border-b border-[#1e2329]">
-              Tutti i pannelli · {allKinds.length}
-            </div>
-            {allKinds.map((k) => {
-              const openCount = widgets.filter((w) => w.kind === k).length
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 text-left text-[12px] px-3 py-2 text-[#eaecef] hover:bg-[#1e2329] hover:text-[#f0b90b] cursor-pointer active:bg-[#2b3139]"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    pick(k)
-                  }}
-                >
-                  <span className="flex-1 truncate">{labelFor(k)}</span>
-                  {openCount > 0 ? (
-                    <span className="text-[9px] text-[#848e9c] tabular-nums">{openCount} open</span>
-                  ) : null}
-                </button>
-              )
-            })}
-          </div>
+            {flash}
+          </div>,
+          document.body,
         )}
-      </div>
-      {flash && (
-        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[300] px-3 py-1.5 rounded-md border border-[#f0b90b]/40 bg-[#12161c] text-[12px] text-[#f0b90b] shadow-xl pointer-events-none">
-          {flash}
-        </div>
-      )}
+      <style>{`
+        .nacs-panel-menu-item:hover {
+          background: #1e2329 !important;
+          color: #f0b90b !important;
+        }
+        .nacs-panel-menu-item:active {
+          background: #2b3139 !important;
+        }
+      `}</style>
     </div>
   )
 }
