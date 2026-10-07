@@ -3,8 +3,9 @@
  */
 
 import { useEffect, useState } from 'react'
-import { useLayoutStore } from '@/stores/layoutStore'
 import { startMicroEngine, type MicroSnapshot } from './engine'
+import { useChartLink } from '@/hooks/useChartLink'
+import { ChartLinkBar } from '@/ui/ChartLinkBar'
 
 function fmt(n: number | null, d = 2): string {
   if (n == null || !Number.isFinite(n)) return '—'
@@ -37,11 +38,9 @@ function Metric({
 }
 
 export function MicrostructurePanel() {
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
-  const panels = useLayoutStore((s) => s.panels)
-  const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
-  const symbol = primary?.symbol ?? 'BTCUSDT'
-  const exchange = primary?.exchange ?? 'binance'
+  const link = useChartLink('follow')
+  const symbol = link.symbol
+  const exchange = link.exchange
 
   const [snap, setSnap] = useState<MicroSnapshot | null>(null)
 
@@ -67,6 +66,26 @@ export function MicrostructurePanel() {
 
   return (
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px]">
+      <ChartLinkBar
+        dense
+        mode={link.mode}
+        setMode={link.setMode}
+        panels={link.panels}
+        linkedPanelId={link.linkedPanelId}
+        setLinkedPanelId={link.setLinkedPanelId}
+        symbol={link.symbol}
+        interval={link.interval}
+        exchange={link.exchange}
+        customSymbol={link.customSymbol}
+        setCustomSymbol={link.setCustomSymbol}
+        customInterval={link.customInterval}
+        setCustomInterval={link.setCustomInterval}
+        customExchange={link.customExchange}
+        setCustomExchange={link.setCustomExchange}
+        applyToChart={link.applyToChart}
+        makePrimary={link.makePrimary}
+        isPrimary={link.isPrimary}
+      />
       <div className="shrink-0 px-2 py-1.5 border-b border-[#2b3139] flex items-center gap-2">
         <span className="text-[10px] font-semibold text-[#f0b90b]">MICRO</span>
         <span className="font-mono text-[#eaecef]">{symbol}</span>
