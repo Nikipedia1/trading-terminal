@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
 import type { WidgetKind } from '@/types'
 
-/** Preferred order in the menu (rest follows alphabetically by title). */
 const PRIORITY: WidgetKind[] = [
   'battlefield',
   'book',
@@ -70,7 +69,10 @@ function labelFor(k: WidgetKind): string {
 export function DeskAddControls() {
   const addChartPanel = useLayoutStore((s) => s.addChartPanel)
   const addWidget = useLayoutStore((s) => s.addWidget)
+  const widgets = useLayoutStore((s) => s.widgets)
   const [open, setOpen] = useState(false)
+  const [flash, setFlash] = useState<string | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   const allKinds = useMemo(() => {
     const keys = Object.keys(WIDGET_META) as WidgetKind[]
@@ -85,13 +87,44 @@ export function DeskAddControls() {
     })
   }, [])
 
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent | TouchEvent) => {
+      const el = rootRef.current
+      if (!el) return
+      if (e.target instanceof Node && !el.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   const pick = (kind: WidgetKind) => {
+    const before = useLayoutStore.getState().widgets.length
     addWidget(kind)
+    const after = useLayoutStore.getState().widgets.length
+    const title = labelFor(kind)
+    if (after > before) {
+      setFlash(`Aperto: ${title}`)
+    } else {
+      setFlash(`Non aggiunto: ${title}`)
+    }
     setOpen(false)
+    window.setTimeout(() => setFlash(null), 2200)
   }
 
   return (
-    <div className="flex items-center gap-1.5 mr-1">
+    <div className="relative flex items-center gap-1.5 mr-1" ref={rootRef}>
       <button
         type="button"
         className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 hover:text-[#f0b90b] font-medium"
@@ -117,35 +150,42 @@ export function DeskAddControls() {
           + Panel
         </button>
         {open && (
-          <>
-            <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} aria-hidden />
-            <div
-              className="absolute right-0 top-full mt-1 bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-xl py-1 z-[80] max-h-[min(70vh,420px)] overflow-y-auto min-w-[200px]"
-              role="menu"
-            >
-              <div className="px-2 py-1 text-[9px] uppercase tracking-wider text-[#5e6673]">
-                All panels
-              </div>
-              {allKinds.map((k) => (
+          <div
+            className="absolute right-0 top-full mt-1 bg-[#0b0e11] border border-[#2b3139] rounded-md shadow-xl py-1 z-[200] max-h-[min(70vh,420px)] overflow-y-auto min-w-[210px]"
+            role="menu"
+          >
+            <div className="px-3 py-1.5 text-[9px] uppercase tracking-wider text-[#5e6673] border-b border-[#1e2329]">
+              Tutti i pannelli · {allKinds.length}
+            </div>
+            {allKinds.map((k) => {
+              const openCount = widgets.filter((w) => w.kind === k).length
+              return (
                 <button
                   key={k}
                   type="button"
                   role="menuitem"
-                  className="block w-full text-left text-[12px] px-3 py-1.5 text-[#eaecef] hover:bg-[#1e2329] hover:text-[#f0b90b] rounded-none cursor-pointer"
+                  className="flex w-full items-center gap-2 text-left text-[12px] px-3 py-2 text-[#eaecef] hover:bg-[#1e2329] hover:text-[#f0b90b] cursor-pointer active:bg-[#2b3139]"
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     pick(k)
                   }}
-                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  {labelFor(k)}
+                  <span className="flex-1 truncate">{labelFor(k)}</span>
+                  {openCount > 0 ? (
+                    <span className="text-[9px] text-[#848e9c] tabular-nums">{openCount} open</span>
+                  ) : null}
                 </button>
-              ))}
-            </div>
-          </>
+              )
+            })}
+          </div>
         )}
       </div>
+      {flash && (
+        <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[300] px-3 py-1.5 rounded-md border border-[#f0b90b]/40 bg-[#12161c] text-[12px] text-[#f0b90b] shadow-xl pointer-events-none">
+          {flash}
+        </div>
+      )}
     </div>
   )
 }
