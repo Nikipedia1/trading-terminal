@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react'
-import { useMarketStore } from '@/stores/marketStore'
 import { FourierView } from './FourierView'
 import { QuantConceptsView } from './QuantConceptsView'
 import { Fourier3DView } from './Fourier3DView'
+import { useChartLink } from '@/hooks/useChartLink'
+import { usePanelMarket } from '@/hooks/usePanelMarket'
+import { ChartLinkBar } from '@/ui/ChartLinkBar'
 
 type Tab = 'fourier' | 'concepts' | 'fourier3d'
 
 export function QuantLabPanel() {
-  const candles = useMarketStore((s) => s.candles)
-  const symbol = useMarketStore((s) => s.symbol)
-  const interval = useMarketStore((s) => s.interval)
+  const link = useChartLink('follow')
+  const { candles, status } = usePanelMarket(link.symbol, link.interval, link.exchange)
   const [tab, setTab] = useState<Tab>('fourier')
   const [harmonics, setHarmonics] = useState(8)
 
@@ -27,7 +28,8 @@ export function QuantLabPanel() {
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#2b3139] shrink-0">
         <span className="text-[11px] font-semibold text-[#f0b90b] tracking-wide">QUANT LAB</span>
         <span className="text-[10px] text-[#848e9c] font-mono">
-          {symbol} · {interval} · n={n}
+          {link.symbol} · {link.interval} · n={n}
+          {status !== 'connected' ? ` · ${status}` : ''}
         </span>
         <div className="ml-auto flex gap-1">
           {tabs.map((t) => (
@@ -47,17 +49,38 @@ export function QuantLabPanel() {
         </div>
       </div>
 
+      <ChartLinkBar
+        dense
+        mode={link.mode}
+        setMode={link.setMode}
+        panels={link.panels}
+        linkedPanelId={link.linkedPanelId}
+        setLinkedPanelId={link.setLinkedPanelId}
+        symbol={link.symbol}
+        interval={link.interval}
+        exchange={link.exchange}
+        customSymbol={link.customSymbol}
+        setCustomSymbol={link.setCustomSymbol}
+        customInterval={link.customInterval}
+        setCustomInterval={link.setCustomInterval}
+        customExchange={link.customExchange}
+        setCustomExchange={link.setCustomExchange}
+        applyToChart={link.applyToChart}
+        makePrimary={link.makePrimary}
+        isPrimary={link.isPrimary}
+      />
+
       <div className="flex-1 min-h-0 overflow-y-auto">
         {!ready ? (
           <div className="p-4 text-[12px] text-[#848e9c]">
-            Need at least ~32 candles on the active chart. Load history / start live.
+            Need at least ~32 candles. Select a chart above or set Own symbol/TF and wait for history.
           </div>
         ) : tab === 'fourier' ? (
           <FourierView candles={candles} harmonics={harmonics} onHarmonics={setHarmonics} />
         ) : tab === 'fourier3d' ? (
           <Fourier3DView candles={candles} harmonics={harmonics} />
         ) : (
-          <QuantConceptsView candles={candles} intervalHint={interval} />
+          <QuantConceptsView candles={candles} intervalHint={link.interval} />
         )}
       </div>
     </div>
