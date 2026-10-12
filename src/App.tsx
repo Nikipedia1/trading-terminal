@@ -39,8 +39,8 @@ function StatusBadge() {
     error: 'bg-terminal-red/20 text-terminal-red',
   }
   return (
-    <span className={`px-2 py-0.5 rounded text-xxs font-medium ${colors[status] || ''}`}>
-      {status.toUpperCase()}
+    <span className={`text-xxs px-1.5 py-0.5 rounded ${colors[status] ?? ''}`}>
+      {status}
     </span>
   )
 }
@@ -50,16 +50,12 @@ function normalizeSymbol(raw: string): string {
 }
 
 function Controls() {
+  const setSymbol = useMarketStore((s) => s.setSymbol)
+  const setInterval = useMarketStore((s) => s.setInterval)
   const marketSymbol = useMarketStore((s) => s.symbol)
   const marketInterval = useMarketStore((s) => s.interval)
-  const setSymbol = useMarketStore((s) => s.setSymbol)
-  const setIntervalStore = useMarketStore((s) => s.setInterval)
-  const loadHistorical = useMarketStore((s) => s.loadHistorical)
-  const startLive = useMarketStore((s) => s.startLive)
-  const stopLive = useMarketStore((s) => s.stopLive)
-  const status = useMarketStore((s) => s.status)
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
+  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const updatePanel = useLayoutStore((s) => s.updatePanel)
   const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
   const symbol = primary?.symbol ?? marketSymbol
@@ -68,73 +64,50 @@ function Controls() {
   useEffect(() => {
     setSymbolDraft(symbol)
   }, [symbol])
-  const applySymbol = (raw: string) => {
-    const v = normalizeSymbol(raw)
-    if (!v || v === symbol) {
+  const commitSymbol = () => {
+    const v = normalizeSymbol(symbolDraft)
+    if (!v || v.length < 4) {
       setSymbolDraft(symbol)
       return
     }
     setSymbol(v)
     updatePanel(primaryPanelId, { symbol: v })
   }
-  const applyInterval = (v: Interval) => {
-    if (v === interval) return
-    setIntervalStore(v)
+  const onInterval = (v: Interval) => {
+    setInterval(v)
     updatePanel(primaryPanelId, { interval: v })
   }
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel/95 density-compact">
-      <SymbolBadge symbol={symbolDraft || symbol} size="sm" className="shrink-0" />
+    <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 border-b border-terminal-border bg-[#0b0e11]">
+      <SymbolBadge symbol={symbol} size="sm" />
       <input
-        className="bg-terminal-bg border border-[#f0b90b]/40 rounded px-2 py-1 text-sm w-32 font-mono-nums font-semibold text-[#eaecef]"
+        className="bg-[#12161c] border border-[#2b3139] rounded px-2 py-1 text-xs w-28 font-mono text-[#eaecef]"
         value={symbolDraft}
-        list="top-symbol-presets"
-        placeholder="BTCUSDT"
         onChange={(e) => setSymbolDraft(normalizeSymbol(e.target.value))}
-        onBlur={() => applySymbol(symbolDraft)}
+        onBlur={commitSymbol}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Enter') commitSymbol()
         }}
+        list="global-symbols"
       />
-      <datalist id="top-symbol-presets">
-        {SYMBOL_PRESETS.map((p) => (
-          <option key={p.symbol} value={p.symbol}>
-            {formatSymbolOption(p.symbol)} · {p.group}
+      <datalist id="global-symbols">
+        {SYMBOL_PRESETS.map((pr) => (
+          <option key={pr.symbol} value={pr.symbol}>
+            {formatSymbolOption(pr.symbol)}
           </option>
         ))}
       </datalist>
       <select
-        className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
+        className="bg-[#12161c] border border-[#2b3139] rounded px-2 py-1 text-xs text-[#eaecef]"
         value={interval}
-        onChange={(e) => applyInterval(e.target.value as Interval)}
+        onChange={(e) => onInterval(e.target.value as Interval)}
       >
-        {ALL_INTERVALS.map((i) => (
-          <option key={i} value={i}>
-            {i}
+        {ALL_INTERVALS.map((iv) => (
+          <option key={iv} value={iv}>
+            {iv}
           </option>
         ))}
       </select>
-      <button
-        onClick={() => loadHistorical()}
-        className="px-3 py-1 bg-terminal-blue/20 text-terminal-blue rounded text-sm"
-      >
-        Load History
-      </button>
-      {status === 'connected' || status === 'connecting' || status === 'reconnecting' ? (
-        <button
-          onClick={stopLive}
-          className="px-3 py-1 bg-terminal-red/20 text-terminal-red rounded text-sm"
-        >
-          Stop Live
-        </button>
-      ) : (
-        <button
-          onClick={startLive}
-          className="px-3 py-1 bg-terminal-green/20 text-terminal-green rounded text-sm"
-        >
-          Start Live
-        </button>
-      )}
       <StatusBadge />
     </div>
   )
@@ -142,14 +115,15 @@ function Controls() {
 
 function ChartArea() {
   const ref = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ width: 0, height: 0 })
+  const [size, setSize] = useState({ width: 1200, height: 600 })
   useEffect(() => {
-    if (!ref.current) return
+    const el = ref.current
+    if (!el) return
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
-      setSize({ width, height })
+      if (width > 0 && height > 0) setSize({ width, height })
     })
-    ro.observe(ref.current)
+    ro.observe(el)
     return () => ro.disconnect()
   }, [])
   return (
@@ -206,6 +180,7 @@ function TerminalApp() {
           <DeskAddControls />
           <ArchiveMenu />
           <WorkspaceMenu />
+          <AuthControls />
           <span className="hidden sm:inline text-xxs text-terminal-muted">
             Desk · {BRAND.versionLabel}
           </span>
@@ -234,39 +209,127 @@ function TerminalApp() {
 function GuestEntry() {
   const setMode = useSessionModeStore((s) => s.setMode)
   const [entered, setEntered] = useState(false)
+  const [tab, setTab] = useState<'login' | 'guest'>('login')
   useEffect(() => {
     if (entered) setMode('guest-readonly')
   }, [entered, setMode])
-  if (!entered) {
+  if (entered) {
     return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden bg-[#05070a]"
-        style={{
-          backgroundImage: 'url(' + BRAND.splashHeroUrl + ')',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="relative z-10 nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 max-w-md w-full flex flex-col items-center gap-5">
-          <BrandLogo size="xl" layout="stack" fullLogo showWordmark />
-          <p className="text-[12px] text-[#848e9c] text-center">
-            Continue as guest for a read-only desk.
-          </p>
-          <button
-            type="button"
-            className="w-full px-4 py-3 rounded-lg bg-[#f0b90b] text-[#0b0e11] font-semibold"
-            onClick={() => setEntered(true)}
-          >
-            Enter desk
-          </button>
-        </div>
-      </div>
+      <ErrorBoundary name="terminal-guest">
+        <TerminalApp />
+      </ErrorBoundary>
     )
   }
   return (
-    <ErrorBoundary name="terminal-guest">
-      <TerminalApp />
-    </ErrorBoundary>
+    <div className="min-h-screen flex flex-col items-center justify-center text-[#eaecef] px-4 py-6 relative overflow-hidden bg-[#05070a]">
+      <div className="relative z-10 w-full max-w-md flex flex-col gap-3">
+        <div className="flex rounded-lg border border-[#2b3139] overflow-hidden bg-[#0b0e11]">
+          <button
+            type="button"
+            className={`flex-1 py-2.5 text-[12px] font-semibold ${
+              tab === 'login' ? 'bg-[#f0b90b] text-[#0b0e11]' : 'text-[#848e9c] hover:text-[#eaecef]'
+            }`}
+            onClick={() => setTab('login')}
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            className={`flex-1 py-2.5 text-[12px] font-semibold ${
+              tab === 'guest' ? 'bg-[#f0b90b] text-[#0b0e11]' : 'text-[#848e9c] hover:text-[#eaecef]'
+            }`}
+            onClick={() => setTab('guest')}
+          >
+            Guest
+          </button>
+        </div>
+        {tab === 'login' ? (
+          <LoginScreen embedded />
+        ) : (
+          <div className="nacs-guest-card rounded-2xl px-6 sm:px-8 py-7 flex flex-col items-center gap-5 border border-[#2b3139] bg-[#0b0e11]/90">
+            <BrandLogo size="lg" layout="stack" fullLogo showWordmark />
+            <p className="text-[12px] text-[#848e9c] text-center">
+              Continue as guest for a read-only desk. Login anytime from the header.
+            </p>
+            <button
+              type="button"
+              className="w-full px-4 py-3 rounded-lg bg-[#f0b90b] text-[#0b0e11] font-semibold"
+              onClick={() => setEntered(true)}
+            >
+              Enter desk (guest)
+            </button>
+            <button
+              type="button"
+              className="text-[12px] text-[#f0b90b] hover:underline"
+              onClick={() => setTab('login')}
+            >
+              ← Back to login
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Header account control – login / user / logout */
+function AuthControls() {
+  const status = useAuthStore((s) => s.status)
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+  const [open, setOpen] = useState(false)
+
+  if (status === 'authenticated' && user) {
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 max-w-[140px] truncate"
+          onClick={() => setOpen((v) => !v)}
+          title={user.email}
+        >
+          {user.email.split('@')[0]}
+        </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+            <div className="absolute right-0 top-full mt-1 z-[70] min-w-[160px] rounded-md border border-[#2b3139] bg-[#0b0e11] shadow-xl py-1">
+              <div className="px-3 py-1.5 text-[10px] text-[#5e6673] border-b border-[#1e2329] truncate">
+                {user.email}
+              </div>
+              <button
+                type="button"
+                className="block w-full text-left text-[12px] px-3 py-2 text-[#f6465d] hover:bg-[#1e2329]"
+                onClick={() => {
+                  setOpen(false)
+                  void logout()
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      className="text-[11px] px-2.5 py-1 rounded border border-[#f0b90b]/50 bg-[#f0b90b]/10 text-[#f0b90b] hover:bg-[#f0b90b]/20 font-medium"
+      onClick={() => {
+        try {
+          sessionStorage.removeItem('nacs-boot-done')
+        } catch {
+          /* */
+        }
+        window.location.reload()
+      }}
+      title="Apri schermata login"
+    >
+      Login
+    </button>
   )
 }
 
