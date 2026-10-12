@@ -39,8 +39,8 @@ function StatusBadge() {
     error: 'bg-terminal-red/20 text-terminal-red',
   }
   return (
-    <span className={`text-xxs px-1.5 py-0.5 rounded ${colors[status] ?? ''}`}>
-      {status}
+    <span className={`px-2 py-0.5 rounded text-xxs font-medium ${colors[status] || ''}`}>
+      {status.toUpperCase()}
     </span>
   )
 }
@@ -50,12 +50,16 @@ function normalizeSymbol(raw: string): string {
 }
 
 function Controls() {
-  const setSymbol = useMarketStore((s) => s.setSymbol)
-  const setInterval = useMarketStore((s) => s.setInterval)
   const marketSymbol = useMarketStore((s) => s.symbol)
   const marketInterval = useMarketStore((s) => s.interval)
-  const panels = useLayoutStore((s) => s.panels)
+  const setSymbol = useMarketStore((s) => s.setSymbol)
+  const setIntervalStore = useMarketStore((s) => s.setInterval)
+  const loadHistorical = useMarketStore((s) => s.loadHistorical)
+  const startLive = useMarketStore((s) => s.startLive)
+  const stopLive = useMarketStore((s) => s.stopLive)
+  const status = useMarketStore((s) => s.status)
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
+  const panels = useLayoutStore((s) => s.panels)
   const updatePanel = useLayoutStore((s) => s.updatePanel)
   const primary = panels.find((p) => p.id === primaryPanelId) ?? panels[0]
   const symbol = primary?.symbol ?? marketSymbol
@@ -64,50 +68,73 @@ function Controls() {
   useEffect(() => {
     setSymbolDraft(symbol)
   }, [symbol])
-  const commitSymbol = () => {
-    const v = normalizeSymbol(symbolDraft)
-    if (!v || v.length < 4) {
+  const applySymbol = (raw: string) => {
+    const v = normalizeSymbol(raw)
+    if (!v || v === symbol) {
       setSymbolDraft(symbol)
       return
     }
     setSymbol(v)
     updatePanel(primaryPanelId, { symbol: v })
   }
-  const onInterval = (v: Interval) => {
-    setInterval(v)
+  const applyInterval = (v: Interval) => {
+    if (v === interval) return
+    setIntervalStore(v)
     updatePanel(primaryPanelId, { interval: v })
   }
   return (
-    <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 border-b border-terminal-border bg-[#0b0e11]">
-      <SymbolBadge symbol={symbol} size="sm" />
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-terminal-border bg-terminal-panel/95 density-compact">
+      <SymbolBadge symbol={symbolDraft || symbol} size="sm" className="shrink-0" />
       <input
-        className="bg-[#12161c] border border-[#2b3139] rounded px-2 py-1 text-xs w-28 font-mono text-[#eaecef]"
+        className="bg-terminal-bg border border-[#f0b90b]/40 rounded px-2 py-1 text-sm w-32 font-mono-nums font-semibold text-[#eaecef]"
         value={symbolDraft}
+        list="top-symbol-presets"
+        placeholder="BTCUSDT"
         onChange={(e) => setSymbolDraft(normalizeSymbol(e.target.value))}
-        onBlur={commitSymbol}
+        onBlur={() => applySymbol(symbolDraft)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commitSymbol()
+          if (e.key === 'Enter') e.currentTarget.blur()
         }}
-        list="global-symbols"
       />
-      <datalist id="global-symbols">
-        {SYMBOL_PRESETS.map((pr) => (
-          <option key={pr.symbol} value={pr.symbol}>
-            {formatSymbolOption(pr.symbol)}
+      <datalist id="top-symbol-presets">
+        {SYMBOL_PRESETS.map((p) => (
+          <option key={p.symbol} value={p.symbol}>
+            {formatSymbolOption(p.symbol)} · {p.group}
           </option>
         ))}
       </datalist>
       <select
-        className="bg-[#12161c] border border-[#2b3139] rounded px-2 py-1 text-xs text-[#eaecef]"
+        className="bg-terminal-bg border border-terminal-border rounded px-2 py-1 text-sm"
         value={interval}
-        onChange={(e) => onInterval(e.target.value as Interval)}
+        onChange={(e) => applyInterval(e.target.value as Interval)}
       >
-        {ALL_INTERVALS.map((iv) => (
-          <option key={iv} value={iv}>
-            {iv}
+        {ALL_INTERVALS.map((i) => (
+          <option key={i} value={i}>
+            {i}
           </option>
         ))}
       </select>
+      <button
+        onClick={() => loadHistorical()}
+        className="px-3 py-1 bg-terminal-blue/20 text-terminal-blue rounded text-sm"
+      >
+        Load History
+      </button>
+      {status === 'connected' || status === 'connecting' || status === 'reconnecting' ? (
+        <button
+          onClick={stopLive}
+          className="px-3 py-1 bg-terminal-red/20 text-terminal-red rounded text-sm"
+        >
+          Stop Live
+        </button>
+      ) : (
+        <button
+          onClick={startLive}
+          className="px-3 py-1 bg-terminal-green/20 text-terminal-green rounded text-sm"
+        >
+          Start Live
+        </button>
+      )}
       <StatusBadge />
     </div>
   )
@@ -115,15 +142,14 @@ function Controls() {
 
 function ChartArea() {
   const ref = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ width: 1200, height: 600 })
+  const [size, setSize] = useState({ width: 0, height: 0 })
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
+    if (!ref.current) return
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
-      if (width > 0 && height > 0) setSize({ width, height })
+      setSize({ width, height })
     })
-    ro.observe(el)
+    ro.observe(ref.current)
     return () => ro.disconnect()
   }, [])
   return (
@@ -272,7 +298,6 @@ function GuestEntry() {
   )
 }
 
-/** Header account control – login / user / logout */
 function AuthControls() {
   const status = useAuthStore((s) => s.status)
   const user = useAuthStore((s) => s.user)
