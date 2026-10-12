@@ -72,7 +72,7 @@ function markNodes(
       buckets[i].isLvn = true
       lvns.push(buckets[i].price)
     }
-    if (v >= hvnThresh && v >= prev && v >= next && !buckets[i].isLvn) {
+    if (v >= hvnThresh && v >= prev && v >= next) {
       buckets[i].isHvn = true
       hvns.push(buckets[i].price)
     }
@@ -108,7 +108,17 @@ export function buildVolumeProfile(
   if (trades.length === 0) return empty(tickSize ?? 0.01)
 
   const mid = trades.reduce((s, t) => s + t.price, 0) / trades.length
-  const tick = tickSize ?? inferTickSize(mid)
+  let tick = tickSize ?? inferTickSize(mid)
+  // Cap resolution so SOL/ETH wide ranges don't create tens of thousands of bins
+  const priceLo = Math.min(...trades.map((t) => t.price))
+  const priceHi = Math.max(...trades.map((t) => t.price))
+  const span = Math.max(0, priceHi - priceLo)
+  const MAX_BINS = 400
+  if (tick > 0 && span / tick > MAX_BINS) {
+    tick = span / MAX_BINS
+    const pow = Math.pow(10, Math.floor(Math.log10(tick)))
+    tick = Math.max(pow, Math.round(tick / pow) * pow)
+  }
   const map = new Map<number, { vol: number; buy: number; sell: number }>()
   let totalVolume = 0
   for (const t of trades) {
