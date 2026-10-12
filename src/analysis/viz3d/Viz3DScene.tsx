@@ -1,5 +1,5 @@
 /**
- * Professional 3D scene — Canvas2D perspective + full drawing tools.
+ * Professional 3D scene — solid boxes, real candles (body+wick), Canvas2D perspective.
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -34,6 +34,27 @@ function hexAlpha(hex: string, a: number): string {
   const b = n & 255
   return `rgba(${r},${g},${b},${a})`
 }
+
+function shadeHex(hex: string, factor: number, a: number): string {
+  if (hex.startsWith('rgba')) return hex
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  const n = parseInt(full, 16)
+  const r = Math.max(0, Math.min(255, Math.round(((n >> 16) & 255) * factor)))
+  const g = Math.max(0, Math.min(255, Math.round(((n >> 8) & 255) * factor)))
+  const b = Math.max(0, Math.min(255, Math.round((n & 255) * factor)))
+  return `rgba(${r},${g},${b},${a})`
+}
+
+/** Face indices into columnCorners() result (bottom 0-3, top 4-7). */
+const BOX_FACES: { idx: number[]; shade: number }[] = [
+  { idx: [0, 1, 2, 3], shade: 0.35 }, // bottom
+  { idx: [0, 1, 5, 4], shade: 0.55 }, // front
+  { idx: [1, 2, 6, 5], shade: 0.72 }, // right
+  { idx: [2, 3, 7, 6], shade: 0.48 }, // back
+  { idx: [3, 0, 4, 7], shade: 0.62 }, // left
+  { idx: [4, 5, 6, 7], shade: 1.0 }, // top
+]
 
 export function Viz3DScene({
   model,
@@ -81,8 +102,15 @@ export function Viz3DScene({
     const cy = h * 0.55
     const op = Math.max(0.25, Math.min(1, cfg.opacity))
 
-    const drawPoly = (pts: Vec3[], fill: string, stroke?: string) => {
+    const drawPoly = (pts: Vec3[], fill: string, stroke?: string, lineW = 0.8) => {
       const scr = pts.map((p) => project(p, cam, cx, cy))
+      let area = 0
+      for (let i = 0; i < scr.length; i++) {
+        const a = scr[i]!
+        const b = scr[(i + 1) % scr.length]!
+        area += a.x * b.y - b.x * a.y
+      }
+      if (area > 80) return
       ctx.beginPath()
       scr.forEach((s, i) => {
         if (i === 0) ctx.moveTo(s.x, s.y)
@@ -93,20 +121,60 @@ export function Viz3DScene({
       ctx.fill()
       if (stroke) {
         ctx.strokeStyle = stroke
-        ctx.lineWidth = 0.8
+        ctx.lineWidth = lineW
         ctx.stroke()
       }
     }
 
+    const drawSolidBox = (
+      corners: Vec3[],
+      color: string,
+      alpha: number,
+      edgeAlpha = 0.55
+    ) => {
+      const faces = BOX_FACES.map((f) => {
+        const pts = f.idx.map((i) => corners[i]!)
+        const mid = {
+          x: (pts[0]!.x + pts[1]!.x + pts[2]!.x + pts[3]!.x) / 4,
+          y: (pts[0]!.y + pts[1]!.y + pts[2]!.y + pts[3]!.y) / 4,
+          z: (pts[0]!.z + pts[1]!.z + pts[2]!.z + pts[3]!.z) / 4,
+        }
+        const pr = project(mid, cam, cx, cy)
+        return { pts, shade: f.shade, depth: pr.depth }
+      })
+      faces.sort((a, b) => b.depth - a.depth)
+      for (const f of faces) {
+        drawPoly(
+          f.pts,
+          shadeHex(color, f.shade, alpha),
+          shadeHex(color, Math.min(1, f.shade + 0.15), alpha * edgeAlpha),
+          0.7
+        )
+      }
+    }
+
     if (cfg.showGrid && m.mode !== 'dom_ladder') {
-      ctx.strokeStyle = theme.grid
+      const floor = [
+        { x: -1.15, y: -0.88, z: -1.2 },
+        { x: 1.15, y: -0.88, z: -1.2 },
+        { x: 1.15, y: -0.88, z: 1.2 },
+        { x: -1.15, y: -0.88, z: 1.2 },
+      ]
+      drawPoly(floor, hexAlpha(theme.grid, 0.12), hexAlpha(theme.grid, 0.25), 1)
+      ctx.strokeStyle = hexAlpha(theme.grid, 0.35)
       ctx.lineWidth = 1
       for (let i = -5; i <= 5; i++) {
-        const a = project({ x: i * 0.22, y: -0.85, z: -1.1 }, cam, cx, cy)
-        const b = project({ x: i * 0.22, y: -0.85, z: 1.1 }, cam, cx, cy)
+        const a = project({ x: i * 0.22, y: -0.87, z: -1.1 }, cam, cx, cy)
+        const b = project({ x: i * 0.22, y: -0.87, z: 1.1 }, cam, cx, cy)
         ctx.beginPath()
         ctx.moveTo(a.x, a.y)
         ctx.lineTo(b.x, b.y)
+        ctx.stroke()
+        const c = project({ x: -1.1, y: -0.87, z: i * 0.22 }, cam, cx, cy)
+        const d = project({ x: 1.1, y: -0.87, z: i * 0.22 }, cam, cx, cy)
+        ctx.beginPath()
+        ctx.moveTo(c.x, c.y)
+        ctx.lineTo(d.x, d.y)
         ctx.stroke()
       }
     }
@@ -120,55 +188,120 @@ export function Viz3DScene({
     }
 
     if (m.mode === 'volume_terrain' && m.terrain.length) {
-      for (const cell of m.terrain) {
+      const cells = m.terrain.map((cell) => {
         const hgt = Math.max(0.02, cell.h * 0.95)
         const cellW = (1.8 / Math.max(8, cfg.maxBars)) * 0.85
         const cellD = (1.4 / Math.max(8, cfg.priceBins)) * 0.9
-        const corners = columnCorners(cell.tx, -0.85, cellW, cellD, hgt)
-        const shifted = corners.map((p) => ({ ...p, z: p.z + cell.ty * 0.75 }))
-        const col = cell.buyFrac >= 0.5 ? theme.buy : theme.sell
-        drawPoly([shifted[4], shifted[5], shifted[6], shifted[7]], hexAlpha(col, 0.7 * op), hexAlpha(col, 0.9))
+        const corners = columnCorners(cell.tx, -0.85, cellW, cellD, hgt).map((p) => ({
+          ...p,
+          z: p.z + cell.ty * 0.75,
+        }))
+        const mid = corners[4]!
+        return {
+          corners,
+          col: cell.buyFrac >= 0.5 ? theme.buy : theme.sell,
+          depth: project(mid, cam, cx, cy).depth,
+        }
+      })
+      cells.sort((a, b) => b.depth - a.depth)
+      for (const c of cells) {
+        drawSolidBox(c.corners, c.col, 0.82 * op, 0.5)
       }
     }
 
     if (m.mode === 'candle_columns' && m.candles.length) {
-      const bw = (1.8 / Math.max(8, m.candles.length)) * 0.7
-      for (const c of m.candles) {
+      const n = m.candles.length
+      const bw = (1.8 / Math.max(8, n)) * 0.55
+      const wickW = Math.max(0.012, bw * 0.18)
+      const depth = Math.max(0.08, bw * 0.75)
+      const items = m.candles.map((c) => {
         const yOpen = normPrice(c.open, m.priceMin, m.priceMax)
         const yClose = normPrice(c.close, m.priceMin, m.priceMax)
+        const yHigh = normPrice(c.high, m.priceMin, m.priceMax)
+        const yLow = normPrice(c.low, m.priceMin, m.priceMax)
         const bodyLo = Math.min(yOpen, yClose)
-        const bodyH = Math.max(0.02, Math.abs(yClose - yOpen))
+        const bodyHi = Math.max(yOpen, yClose)
+        const bodyH = Math.max(0.018, bodyHi - bodyLo)
         const col = c.bull ? theme.buy : theme.sell
-        const corners = columnCorners(c.tx, bodyLo, bw, 0.15, bodyH)
-        drawPoly([corners[4], corners[5], corners[6], corners[7]], hexAlpha(col, 0.85 * op), hexAlpha(col, 1))
+        const mid = { x: c.tx, y: (yHigh + yLow) / 2, z: 0 }
+        return {
+          c,
+          yHigh,
+          yLow,
+          bodyLo,
+          bodyH,
+          col,
+          depth: project(mid, cam, cx, cy).depth,
+        }
+      })
+      items.sort((a, b) => b.depth - a.depth)
+
+      for (const it of items) {
+        // Wick high-low
+        const wickH = Math.max(0.01, it.yHigh - it.yLow)
+        const wickCorners = columnCorners(it.c.tx, it.yLow, wickW, wickW * 0.9, wickH)
+        drawSolidBox(wickCorners, it.col, 0.95 * op, 0.35)
+
+        // Body open-close
+        const bodyCorners = columnCorners(it.c.tx, it.bodyLo, bw, depth, it.bodyH)
+        drawSolidBox(bodyCorners, it.col, 0.92 * op, 0.55)
+
+        // Volume pedestal
+        if (it.c.volume != null && m.volMax > 0) {
+          const vh = Math.max(0.01, (it.c.volume / m.volMax) * 0.22)
+          const volCorners = columnCorners(it.c.tx, -0.88, bw * 0.9, depth * 0.85, vh)
+          drawSolidBox(volCorners, it.col, 0.35 * op, 0.3)
+        }
       }
     }
 
     if (m.mode === 'book_depth' && m.book.length) {
-      for (const bar of m.book) {
-        const col = bar.isBid ? theme.buy : theme.sell
+      const bars = m.book.map((bar) => {
         const hgt = Math.max(0.03, bar.h * 0.9)
-        const corners = columnCorners(bar.side * 0.95, -0.85, 0.08, 0.1, hgt)
-        const shifted = corners.map((p) => ({ ...p, z: p.z + bar.ty * 0.5 }))
-        drawPoly([shifted[4], shifted[5], shifted[6], shifted[7]], hexAlpha(col, 0.8 * op), hexAlpha(col, 1))
+        const corners = columnCorners(bar.side * 0.95, -0.85, 0.1, 0.14, hgt).map((p) => ({
+          ...p,
+          z: p.z + bar.ty * 0.5,
+        }))
+        return {
+          corners,
+          col: bar.isBid ? theme.buy : theme.sell,
+          depth: project(corners[4]!, cam, cx, cy).depth,
+        }
+      })
+      bars.sort((a, b) => b.depth - a.depth)
+      for (const b of bars) {
+        drawSolidBox(b.corners, b.col, 0.85 * op, 0.5)
       }
     }
 
     if (m.mode === 'dom_ladder' && dom.showWalls && m.dom?.length) {
       const wallOp = (dom.wallOpacity ?? 0.75) * op
+      const boxes: { corners: Vec3[]; col: string; depth: number }[] = []
       for (const row of m.dom) {
         const y = row.ty * 0.85
         const rowH = 0.08
         if (row.bidH > 0.001) {
           const len = Math.max(0.04, row.bidH * 1.05)
-          const corners = columnCorners(-len / 2 - 0.02, y - rowH / 2, len, 0.1, rowH)
-          drawPoly([corners[4], corners[5], corners[6], corners[7]], hexAlpha(theme.buy, 0.8 * wallOp), hexAlpha(theme.buy, 1))
+          const corners = columnCorners(-len / 2 - 0.02, y - rowH / 2, len, 0.14, rowH)
+          boxes.push({
+            corners,
+            col: theme.buy,
+            depth: project(corners[4]!, cam, cx, cy).depth,
+          })
         }
         if (row.askH > 0.001) {
           const len = Math.max(0.04, row.askH * 1.05)
-          const corners = columnCorners(len / 2 + 0.02, y - rowH / 2, len, 0.1, rowH)
-          drawPoly([corners[4], corners[5], corners[6], corners[7]], hexAlpha(theme.sell, 0.8 * wallOp), hexAlpha(theme.sell, 1))
+          const corners = columnCorners(len / 2 + 0.02, y - rowH / 2, len, 0.14, rowH)
+          boxes.push({
+            corners,
+            col: theme.sell,
+            depth: project(corners[4]!, cam, cx, cy).depth,
+          })
         }
+      }
+      boxes.sort((a, b) => b.depth - a.depth)
+      for (const b of boxes) {
+        drawSolidBox(b.corners, b.col, 0.85 * wallOp, 0.45)
       }
     }
 
@@ -218,191 +351,55 @@ export function Viz3DScene({
             ctx.fill()
           } else if (d.style?.lineEnd === 'circle') {
             ctx.beginPath()
-            ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2)
+            ctx.arc(b.x, b.y, 4, 0, Math.PI * 2)
             ctx.fill()
           }
         }
 
-        if (d.tool === 'horizontal') {
-          const y = yOf((d as { price: number }).price)
-          const a = project({ x: -1.2, y, z: -0.35 }, cam, cx, cy)
-          const b = project({ x: 1.2, y, z: 0.35 }, cam, cx, cy)
-          drawLine(a, b)
-          ctx.setLineDash([])
-          ctx.font = '10px ui-monospace, Menlo, monospace'
-          ctx.fillText((d as { price: number }).price.toPrecision(6), b.x + 4, b.y - 2)
-        } else if (d.tool === 'vertical') {
-          const x = tOf((d as { time: number }).time) * 0.9
-          drawLine(
-            project({ x, y: -0.9, z: 0 }, cam, cx, cy),
-            project({ x, y: 0.9, z: 0 }, cam, cx, cy)
-          )
-        } else if (d.tool === 'crossline') {
-          const pt = (d as { point: { time: number; price: number } }).point
-          const y = yOf(pt.price)
-          const x = tOf(pt.time) * 0.9
-          drawLine(
-            project({ x: -1.2, y, z: -0.3 }, cam, cx, cy),
-            project({ x: 1.2, y, z: 0.3 }, cam, cx, cy)
-          )
-          drawLine(
-            project({ x, y: -0.9, z: 0 }, cam, cx, cy),
-            project({ x, y: 0.9, z: 0 }, cam, cx, cy)
-          )
-        } else if (
-          d.tool === 'trendline' ||
-          d.tool === 'ray' ||
-          d.tool === 'arrow' ||
-          d.tool === 'measure'
-        ) {
-          const p1 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number } }).p1
-          const p2 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number } }).p2
-          if (!p1 || !p2) continue
-          let a = toScr(p1.time, p1.price)
-          let b = toScr(p2.time, p2.price)
-          if (d.tool === 'ray') {
-            b = { x: b.x + (b.x - a.x) * 3, y: b.y + (b.y - a.y) * 3, depth: b.depth }
+        const pts = d.points ?? []
+        if (d.tool === 'trend_line' || d.tool === 'ray' || d.tool === 'arrow' || d.tool === 'extended_line') {
+          if (pts.length >= 2) {
+            const a = toScr(pts[0]!.time, pts[0]!.price)
+            const b = toScr(pts[1]!.time, pts[1]!.price)
+            drawLine(a, b, d.tool === 'arrow')
           }
-          drawLine(a, b, d.tool === 'arrow')
-          if (d.tool === 'measure') {
-            ctx.setLineDash([])
-            const dp = p2.price - p1.price
-            ctx.font = '10px ui-monospace, Menlo, monospace'
-            ctx.fillText(
-              `${dp >= 0 ? '+' : ''}${dp.toPrecision(4)}`,
-              (a.x + b.x) / 2,
-              (a.y + b.y) / 2 - 6
-            )
-          }
-        } else if (d.tool === 'rectangle' || d.tool === 'ellipse') {
-          const p1 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number } }).p1
-          const p2 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number } }).p2
-          if (!p1 || !p2) continue
-          const c1 = toScr(p1.time, p1.price)
-          const c2 = toScr(p2.time, p1.price)
-          const c3 = toScr(p2.time, p2.price)
-          const c4 = toScr(p1.time, p2.price)
-          if (d.tool === 'rectangle') {
-            ctx.beginPath()
-            ctx.moveTo(c1.x, c1.y)
-            ctx.lineTo(c2.x, c2.y)
-            ctx.lineTo(c3.x, c3.y)
-            ctx.lineTo(c4.x, c4.y)
-            ctx.closePath()
-            ctx.globalAlpha = 0.12
-            ctx.fill()
-            ctx.globalAlpha = 1
-            ctx.stroke()
-          } else {
-            const mx = (c1.x + c3.x) / 2
-            const my = (c1.y + c3.y) / 2
-            const rx = Math.max(2, Math.abs(c3.x - c1.x) / 2)
-            const ry = Math.max(2, Math.abs(c3.y - c1.y) / 2)
-            ctx.beginPath()
-            ctx.ellipse(mx, my, rx, ry, 0, 0, Math.PI * 2)
-            ctx.globalAlpha = 0.12
-            ctx.fill()
-            ctx.globalAlpha = 1
-            ctx.stroke()
-          }
-        } else if (d.tool === 'triangle' || d.tool === 'channel') {
-          const p1 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number }; p3: { time: number; price: number } }).p1
-          const p2 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number }; p3: { time: number; price: number } }).p2
-          const p3 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number }; p3: { time: number; price: number } }).p3
-          if (!p1 || !p2 || !p3) continue
-          const a = toScr(p1.time, p1.price)
-          const b = toScr(p2.time, p2.price)
-          const c = toScr(p3.time, p3.price)
-          if (d.tool === 'triangle') {
-            ctx.beginPath()
-            ctx.moveTo(a.x, a.y)
-            ctx.lineTo(b.x, b.y)
-            ctx.lineTo(c.x, c.y)
-            ctx.closePath()
-            ctx.globalAlpha = 0.12
-            ctx.fill()
-            ctx.globalAlpha = 1
-            ctx.stroke()
-          } else {
-            drawLine(a, b)
-            drawLine(
-              { x: a.x + (c.x - a.x), y: a.y + (c.y - a.y) },
-              { x: b.x + (c.x - a.x), y: b.y + (c.y - a.y) }
-            )
-          }
-        } else if (d.tool === 'fib_retracement' || d.tool === 'fib_extension') {
-          const p1 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number } }).p1
-          const p2 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number } }).p2
-          if (!p1 || !p2) continue
-          const levels =
-            d.tool === 'fib_retracement'
-              ? [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]
-              : [0, 0.618, 1, 1.272, 1.618, 2.618]
-          for (const lv of levels) {
-            const price = p1.price + (p2.price - p1.price) * lv
-            const y = yOf(price)
-            drawLine(
-              project({ x: -1.1, y, z: -0.3 }, cam, cx, cy),
-              project({ x: 1.1, y, z: 0.3 }, cam, cx, cy)
-            )
-            ctx.setLineDash([])
-            ctx.font = '9px ui-monospace, Menlo, monospace'
-            const b = project({ x: 1.1, y, z: 0.3 }, cam, cx, cy)
-            ctx.fillText(`${(lv * 100).toFixed(1)}%`, b.x + 3, b.y - 1)
-          }
-        } else if (d.tool === 'long_position' || d.tool === 'short_position') {
-          const p1 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number }; p3: { time: number; price: number } }).p1
-          const p2 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number }; p3: { time: number; price: number } }).p2
-          const p3 = (d as { p1: { time: number; price: number }; p2: { time: number; price: number }; p3: { time: number; price: number } }).p3
-          if (!p1 || !p2 || !p3) continue
-          ctx.strokeStyle = d.tool === 'long_position' ? '#0ecb81' : '#f6465d'
-          ctx.fillStyle = ctx.strokeStyle
-          const entry = toScr(p1.time, p1.price)
-          const stop = toScr(p2.time, p2.price)
-          const tgt = toScr(p3.time, p3.price)
-          drawLine(entry, stop)
-          drawLine(entry, tgt)
-          ctx.setLineDash([])
-          ctx.font = '9px ui-monospace, Menlo, monospace'
-          ctx.fillText('E', entry.x + 3, entry.y)
-          ctx.fillText('S', stop.x + 3, stop.y)
-          ctx.fillText('T', tgt.x + 3, tgt.y)
-        } else if (d.tool === 'polyline') {
-          const pts = (d as { points: { time: number; price: number }[] }).points ?? []
-          if (pts.length < 2) continue
+        } else if (d.tool === 'horizontal_line' && pts.length >= 1) {
+          const y = toScr(0, pts[0]!.price).y
           ctx.beginPath()
-          pts.forEach((pt, i) => {
-            const s = toScr(pt.time, pt.price)
-            if (i === 0) ctx.moveTo(s.x, s.y)
-            else ctx.lineTo(s.x, s.y)
-          })
+          ctx.moveTo(0, y)
+          ctx.lineTo(w, y)
           ctx.stroke()
-        } else if (d.tool === 'text') {
-          const pt = (d as { point: { time: number; price: number }; text: string }).point
-          const text = (d as { text: string }).text ?? ''
-          const s = toScr(pt.time, pt.price)
-          ctx.setLineDash([])
-          ctx.font = `${d.style?.fontSize ?? 12}px sans-serif`
-          ctx.fillText(text, s.x, s.y)
+        } else if (d.tool === 'vertical_line' && pts.length >= 1) {
+          const x = toScr(pts[0]!.time, 0).x
+          ctx.beginPath()
+          ctx.moveTo(x, 0)
+          ctx.lineTo(x, h)
+          ctx.stroke()
+        } else if ((d.tool === 'rect' || d.tool === 'rectangle') && pts.length >= 2) {
+          const a = toScr(pts[0]!.time, pts[0]!.price)
+          const b = toScr(pts[1]!.time, pts[1]!.price)
+          const x0 = Math.min(a.x, b.x)
+          const y0 = Math.min(a.y, b.y)
+          const rw = Math.abs(b.x - a.x)
+          const rh = Math.abs(b.y - a.y)
+          ctx.globalAlpha = 0.15
+          ctx.fillRect(x0, y0, rw, rh)
+          ctx.globalAlpha = 1
+          ctx.strokeRect(x0, y0, rw, rh)
+        } else if (pts.length >= 2) {
+          for (let i = 0; i < pts.length - 1; i++) {
+            drawLine(toScr(pts[i]!.time, pts[i]!.price), toScr(pts[i + 1]!.time, pts[i + 1]!.price))
+          }
         }
         ctx.setLineDash([])
       }
     }
 
-    if (cfg.showLabels) {
-      ctx.fillStyle = 'rgba(11,14,17,0.75)'
-      ctx.fillRect(8, 8, Math.min(380, w - 16), 36)
-      ctx.font = '11px ui-monospace, Menlo, monospace'
-      ctx.fillStyle = theme.accent
-      ctx.textAlign = 'left'
-      ctx.fillText(m.note, 14, 22)
-      ctx.fillStyle = theme.label
-      ctx.fillText(
-        `yaw ${cfg.yaw.toFixed(0)} · pitch ${cfg.pitch.toFixed(0)} · zoom ${cfg.zoom.toFixed(2)}`,
-        14,
-        36
-      )
-    }
+    // HUD
+    ctx.fillStyle = theme.label
+    ctx.font = '10px ui-monospace, Menlo, monospace'
+    ctx.textAlign = 'left'
+    ctx.fillText(`${m.mode} · drag orbit · wheel zoom`, 10, 16)
   }, [])
 
   useEffect(() => {
@@ -410,69 +407,69 @@ export function Viz3DScene({
   }, [model, config, drawings, paint])
 
   useEffect(() => {
-    if (!config.autoRotate) return
-    let raf = 0
-    const tick = () => {
-      const c = cfgRef.current
-      onCameraChange?.({ yaw: (c.yaw + c.autoRotateSpeed) % 360 })
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [config.autoRotate, config.autoRotateSpeed, onCameraChange])
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ro = new ResizeObserver(() => paint())
+    if (canvas.parentElement) ro.observe(canvas.parentElement)
+    return () => ro.disconnect()
+  }, [paint])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+
     const onDown = (e: PointerEvent) => {
-      canvas.setPointerCapture(e.pointerId)
       dragRef.current = {
         x: e.clientX,
         y: e.clientY,
         yaw: cfgRef.current.yaw,
         pitch: cfgRef.current.pitch,
       }
+      canvas.setPointerCapture(e.pointerId)
     }
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current
-      if (!d) return
-      onCameraChange?.({
-        yaw: d.yaw + (e.clientX - d.x) * 0.35,
-        pitch: Math.max(5, Math.min(80, d.pitch + (e.clientY - d.y) * 0.25)),
+      if (!d || !onCameraChange) return
+      const dx = e.clientX - d.x
+      const dy = e.clientY - d.y
+      onCameraChange({
+        yaw: d.yaw + dx * 0.4,
+        pitch: Math.max(-20, Math.min(70, d.pitch - dy * 0.3)),
       })
     }
-    const onUp = () => {
+    const onUp = (e: PointerEvent) => {
       dragRef.current = null
+      try {
+        canvas.releasePointerCapture(e.pointerId)
+      } catch {
+        /* ignore */
+      }
     }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const z = cfgRef.current.zoom
-      onCameraChange?.({
-        zoom: Math.max(0.45, Math.min(2.4, z * (e.deltaY > 0 ? 0.92 : 1.08))),
-      })
+      if (!onCameraChange) return
+      const z = cfgRef.current.zoom * (e.deltaY > 0 ? 0.92 : 1.08)
+      onCameraChange({ zoom: Math.max(0.4, Math.min(3.5, z)) })
     }
+
     canvas.addEventListener('pointerdown', onDown)
     canvas.addEventListener('pointermove', onMove)
     canvas.addEventListener('pointerup', onUp)
     canvas.addEventListener('pointercancel', onUp)
     canvas.addEventListener('wheel', onWheel, { passive: false })
-    const ro = new ResizeObserver(() => paint())
-    if (canvas.parentElement) ro.observe(canvas.parentElement)
     return () => {
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('pointerup', onUp)
       canvas.removeEventListener('pointercancel', onUp)
       canvas.removeEventListener('wheel', onWheel)
-      ro.disconnect()
     }
-  }, [onCameraChange, paint])
+  }, [onCameraChange])
 
   return (
     <canvas
       ref={canvasRef}
       className={`w-full h-full touch-none cursor-grab active:cursor-grabbing ${className}`}
-      aria-label="3D market scene"
     />
   )
 }
