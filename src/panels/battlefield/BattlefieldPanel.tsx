@@ -1,4 +1,2 @@
-/**
- * Battlefield 3D — see units.ts for combat units.
- */
+/** Battlefield panel entry */
 export { BattlefieldPanel } from './BattlefieldPanelImpl'
