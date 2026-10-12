@@ -44,13 +44,16 @@ export function intervalToSeconds(interval: Interval): number {
  */
 export function inferTickSize(price: number): number {
   const p = Math.abs(price)
+  // Tuned for Binance-style spot ticks (BTC, ETH, SOL, mid/low caps)
   if (p >= 10_000) return 1
   if (p >= 1_000) return 0.1
-  if (p >= 100) return 0.01
-  if (p >= 10) return 0.001
-  if (p >= 1) return 0.0001
-  if (p >= 0.1) return 0.00001
-  return 0.000001
+  if (p >= 100) return 0.01 // SOL, AVAX, …
+  if (p >= 10) return 0.01 // keep readable bins for mid alts
+  if (p >= 1) return 0.001
+  if (p >= 0.1) return 0.0001
+  if (p >= 0.01) return 0.00001
+  if (p >= 0.0001) return 0.000001
+  return 0.0000001
 }
 
 export function roundToTick(price: number, tick: number): number {

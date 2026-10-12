@@ -23,7 +23,7 @@ interface BufferSlot {
 const buffers = new Map<string, BufferSlot>()
 
 function getSlot(exchange: ExchangeId, symbol: string): BufferSlot {
-  const key = feedKey(exchange, symbol)
+  const key = feedKey(exchange, (symbol ?? '').toUpperCase())
   let slot = buffers.get(key)
   if (slot) return slot
   slot = {
@@ -45,11 +45,12 @@ function flushArchive(exchange: ExchangeId, symbol: string, slot: BufferSlot) {
 
 /** Retain a live trade buffer for exchange+symbol (refcount). */
 export function retainTradeBuffer(exchange: ExchangeId, symbol: string): () => void {
-  const key = feedKey(exchange, symbol)
-  const slot = getSlot(exchange, symbol)
+  const sym = (symbol ?? '').toUpperCase()
+  const key = feedKey(exchange, sym)
+  const slot = getSlot(exchange, sym)
   slot.refCount += 1
   if (!slot.unsub) {
-    const sub = subscribeTradeFeed(exchange, symbol, {
+    const sub = subscribeTradeFeed(exchange, sym, {
       onTrade: (t) => {
         slot.trades.push(t)
         if (slot.trades.length > MAX_TRADES) {
@@ -57,11 +58,11 @@ export function retainTradeBuffer(exchange: ExchangeId, symbol: string): () => v
         }
         slot.pendingArchive.push(t)
         if (slot.pendingArchive.length >= ARCHIVE_BATCH) {
-          flushArchive(exchange, symbol, slot)
+          flushArchive(exchange, sym, slot)
         } else if (!slot.archiveTimer) {
           slot.archiveTimer = setTimeout(() => {
             slot.archiveTimer = null
-            flushArchive(exchange, symbol, slot)
+            flushArchive(exchange, sym, slot)
           }, 1500)
         }
       },
@@ -74,7 +75,7 @@ export function retainTradeBuffer(exchange: ExchangeId, symbol: string): () => v
     released = true
     slot.refCount -= 1
     if (slot.refCount <= 0) {
-      flushArchive(exchange, symbol, slot)
+      flushArchive(exchange, sym, slot)
       if (slot.archiveTimer) {
         clearTimeout(slot.archiveTimer)
         slot.archiveTimer = null
@@ -93,7 +94,7 @@ export function queryTradesInRange(
   startSec: number,
   endSec: number
 ): AggressorTrade[] {
-  const slot = buffers.get(feedKey(exchange, symbol))
+  const slot = buffers.get(feedKey(exchange, (symbol ?? '').toUpperCase()))
   if (!slot) return []
   const startMs = startSec * 1000
   const endMs = endSec * 1000
@@ -112,9 +113,9 @@ export async function queryTradesInRangeAsync(
   const live = queryTradesInRange(exchange, symbol, startSec, endSec)
   if (live.length > 0) return live
   const { queryArchivedTrades } = await import('@/data/tradeArchive')
-  return queryArchivedTrades(exchange, symbol, startSec * 1000, endSec * 1000)
+  return queryArchivedTrades(exchange, (symbol ?? '').toUpperCase(), startSec * 1000, endSec * 1000)
 }
 
 export function tradeBufferSize(exchange: ExchangeId, symbol: string): number {
-  return buffers.get(feedKey(exchange, symbol))?.trades.length ?? 0
+  return buffers.get(feedKey(exchange, (symbol ?? '').toUpperCase()))?.trades.length ?? 0
 }
