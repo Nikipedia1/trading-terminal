@@ -49,11 +49,15 @@ export function DeepPrintOverlay({
   const [bufSize, setBufSize] = useState(0)
   const modelRef = useRef<DeepPrintModel | null>(null)
   modelRef.current = model
+  const pinnedTimeRef = useRef<number | null>(null)
+  pinnedTimeRef.current = pinnedTime
+
+  const sym = (symbol ?? '').toUpperCase()
 
   useEffect(() => {
     if (!enabled) return
-    return retainTradeBuffer(exchange, symbol.toUpperCase())
-  }, [enabled, exchange, symbol])
+    return retainTradeBuffer(exchange, sym)
+  }, [enabled, exchange, sym])
 
   const placeAt = useCallback(
     (candleTime: number, m: DeepPrintModel) => {
@@ -82,15 +86,15 @@ export function DeepPrintOverlay({
       const sec = intervalToSeconds(interval)
       const from = candleTime
       const to = candleTime + sec
-      const trades = queryTradesInRange(exchange, symbol.toUpperCase(), from, to)
+      const trades = queryTradesInRange(exchange, sym, from, to)
       const c = candleAt(candles, candleTime)
       const anchor = c != null ? (c.high + c.low) / 2 : trades[0]?.price ?? 0
       const m = aggregatePrint(trades, candleTime, to, anchor)
       setModel(m)
       placeAt(candleTime, m)
-      setBufSize(tradeBufferSize(exchange, symbol.toUpperCase()))
+      setBufSize(tradeBufferSize(exchange, sym))
     },
-    [bridge, exchange, symbol, interval, candles, placeAt]
+    [bridge, exchange, sym, interval, candles, placeAt]
   )
 
   const pinCandle = useCallback(
@@ -105,16 +109,17 @@ export function DeepPrintOverlay({
   const pinBestDefault = useCallback(() => {
     if (candles.length === 0) return
     const sec = intervalToSeconds(interval)
-    for (let i = candles.length - 1; i >= Math.max(0, candles.length - 8); i--) {
+    for (let i = candles.length - 1; i >= Math.max(0, candles.length - 12); i--) {
       const t = candles[i].time
-      const n = queryTradesInRange(exchange, symbol.toUpperCase(), t, t + sec).length
+      const n = queryTradesInRange(exchange, sym, t, t + sec).length
       if (n > 0) {
         pinCandle(t)
         return
       }
     }
+    // Still pin last candle so live ticks fill it as they arrive
     pinCandle(candles[candles.length - 1].time)
-  }, [candles, exchange, symbol, interval, pinCandle])
+  }, [candles, exchange, sym, interval, pinCandle])
 
   useEffect(() => {
     if (!enabled || forcePinTime == null) return
@@ -140,11 +145,23 @@ export function DeepPrintOverlay({
     [candles, pinnedTime, pinBestDefault, pinCandle]
   )
 
+  // Live refresh: fast while empty, then 500ms on pinned candle
   useEffect(() => {
-    if (!enabled || pinnedTime == null) return
-    const id = window.setInterval(() => rebuildModel(pinnedTime), 1000)
+    if (!enabled) return
+    const tick = () => {
+      const size = tradeBufferSize(exchange, sym)
+      setBufSize(size)
+      const t = pinnedTimeRef.current
+      if (t != null) {
+        rebuildModel(t)
+      } else if (size > 0 && candles.length > 0) {
+        pinBestDefault()
+      }
+    }
+    tick()
+    const id = window.setInterval(tick, 500)
     return () => window.clearInterval(id)
-  }, [enabled, pinnedTime, rebuildModel])
+  }, [enabled, exchange, sym, rebuildModel, pinBestDefault, candles.length])
 
   useEffect(() => {
     if (!enabled || pinnedTime == null || !model) return
@@ -205,11 +222,12 @@ export function DeepPrintOverlay({
       setPinned(false)
       setPinnedTime(null)
       setPos(null)
+      setBufSize(0)
       return
     }
     pinBestDefault()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, symbol, exchange, interval])
+  }, [enabled, sym, exchange, interval])
 
   if (!enabled) return null
 
@@ -266,6 +284,12 @@ export function DeepPrintOverlay({
             In attesa di trade live su questa candela.
             <br />
             Clicca una candela recente, o aspetta il tape (buf: {bufSize}).
+            {bufSize > 0 && model?.tradeCount === 0 && (
+              <>
+                <br />
+                <span className="text-[#f0b90b]">Buffer OK — prova ← → o last</span>
+              </>
+            )}
           </div>
         )}
 
