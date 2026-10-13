@@ -1,5 +1,6 @@
 /**
  * 3D Pro desk widget — Deep DOM (Deep Chart style): walls + bubbles + full settings.
+ * Live sync badge shows when chartViewportStore range is linked.
  */
 
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
@@ -44,6 +45,14 @@ function filterByRange(
   return list.filter((c) => c.time <= toSec).slice(-Math.max(8, maxBars))
 }
 
+function fmtRange(fromSec: number | null, toSec: number | null): string {
+  if (fromSec == null || toSec == null) return '—'
+  const a = new Date(fromSec * 1000)
+  const b = new Date(toSec * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(a.getHours())}:${pad(a.getMinutes())}→${pad(b.getHours())}:${pad(b.getMinutes())}`
+}
+
 export function Viz3DPanel() {
   const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const panels = useLayoutStore((s) => s.panels)
@@ -58,6 +67,10 @@ export function Viz3DPanel() {
 
   const fromSec = useChartViewportStore((s) => s.fromSec)
   const toSec = useChartViewportStore((s) => s.toSec)
+  const crosshairTime = useChartViewportStore((s) => s.crosshairTime)
+  const vpSymbol = useChartViewportStore((s) => s.symbol)
+  const vpInterval = useChartViewportStore((s) => s.interval)
+  const rev = useChartViewportStore((s) => s.rev)
 
   const sceneWrapRef = useRef<HTMLDivElement>(null)
   const [drawings, setDrawings] = useState<Drawing[]>([])
@@ -73,7 +86,7 @@ export function Viz3DPanel() {
 
   const scopedCandles = useMemo(
     () => filterByRange(candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars),
-    [candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars]
+    [candles, fromSec, toSec, cfg.syncVisible, cfg.maxBars, rev]
   )
 
   const model = useMemo(
@@ -90,6 +103,12 @@ export function Viz3DPanel() {
   }, [primaryPanelId, symbol, interval])
 
   const themeBg = (VIZ3D_THEMES[cfg.theme as keyof typeof VIZ3D_THEMES] ?? VIZ3D_THEMES.desk).bg
+
+  const rangeLinked =
+    cfg.syncVisible && fromSec != null && toSec != null && toSec > fromSec
+  const instrumentMatch =
+    !vpSymbol || !vpInterval || (vpSymbol === symbol && vpInterval === interval)
+  const liveOk = status === 'connected'
 
   return (
     <div
@@ -147,14 +166,41 @@ export function Viz3DPanel() {
             {p.label}
           </button>
         ))}
-        <label className="flex items-center gap-1 text-[9px] text-[#848e9c] ml-auto">
+
+        {/* Sync control + status */}
+        <label
+          className={`flex items-center gap-1 text-[9px] ml-auto px-1.5 py-0.5 rounded border cursor-pointer ${
+            rangeLinked
+              ? 'border-[#0ecb81]/60 bg-[#0ecb81]/10 text-[#0ecb81]'
+              : cfg.syncVisible
+                ? 'border-[#f0b90b]/50 bg-[#f0b90b]/10 text-[#f0b90b]'
+                : 'border-[#2b3139] text-[#848e9c]'
+          }`}
+          title={
+            rangeLinked
+              ? `Sincronizzato col chart: ${fmtRange(fromSec, toSec)}`
+              : cfg.syncVisible
+                ? 'Sync ON — in attesa del range del chart primario (zoom/pan sul chart)'
+                : 'Sync OFF — mostra solo ultime barre'
+          }
+        >
           <input
             type="checkbox"
             checked={cfg.syncVisible}
             onChange={(e) => patch({ syncVisible: e.target.checked })}
           />
-          Sync
+          {rangeLinked ? (
+            <>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#0ecb81] animate-pulse" />
+              SYNC LIVE · {fmtRange(fromSec, toSec)}
+            </>
+          ) : cfg.syncVisible ? (
+            <>SYNC · waiting chart</>
+          ) : (
+            <>Sync off</>
+          )}
         </label>
+
         <label className="flex items-center gap-1 text-[9px] text-[#848e9c]">
           <input
             type="checkbox"
@@ -163,8 +209,16 @@ export function Viz3DPanel() {
           />
           Spin
         </label>
-        <span className="text-[9px] text-[#5e6673]">
-          {status === 'connected' ? `LIVE · ${scopedCandles.length}` : String(status)}
+
+        <span
+          className={`text-[9px] font-mono ${
+            liveOk ? 'text-[#0ecb81]' : 'text-[#5e6673]'
+          }`}
+          title={!instrumentMatch ? 'Simbolo/TF chart diverso dal 3D' : undefined}
+        >
+          {liveOk ? '● LIVE' : `○ ${String(status)}`} · {scopedCandles.length} bars
+          {drawings.length > 0 ? ` · ${drawings.length} draw` : ''}
+          {crosshairTime != null ? ' · ✛' : ''}
         </span>
       </div>
       <div ref={sceneWrapRef} className="flex-1 min-h-0 relative">
