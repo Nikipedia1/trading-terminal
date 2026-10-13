@@ -22,6 +22,18 @@ interface BufferSlot {
 
 const buffers = new Map<string, BufferSlot>()
 
+/**
+ * Exchange clients disagree on trade.time units:
+ *   Binance spot → unix seconds
+ *   Bybit/OKX/KuCoin often → milliseconds
+ * Candles are always unix seconds. Normalize to ms for range queries.
+ */
+function tradeTimeMs(t: number): number {
+  if (!Number.isFinite(t) || t <= 0) return 0
+  // sec ≈ 1e9, ms ≈ 1e12
+  return t < 1e11 ? t * 1000 : t
+}
+
 function getSlot(exchange: ExchangeId, symbol: string): BufferSlot {
   const key = feedKey(exchange, (symbol ?? '').toUpperCase())
   let slot = buffers.get(key)
@@ -52,11 +64,16 @@ export function retainTradeBuffer(exchange: ExchangeId, symbol: string): () => v
   if (!slot.unsub) {
     const sub = subscribeTradeFeed(exchange, sym, {
       onTrade: (t) => {
-        slot.trades.push(t)
+        // Store with normalized ms so archive + queries stay consistent
+        const normalized: AggressorTrade = {
+          ...t,
+          time: tradeTimeMs(t.time),
+        }
+        slot.trades.push(normalized)
         if (slot.trades.length > MAX_TRADES) {
           slot.trades.splice(0, slot.trades.length - MAX_TRADES)
         }
-        slot.pendingArchive.push(t)
+        slot.pendingArchive.push(normalized)
         if (slot.pendingArchive.length >= ARCHIVE_BATCH) {
           flushArchive(exchange, sym, slot)
         } else if (!slot.archiveTimer) {
@@ -87,7 +104,7 @@ export function retainTradeBuffer(exchange: ExchangeId, symbol: string): () => v
   }
 }
 
-/** Trades with event time in [startSec, endSec) – times in unix seconds. */
+/** Trades with event time in [startSec, endSec) – candle times in unix seconds. */
 export function queryTradesInRange(
   exchange: ExchangeId,
   symbol: string,
@@ -98,7 +115,10 @@ export function queryTradesInRange(
   if (!slot) return []
   const startMs = startSec * 1000
   const endMs = endSec * 1000
-  return slot.trades.filter((t) => t.time >= startMs && t.time < endMs)
+  return slot.trades.filter((t) => {
+    const tm = tradeTimeMs(t.time)
+    return tm >= startMs && tm < endMs
+  })
 }
 
 /**
@@ -113,7 +133,12 @@ export async function queryTradesInRangeAsync(
   const live = queryTradesInRange(exchange, symbol, startSec, endSec)
   if (live.length > 0) return live
   const { queryArchivedTrades } = await import('@/data/tradeArchive')
-  return queryArchivedTrades(exchange, (symbol ?? '').toUpperCase(), startSec * 1000, endSec * 1000)
+  return queryArchivedTrades(
+    exchange,
+    (symbol ?? '').toUpperCase(),
+    startSec * 1000,
+    endSec * 1000
+  )
 }
 
 export function tradeBufferSize(exchange: ExchangeId, symbol: string): number {
