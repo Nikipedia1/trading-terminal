@@ -1,5 +1,5 @@
 /**
- * Deep Print – Bid/Ask footprint panel pinned to a candle.
+ * Deep Print – Bid/Ask footprint + volume profile on pinned candle.
  * Real trades only from shared trade buffer.
  */
 
@@ -28,6 +28,13 @@ const IMB_THRESHOLD = 0.7
 
 function candleAt(candles: Candle[], t: number): Candle | undefined {
   return candles.find((c) => c.time === t)
+}
+
+function fmtPrice(p: number): string {
+  if (!Number.isFinite(p)) return '—'
+  if (p >= 1000) return p.toFixed(1)
+  if (p >= 1) return p.toFixed(2)
+  return p.toFixed(4)
 }
 
 export function DeepPrintOverlay({
@@ -117,7 +124,6 @@ export function DeepPrintOverlay({
         return
       }
     }
-    // Still pin last candle so live ticks fill it as they arrive
     pinCandle(candles[candles.length - 1].time)
   }, [candles, exchange, sym, interval, pinCandle])
 
@@ -145,7 +151,6 @@ export function DeepPrintOverlay({
     [candles, pinnedTime, pinBestDefault, pinCandle]
   )
 
-  // Live refresh: fast while empty, then 500ms on pinned candle
   useEffect(() => {
     if (!enabled) return
     const tick = () => {
@@ -235,6 +240,9 @@ export function DeepPrintOverlay({
   const maxAbsDelta = model
     ? Math.max(...model.levels.map((l) => Math.abs(l.delta)), 0.0001)
     : 0.0001
+  const maxVol = model
+    ? Math.max(...model.levels.map((l) => l.totalVol), 0.0001)
+    : 0.0001
   const levels = model
     ? deltaFilterOn
       ? model.levels.filter((l) => Math.abs(l.delta) >= maxAbsDelta * (deltaFilterPct / 100))
@@ -245,98 +253,139 @@ export function DeepPrintOverlay({
     <div
       className={`absolute ${LAYER_Z.deepPrint ?? 'z-[7]'} pointer-events-auto`}
       style={{
-        left: Math.max(8, Math.min(panelPos.x + 12, (containerRef.current?.clientWidth ?? 400) - 220)),
+        left: Math.max(8, Math.min(panelPos.x + 12, (containerRef.current?.clientWidth ?? 400) - 280)),
         top: Math.max(8, panelPos.y - 20),
       }}
       data-no-pan
     >
-      <div className="bg-[#0b0e11]/95 border border-[#f0b90b]/50 rounded shadow-xl text-[10px] text-[#eaecef] min-w-[220px] max-w-[280px]">
+      <div className="bg-[#0b0e11]/95 border border-[#f0b90b]/50 rounded shadow-xl text-[10px] text-[#eaecef] min-w-[260px] max-w-[320px]">
         <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#2b3139]">
           <span className="text-[#f0b90b] font-semibold">Deep Print</span>
           <span className="text-[#5e6673]">
-            {pinned ? '📌' : ''} {model?.tradeCount ?? 0} trades · buf {bufSize}
+            {pinned ? '📌' : ''} {model?.tradeCount ?? 0} · buf {bufSize}
           </span>
-          <button
-            type="button"
-            className="ml-auto text-[#848e9c] hover:text-[#eaecef]"
-            onClick={() => pinBestDefault()}
-          >
+          <button type="button" className="ml-auto text-[#848e9c] hover:text-[#eaecef]" onClick={() => pinBestDefault()}>
             last
           </button>
-          <button
-            type="button"
-            className="text-[#848e9c] hover:text-[#eaecef]"
-            onClick={() => shiftPin(-1)}
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            className="text-[#848e9c] hover:text-[#eaecef]"
-            onClick={() => shiftPin(1)}
-          >
-            →
-          </button>
+          <button type="button" className="text-[#848e9c] hover:text-[#eaecef]" onClick={() => shiftPin(-1)}>←</button>
+          <button type="button" className="text-[#848e9c] hover:text-[#eaecef]" onClick={() => shiftPin(1)}>→</button>
         </div>
 
         {(!model || model.tradeCount === 0) && (
           <div className="px-2 py-3 text-[11px] text-[#848e9c] leading-relaxed">
             In attesa di trade live su questa candela.
             <br />
-            Clicca una candela recente, o aspetta il tape (buf: {bufSize}).
-            {bufSize > 0 && model?.tradeCount === 0 && (
-              <>
-                <br />
-                <span className="text-[#f0b90b]">Buffer OK — prova ← → o last</span>
-              </>
-            )}
+            Clicca una candela recente (buf: {bufSize}).
           </div>
         )}
 
         {model && model.tradeCount > 0 && (
           <>
-            <div className="flex items-center gap-2 px-2 py-1 border-b border-[#1e2329] text-[9px] text-[#5e6673]">
-              <span>
-                Δ {model.totalDelta >= 0 ? '+' : ''}
-                {model.totalDelta.toFixed(3)}
-              </span>
-              <span>B {model.totalBuy.toFixed(2)}</span>
-              <span>S {model.totalSell.toFixed(2)}</span>
-              <label className="ml-auto flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={deltaFilterOn}
-                  onChange={(e) => setDeltaFilterOn(e.target.checked)}
-                />
-                filter
-              </label>
-              {deltaFilterOn && (
-                <input
-                  type="range"
-                  min={1}
-                  max={50}
-                  value={deltaFilterPct}
-                  onChange={(e) => setDeltaFilterPct(Number(e.target.value))}
-                  className="w-14"
-                />
-              )}
+            {/* Candle totals + buy/sell % bar */}
+            <div className="px-2 py-1.5 border-b border-[#1e2329] space-y-1">
+              <div className="flex items-center gap-2 text-[9px] text-[#5e6673]">
+                <span>
+                  Δ {model.totalDelta >= 0 ? '+' : ''}
+                  {model.totalDelta.toFixed(3)}
+                </span>
+                <span className="text-[#0ecb81]">B {model.totalBuy.toFixed(2)} ({model.buyPct.toFixed(0)}%)</span>
+                <span className="text-[#f6465d]">S {model.totalSell.toFixed(2)} ({model.sellPct.toFixed(0)}%)</span>
+                <span className="ml-auto">Vol {model.totalVolume.toFixed(2)}</span>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden flex bg-[#1e2329]">
+                <div className="h-full bg-[#0ecb81]" style={{ width: `${model.buyPct}%` }} />
+                <div className="h-full bg-[#f6465d]" style={{ width: `${model.sellPct}%` }} />
+              </div>
+              {/* VP summary */}
+              <div className="flex items-center gap-2 text-[9px] font-mono">
+                {model.poc != null && (
+                  <span className="text-[#f0b90b]">POC {fmtPrice(model.poc)}</span>
+                )}
+                {model.vah != null && (
+                  <span className="text-[#848e9c]">VAH {fmtPrice(model.vah)}</span>
+                )}
+                {model.val != null && (
+                  <span className="text-[#848e9c]">VAL {fmtPrice(model.val)}</span>
+                )}
+                <span className="text-[#5e6673] ml-auto">VA {(model.valueAreaPct * 100).toFixed(0)}%</span>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] text-[#5e6673]">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={deltaFilterOn}
+                    onChange={(e) => setDeltaFilterOn(e.target.checked)}
+                  />
+                  filter Δ
+                </label>
+                {deltaFilterOn && (
+                  <input
+                    type="range"
+                    min={1}
+                    max={50}
+                    value={deltaFilterPct}
+                    onChange={(e) => setDeltaFilterPct(Number(e.target.value))}
+                    className="w-14"
+                  />
+                )}
+              </div>
             </div>
-            <div className="max-h-56 overflow-y-auto px-1 py-1 font-mono">
-              {levels.slice(0, 48).map((l) => {
+
+            {/* Level rows: price | sell% | vol bar | buy% | delta */}
+            <div className="grid grid-cols-[52px_1fr_36px] gap-x-1 px-2 py-0.5 text-[8px] text-[#5e6673] border-b border-[#1e2329]">
+              <span className="text-right">Price</span>
+              <span className="text-center">S% · vol · B%</span>
+              <span className="text-right">Δ</span>
+            </div>
+            <div className="max-h-64 overflow-y-auto px-1 py-1 font-mono">
+              {levels.slice(0, 56).map((l) => {
                 const imb = levelImbalance(l, IMB_THRESHOLD)
                 const strong = imb != null
+                const barW = Math.max(2, (l.totalVol / maxVol) * 100)
                 return (
                   <div
                     key={l.price}
-                    className={`flex items-center gap-1 px-1 py-0.5 rounded ${
-                      strong ? 'bg-[#1e2329]/80' : ''
+                    className={`grid grid-cols-[52px_1fr_36px] gap-x-1 items-center px-1 py-0.5 rounded ${
+                      l.isPoc
+                        ? 'bg-[#f0b90b]/15 ring-1 ring-[#f0b90b]/40'
+                        : l.inValueArea
+                          ? 'bg-[#1e2329]/60'
+                          : strong
+                            ? 'bg-[#1e2329]/40'
+                            : ''
                     }`}
                   >
-                    <span className="w-16 text-right text-[#848e9c]">{l.price}</span>
-                    <span className="w-12 text-right text-[#a855f7]">{l.sellQty.toFixed(2)}</span>
-                    <span className="w-12 text-right text-[#0ecb81]">{l.buyQty.toFixed(2)}</span>
+                    <span className={`text-right tabular-nums ${
+                      l.isPoc ? 'text-[#f0b90b] font-semibold' : 'text-[#848e9c]'
+                    }`}>
+                      {fmtPrice(l.price)}
+                      {l.isPoc ? ' ★' : ''}
+                    </span>
+                    <div className="flex items-center gap-0.5 min-w-0">
+                      <span className="w-7 text-right text-[#a855f7] tabular-nums text-[9px]">
+                        {l.sellPct.toFixed(0)}
+                      </span>
+                      <div className="flex-1 h-2.5 rounded-sm overflow-hidden flex bg-[#0b0e11] min-w-[40px]">
+                        <div
+                          className="h-full bg-[#a855f7]/80"
+                          style={{ width: `${(l.sellPct / 100) * barW}%` }}
+                          title={`Sell ${l.sellQty.toFixed(4)}`}
+                        />
+                        <div
+                          className="h-full bg-[#0ecb81]/80"
+                          style={{ width: `${(l.buyPct / 100) * barW}%` }}
+                          title={`Buy ${l.buyQty.toFixed(4)}`}
+                        />
+                      </div>
+                      <span className="w-7 text-left text-[#0ecb81] tabular-nums text-[9px]">
+                        {l.buyPct.toFixed(0)}
+                      </span>
+                      <span className="w-8 text-right text-[#5e6673] tabular-nums text-[8px]">
+                        {l.volPct.toFixed(0)}%
+                      </span>
+                    </div>
                     <span
-                      className={`w-12 text-right ${
+                      className={`text-right tabular-nums text-[9px] ${
                         l.delta >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
                       }`}
                     >
