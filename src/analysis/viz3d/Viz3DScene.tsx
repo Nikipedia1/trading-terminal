@@ -1,6 +1,6 @@
 /**
  * Professional 3D scene — solid boxes, real candles (body+wick), Canvas2D perspective.
- * Drawings use drawingStore tool ids: trendline, horizontal, vertical, … + p1/p2.
+ * Drawings: flat screen map matching Viz3DDrawOverlay clicks (not 3D project).
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -9,6 +9,7 @@ import { DEFAULT_DOM3D_OPTIONS } from './types'
 import { project, columnCorners, type Camera3D, type Vec3 } from './math3d'
 import { VIZ3D_THEMES } from './themes'
 import type { Drawing } from '@/drawings/types'
+import { useDrawingStore } from '@/drawings/drawingStore'
 
 interface Viz3DSceneProps {
   model: Viz3DModel
@@ -47,7 +48,6 @@ function shadeHex(hex: string, factor: number, a: number): string {
   return `rgba(${r},${g},${b},${a})`
 }
 
-/** Face indices into columnCorners() result (bottom 0-3, top 4-7). */
 const BOX_FACES: { idx: number[]; shade: number }[] = [
   { idx: [0, 1, 2, 3], shade: 0.35 },
   { idx: [0, 1, 5, 4], shade: 0.55 },
@@ -72,6 +72,8 @@ export function Viz3DScene({
   modelRef.current = model
   const drawingsRef = useRef(drawings)
   drawingsRef.current = drawings
+  const activeTool = useDrawingStore((s) => s.activeTool)
+  const drawingLock = activeTool !== 'pan' && activeTool !== 'cursor'
 
   const paint = useCallback(() => {
     const canvas = canvasRef.current
@@ -303,20 +305,18 @@ export function Viz3DScene({
       }
     }
 
-    // --- Drawings: drawingStore tool ids + p1/p2/price/time ---
+    // Drawings: FLAT map = same as click overlay (not 3D project)
     const dlist = drawingsRef.current ?? []
     if (dlist.length && m.priceMax > m.priceMin) {
-      const yOf = (price: number) =>
-        (((price - m.priceMin) / (m.priceMax - m.priceMin)) * 2 - 1) * 0.85
-
       let t0 = 0
       let t1 = 1
       if (m.candles && m.candles.length >= 2) {
         t0 = m.candles[0].time
         t1 = m.candles[m.candles.length - 1].time
       } else if (m.terrain && m.terrain.length >= 2) {
-        t0 = m.terrain[0].time
-        t1 = m.terrain[m.terrain.length - 1].time
+        const times = m.terrain.map((c) => c.time)
+        t0 = Math.min(...times)
+        t1 = Math.max(...times)
       } else {
         const now = Date.now() / 1000
         t0 = now - 3600
@@ -324,16 +324,23 @@ export function Viz3DScene({
       }
       if (!(t1 > t0)) t1 = t0 + 60
 
-      const tOf = (time: number) => ((time - t0) / (t1 - t0)) * 2 - 1
-      const toScr = (time: number, price: number) =>
-        project({ x: tOf(time) * 0.9, y: yOf(price), z: 0 }, cam, cx, cy)
+      const pMin = m.priceMin
+      const pMax = m.priceMax
+      const toScr = (time: number, price: number) => {
+        const nx = (time - t0) / (t1 - t0)
+        const ny = (pMax - price) / (pMax - pMin)
+        return {
+          x: Math.max(-40, Math.min(w + 40, nx * w)),
+          y: Math.max(-40, Math.min(h + 40, ny * h)),
+        }
+      }
 
       const midTime = (t0 + t1) / 2
-      const midPrice = (m.priceMin + m.priceMax) / 2
+      const midPrice = (pMin + pMax) / 2
 
       for (const d of dlist) {
         const col = d.style?.color ?? '#1e90ff'
-        ctx.lineWidth = Math.max(1, d.style?.lineWidth ?? 1.5)
+        ctx.lineWidth = Math.max(1.5, d.style?.lineWidth ?? 1.5)
         ctx.strokeStyle = col
         ctx.fillStyle = col
         const ls = d.style?.lineStyle
@@ -497,21 +504,20 @@ export function Viz3DScene({
       }
     }
 
-    // HUD
     ctx.fillStyle = theme.label
     ctx.font = '10px ui-monospace, Menlo, monospace'
     ctx.textAlign = 'left'
     const drawN = (drawingsRef.current ?? []).length
     ctx.fillText(
-      `${m.mode} · drag orbit · wheel zoom${drawN ? ` · ${drawN} draw` : ''}`,
+      `${m.mode} · ${drawingLock ? 'DRAW mode' : 'drag orbit'} · wheel zoom${drawN ? ` · ${drawN} draw` : ''}`,
       10,
       16
     )
-  }, [])
+  }, [drawingLock])
 
   useEffect(() => {
     paint()
-  }, [model, config, drawings, paint])
+  }, [model, config, drawings, paint, drawingLock])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -526,6 +532,8 @@ export function Viz3DScene({
     if (!canvas) return
 
     const onDown = (e: PointerEvent) => {
+      const tool = useDrawingStore.getState().activeTool
+      if (tool !== 'pan' && tool !== 'cursor') return
       dragRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -576,7 +584,7 @@ export function Viz3DScene({
   return (
     <canvas
       ref={canvasRef}
-      className={`w-full h-full touch-none cursor-grab active:cursor-grabbing ${className}`}
+      className={`w-full h-full touch-none ${drawingLock ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'} ${className}`}
     />
   )
 }
