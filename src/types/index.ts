@@ -111,6 +111,8 @@ export type WidgetKind =
   | 'deepprint'
   | 'volprofile'
   | 'domladder'
+  | 'footprint'
+  | 'gex'
 
 export interface WidgetPanelConfig {
   id: string
