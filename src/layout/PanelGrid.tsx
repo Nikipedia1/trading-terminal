@@ -33,6 +33,8 @@ import {
   DeepPrintPanel,
   VolumeProfilePanel,
   DomPanel,
+  FootprintPanel,
+  GammaPanel,
 } from '@/panels/instruments'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { LargeTradesWidget } from '@/ui/OrderBookWidget'
@@ -110,6 +112,10 @@ function renderWidget(kind: WidgetKind) {
       return <VolumeProfilePanel />
     case 'domladder':
       return <DomPanel />
+    case 'footprint':
+      return <FootprintPanel />
+    case 'gex':
+      return <GammaPanel />
     case 'cycles':
       return <CyclesToolsPanel />
     default: {
