@@ -113,6 +113,12 @@ export type WidgetKind =
   | 'domladder'
   | 'footprint'
   | 'gex'
+  | 'cvd'
+  | 'absorption'
+  | 'imbalance'
+  | 'deeptrades'
+  | 'ofi'
+  | 'iceberg'
 
 export interface WidgetPanelConfig {
   id: string
