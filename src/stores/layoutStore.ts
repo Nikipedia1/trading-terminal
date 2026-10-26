@@ -9,7 +9,6 @@ import type {
   GridLayoutItem,
   WidgetKind,
   WidgetPanelConfig,
-  DeskPanel,
 } from '@/types'
 
 function uid(prefix = 'panel') {
@@ -74,6 +73,7 @@ interface LayoutState {
   updatePanel: (id: string, patch: Partial<ChartPanelConfig>) => void
   setLayout: (layout: GridLayoutItem[]) => void
   setPrimary: (id: string) => void
+  setPrimaryPanel: (id: string) => void
   addWidget: (kind: WidgetKind) => void
   removeWidget: (id: string) => void
   resetLayout: () => void
@@ -130,6 +130,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   setLayout: (layout) => set({ layout }),
 
   setPrimary: (id) => set({ primaryPanelId: id }),
+  setPrimaryPanel: (id) => set({ primaryPanelId: id }),
 
   addWidget: (kind) => {
     const meta = WIDGET_META[kind]
