@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   check:
-    name: Typecheck · Test · Build
+    name: Stability · Typecheck · Test · Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -29,13 +29,21 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Typecheck
+      # --- Stability gates (fail fast) ---
+      - name: Assert no panel placeholders
+        run: npm run assert:placeholders
+
+      - name: Assert WidgetKind → PanelGrid coverage
+        run: npm run assert:widgets
+
+      # --- Compile: fails if any panel/module does not typecheck ---
+      - name: Typecheck (panels must compile)
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
-      - name: Unit tests
+      - name: Unit + desk smoke tests
         run: npm test
 
       - name: Production build (Pages dist)
