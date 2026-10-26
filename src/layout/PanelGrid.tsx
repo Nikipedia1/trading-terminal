@@ -28,6 +28,11 @@ import { LiveTvPanel } from '@/panels/livetv'
 import { LearnPanel } from '@/panels/learn'
 import { OpsHealthPanel } from '@/panels/ops'
 import { OnchainPanel } from '@/panels/onchain'
+import {
+  DrawToolsPanel,
+  OrderflowToolsPanel,
+  CyclesToolsPanel,
+} from '@/panels/tools'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { LargeTradesWidget } from '@/ui/OrderBookWidget'
 import { getRegisteredPanel } from '@/panels'
@@ -95,6 +100,12 @@ function renderWidget(kind: WidgetKind) {
       return <OpsHealthPanel />
     case 'onchain':
       return <OnchainPanel />
+    case 'draw':
+      return <DrawToolsPanel />
+    case 'orderflow':
+      return <OrderflowToolsPanel />
+    case 'cycles':
+      return <CyclesToolsPanel />
     default: {
       const reg = getRegisteredPanel(kind as string)
       if (reg) {
@@ -136,7 +147,7 @@ export function PanelGrid({ width }: { width?: number }) {
       >
         {panels.map((p) => (
           <div key={p.id} className="nacs-widget-shell overflow-visible">
-            <ChartPanel config={p} isPrimary={p.id === primaryPanelId} />
+            <ChartPanel config={p} />
           </div>
         ))}
         {widgets.map((w) => (
@@ -173,3 +184,4 @@ export function PanelGrid({ width }: { width?: number }) {
 }
 
 void WIDGET_META
+void primaryPanelId
