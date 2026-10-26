@@ -105,6 +105,9 @@ export type WidgetKind =
   | 'onchain'
   | 'quantlab'
   | 'battlefield'
+  | 'draw'
+  | 'orderflow'
+  | 'cycles'
 
 export interface WidgetPanelConfig {
   id: string
