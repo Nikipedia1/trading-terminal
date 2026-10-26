@@ -4,13 +4,13 @@ import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
 import type { WidgetKind } from '@/types'
 
 const PRIORITY: WidgetKind[] = [
-  'draw',
+  'deepprint',
+  'volprofile',
+  'domladder',
   'orderflow',
-  'cycles',
-  'battlefield',
   'book',
   'tape',
-  'large',
+  'battlefield',
   'viz3d',
   'quantlab',
   'news',
@@ -30,6 +30,8 @@ const PRIORITY: WidgetKind[] = [
   'bots',
   'backtest',
   'ai',
+  'draw',
+  'cycles',
   'livekeys',
   'plugins',
   'ops',
@@ -37,8 +39,11 @@ const PRIORITY: WidgetKind[] = [
 ]
 
 const LABELS: Partial<Record<WidgetKind, string>> = {
+  deepprint: 'Deep Print',
+  volprofile: 'Volume Profile',
+  domladder: 'DOM Ladder',
+  orderflow: 'Deep Print',
   draw: '✎ Draw Tools',
-  orderflow: 'Orderflow',
   cycles: 'Cycles',
   battlefield: '⚔ Battlefield',
   book: 'Order Book',
