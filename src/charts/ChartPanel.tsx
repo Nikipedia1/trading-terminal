@@ -1,19 +1,21 @@
 /**
- * ChartPanel – one chart unit on the desk grid.
- * Tools (Draw / Orderflow / Cycles) live in external dock panels to avoid overlap.
+ * ChartPanel – chart unit. Toolbars on chart; instrument VIEW panels via + Panel.
  */
 
 import { type MouseEvent, useEffect, useState } from 'react'
 import { ChartContainer } from './ChartContainer'
 import { ConnectionBadge } from './ConnectionBadge'
+import { OrderflowMenu } from './OrderflowMenu'
 import { ChartPanelHud } from './ChartHud'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useMarketStore } from '@/stores/marketStore'
 import { useOrderflowStore, defaultOrderflowState } from '@/stores/orderflowStore'
 import { useCycleStore, defaultCycleConfig } from '@/stores/cycleStore'
+import { CycleMenu } from '@/analysis/cycles'
 import { useChartStyleStore } from '@/stores/chartStyleStore'
 import { useDrawingStore } from '@/drawings/drawingStore'
+import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES, EXCHANGE_LABELS } from '@/data/exchanges/registry'
 import { detachChartPanel } from '@/layout/detachPanel'
 import { SymbolBadge } from '@/ui/SymbolBadge'
@@ -27,7 +29,7 @@ interface ChartPanelProps {
   config: ChartPanelConfig
 }
 
-function openToolPanel(kind: WidgetKind) {
+function openInstrumentPanel(kind: WidgetKind) {
   const { widgets, addWidget } = useLayoutStore.getState()
   if (widgets.some((w) => w.kind === kind)) return
   addWidget(kind)
@@ -44,9 +46,11 @@ export function ChartPanel({ config }: ChartPanelProps) {
 
   const ofRaw = useOrderflowStore((s) => s.byPanel[id])
   const ofState = { ...defaultOrderflowState(), ...(ofRaw ?? {}) }
+  const patchOf = useOrderflowStore((s) => s.patch)
 
   const cycleRaw = useCycleStore((s) => s.byPanel[id])
   const cycleCfg = { ...defaultCycleConfig(), ...(cycleRaw ?? {}) }
+  const patchCycle = useCycleStore((s) => s.patch)
 
   const setActiveTool = useDrawingStore((s) => s.setActiveTool)
   const toggleStylePanel = useChartStyleStore((s) => s.togglePanel)
@@ -166,70 +170,42 @@ export function ChartPanel({ config }: ChartPanelProps) {
           <option value="C">Sync C</option>
         </select>
 
-        {/* Open external tool panels (no overlay on chart) */}
+        {/* Open standalone instrument VIEWS (data panels, not chart controls) */}
         <button
           type="button"
           className={toolBtn}
-          title="Apri pannello Draw Tools"
+          title="Pannello Deep Print (vista livelli)"
           onClick={(e) => {
             e.stopPropagation()
-            openToolPanel('draw')
+            openInstrumentPanel('deepprint')
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          Draw
-        </button>
-        <button
-          type="button"
-          className={toolBtn}
-          title="Apri pannello Orderflow"
-          onClick={(e) => {
-            e.stopPropagation()
-            openToolPanel('orderflow')
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          OF
+          Print
         </button>
         <button
           type="button"
           className={toolBtn}
-          title="Apri pannello Cycles"
+          title="Pannello Volume Profile"
           onClick={(e) => {
             e.stopPropagation()
-            openToolPanel('cycles')
+            openInstrumentPanel('volprofile')
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          Cycles
+          VP
         </button>
         <button
           type="button"
-          className={`text-xxs px-1.5 py-0.5 rounded border ${
-            stylePanelOpen
-              ? 'bg-[#1e2329] text-[#f0b90b] border-[#f0b90b]/50'
-              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
-          }`}
-          title="Colore candele e canvas"
+          className={toolBtn}
+          title="Pannello DOM Ladder"
           onClick={(e) => {
             e.stopPropagation()
-            toggleStylePanel()
+            openInstrumentPanel('domladder')
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          Stile
-        </button>
-        <button
-          type="button"
-          className="text-xxs px-1 text-terminal-muted hover:text-terminal-text"
-          title="Reset tool to pan"
-          onClick={(e) => {
-            e.stopPropagation()
-            setActiveTool('pan')
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          pan
+          DOM
         </button>
 
         <button
@@ -274,6 +250,45 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onTouchStart={(e) => e.stopPropagation()}
         >
           ×
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1 px-1 border-b border-terminal-border shrink-0 overflow-x-auto overflow-y-visible relative z-40">
+        <DrawingToolbar panelId={id} symbol={symbol} />
+        <OrderflowMenu
+          state={ofState}
+          exchange={exchange}
+          onChange={(next) => patchOf(id, next)}
+          onPrintToggle={() => patchOf(id, { print: !ofState.print })}
+        />
+        <CycleMenu
+          config={cycleCfg}
+          candles={candles}
+          onChange={(patch) => patchCycle(id, patch)}
+        />
+        <button
+          type="button"
+          className={`text-xxs px-1.5 py-0.5 rounded border shrink-0 ${
+            stylePanelOpen
+              ? 'bg-[#1e2329] text-[#f0b90b] border-[#f0b90b]/50'
+              : 'text-terminal-muted border-terminal-border hover:text-terminal-text'
+          }`}
+          title="Colore candele e canvas"
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleStylePanel()
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          Stile
+        </button>
+        <button
+          type="button"
+          className="text-xxs px-1 text-terminal-muted hover:text-terminal-text shrink-0"
+          title="Reset tool to pan"
+          onClick={() => setActiveTool('pan')}
+        >
+          pan
         </button>
       </div>
 
