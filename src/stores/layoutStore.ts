@@ -9,6 +9,7 @@ import type {
   WidgetKind,
   WidgetPanelConfig,
 } from '@/types'
+import { MAX_CHART_PANELS, MAX_WIDGETS } from '@/ui/PerfGuard'
 
 function uid(prefix = 'panel') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -44,35 +45,35 @@ export const WIDGET_META: Record<
   ops: { title: 'Ops', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   onchain: { title: 'On-chain', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
   quantlab: { title: 'Quant Lab', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
-  battlefield: { title: 'Battlefield', minW: 5, minH: 10, defaultW: 8, defaultH: 16 },
-  draw: { title: 'Draw Tools', minW: 3, minH: 4, defaultW: 4, defaultH: 8 },
-  orderflow: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
-  cycles: { title: 'Cycles', minW: 3, minH: 4, defaultW: 3, defaultH: 10 },
-  deepprint: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
-  volprofile: { title: 'Volume Profile', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
+  battlefield: { title: 'Battlefield', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
+  draw: { title: 'Draw', minW: 2, minH: 4, defaultW: 3, defaultH: 8 },
+  orderflow: { title: 'Orderflow', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  cycles: { title: 'Cycles', minW: 3, minH: 6, defaultW: 4, defaultH: 10 },
+  deepprint: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  volprofile: { title: 'Volume Profile', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
   domladder: { title: 'DOM Ladder', minW: 2, minH: 6, defaultW: 3, defaultH: 14 },
-  footprint: { title: 'Footprint', minW: 3, minH: 6, defaultW: 4, defaultH: 14 },
-  cluster: { title: 'Cluster Chart', minW: 4, minH: 8, defaultW: 6, defaultH: 16 },
-  tpo: { title: 'TPO Profile', minW: 3, minH: 8, defaultW: 4, defaultH: 16 },
-  gex: { title: 'Gamma / GEX', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
-  cvd: { title: 'CVD / Delta', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
-  absorption: { title: 'Absorption', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
-  imbalance: { title: 'Stacked Imbalance', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
-  deeptrades: { title: 'Deep Trades', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
-  ofi: { title: 'OFI / VPIN', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
-  iceberg: { title: 'Iceberg', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
+  footprint: { title: 'Footprint', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  cluster: { title: 'Cluster', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  tpo: { title: 'TPO', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  gex: { title: 'GEX', minW: 3, minH: 6, defaultW: 4, defaultH: 10 },
+  cvd: { title: 'CVD', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
+  absorption: { title: 'Absorption', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
+  imbalance: { title: 'Imbalance', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
+  deeptrades: { title: 'Deep Trades', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
+  ofi: { title: 'OFI', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
+  iceberg: { title: 'Iceberg', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
-  id: 'chart-main',
+  id: 'panel-main',
   symbol: 'BTCUSDT',
   interval: '15m',
   exchange: 'binance',
-  syncGroup: 'A',
+  syncGroup: null,
 }
 
 function defaultLayout(): GridLayoutItem[] {
-  return [{ i: DEFAULT_CHART.id, x: 0, y: 0, w: 12, h: 16, minW: 4, minH: 8 }]
+  return [{ i: DEFAULT_CHART.id, x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 8 }]
 }
 
 interface LayoutState {
@@ -89,7 +90,11 @@ interface LayoutState {
   addWidget: (kind: WidgetKind) => void
   removeWidget: (id: string) => void
   resetLayout: () => void
-  applyDesk: (panels: ChartPanelConfig[], widgets: WidgetPanelConfig[], layout: GridLayoutItem[]) => void
+  applyDesk: (
+    panels: ChartPanelConfig[],
+    widgets: WidgetPanelConfig[],
+    layout: GridLayoutItem[]
+  ) => void
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
@@ -99,6 +104,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   primaryPanelId: DEFAULT_CHART.id,
 
   addChartPanel: () => {
+    if (get().panels.length >= MAX_CHART_PANELS) {
+      console.warn(`[desk] MAX_CHART_PANELS=${MAX_CHART_PANELS} reached`)
+      return
+    }
     const id = uid('chart')
     const panel: ChartPanelConfig = {
       id,
@@ -145,6 +154,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   addWidget: (kind) => {
     const meta = WIDGET_META[kind]
     if (!meta) return
+    if (get().widgets.length >= MAX_WIDGETS) {
+      console.warn(`[desk] MAX_WIDGETS=${MAX_WIDGETS} reached`)
+      return
+    }
     const id = uid(kind)
     const widget: WidgetPanelConfig = {
       id,
@@ -219,35 +232,4 @@ export type SyncPayload = {
   type?: string
   from?: number
   to?: number
-  time?: number | null
-  price?: number | null
-  highlight?: SyncHighlight | null
-  sourceId?: string
-}
-export type SyncHighlight = {
-  timeSec: number
-  price: number
-  aggressor?: 'buy' | 'sell'
-}
-type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
-const syncListeners = new Map<string, Set<SyncListener>>()
-const syncHighlights = new Map<string, SyncHighlight | null>()
-export function publishSync(group: string, sourceId: string, payload: SyncPayload): void {
-  const set = syncListeners.get(group)
-  if (!set) return
-  const msg = { ...payload, sourceId }
-  for (const cb of set) { try { cb(msg) } catch { /* */ } }
-}
-export function subscribeSyncGroup(group: string, panelId: string, cb: SyncListener): () => void {
-  void panelId
-  let set = syncListeners.get(group)
-  if (!set) { set = new Set(); syncListeners.set(group, set) }
-  set.add(cb)
-  return () => { set!.delete(cb); if (set!.size === 0) syncListeners.delete(group) }
-}
-export function setSyncHighlight(group: string, highlight: SyncHighlight | null): void {
-  syncHighlights.set(group, highlight)
-}
-export function getSyncHighlight(group: string): SyncHighlight | null {
-  return syncHighlights.get(group) ?? null
 }
