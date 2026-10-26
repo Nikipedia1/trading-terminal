@@ -51,6 +51,8 @@ export const WIDGET_META: Record<
   deepprint: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
   volprofile: { title: 'Volume Profile', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
   domladder: { title: 'DOM Ladder', minW: 2, minH: 6, defaultW: 3, defaultH: 14 },
+  footprint: { title: 'Footprint', minW: 3, minH: 6, defaultW: 4, defaultH: 14 },
+  gex: { title: 'Gamma / GEX', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
