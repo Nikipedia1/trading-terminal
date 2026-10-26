@@ -112,6 +112,7 @@ export type WidgetKind =
   | 'volprofile'
   | 'domladder'
   | 'footprint'
+  | 'cluster'
   | 'gex'
   | 'cvd'
   | 'absorption'
