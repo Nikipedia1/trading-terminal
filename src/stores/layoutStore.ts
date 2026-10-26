@@ -225,6 +225,14 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }),
 }))
 
+/* ---- cross-panel sync bus (range / crosshair / orderflow highlight) ---- */
+
+export type SyncHighlight = {
+  timeSec: number
+  price: number
+  aggressor?: 'buy' | 'sell'
+}
+
 export type SyncPayload = {
   logicalRange?: { from: number; to: number }
   timeRange?: { from: number; to: number }
@@ -232,4 +240,52 @@ export type SyncPayload = {
   type?: string
   from?: number
   to?: number
+  time?: number | null
+  price?: number | null
+  highlight?: SyncHighlight | null
+  sourceId?: string
+}
+
+type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
+
+const syncListeners = new Map<string, Set<SyncListener>>()
+const syncHighlights = new Map<string, SyncHighlight | null>()
+
+export function publishSync(group: string, sourceId: string, payload: SyncPayload): void {
+  const set = syncListeners.get(group)
+  if (!set) return
+  const msg = { ...payload, sourceId }
+  for (const cb of set) {
+    try {
+      cb(msg)
+    } catch {
+      /* */
+    }
+  }
+}
+
+export function subscribeSyncGroup(
+  group: string,
+  panelId: string,
+  cb: SyncListener
+): () => void {
+  void panelId
+  let set = syncListeners.get(group)
+  if (!set) {
+    set = new Set()
+    syncListeners.set(group, set)
+  }
+  set.add(cb)
+  return () => {
+    set!.delete(cb)
+    if (set!.size === 0) syncListeners.delete(group)
+  }
+}
+
+export function setSyncHighlight(group: string, highlight: SyncHighlight | null): void {
+  syncHighlights.set(group, highlight)
+}
+
+export function getSyncHighlight(group: string): SyncHighlight | null {
+  return syncHighlights.get(group) ?? null
 }
