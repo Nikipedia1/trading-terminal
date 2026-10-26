@@ -1,6 +1,6 @@
 /**
  * Standalone Deep Print panel — shows bid/ask levels + VP for the linked chart.
- * This is a VIEW of the tool, not a remote control for chart overlays.
+ * VIEW of the tool (not a remote control for chart overlays).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useResolvedChartLink } from '@/hooks/ChartLinkContext'
@@ -41,15 +41,16 @@ export function DeepPrintPanel() {
     }
     const t0 = last.time
     const t1 = t0 + sec
+    const mid = (last.high + last.low) / 2
     const tick = () => {
       const trades = queryTradesInRange(exchange, (symbol ?? '').toUpperCase(), t0, t1)
-      const m = aggregatePrint(trades, t0, interval, exchange, (symbol ?? '').toUpperCase())
+      const m = aggregatePrint(trades, t0, t1, mid)
       setModel(m)
     }
     tick()
     const id = window.setInterval(tick, 500)
     return () => window.clearInterval(id)
-  }, [last?.time, sec, exchange, symbol, interval])
+  }, [last?.time, last?.high, last?.low, sec, exchange, symbol])
 
   const levels = useMemo(() => model?.levels ?? [], [model])
 
@@ -75,14 +76,19 @@ export function DeepPrintPanel() {
           Nessun trade nel buffer per questa candela
         </div>
       )}
-      {model && (
+      {model && levels.length === 0 && (
+        <div className="flex-1 flex items-center justify-center text-[#5e6673]">
+          Buffer attivo — in attesa trade live…
+        </div>
+      )}
+      {model && levels.length > 0 && (
         <div className="flex-1 min-h-0 overflow-auto">
-          <div className="px-2 py-1 text-[10px] text-[#5e6673] border-b border-[#1e2329] sticky top-0 bg-[#0b0e11]">
+          <div className="px-2 py-1 text-[10px] text-[#5e6673] border-b border-[#1e2329] sticky top-0 bg-[#0b0e11] z-10">
             POC {model.poc != null ? fmt(model.poc) : '—'} · VA [{model.val != null ? fmt(model.val) : '—'} –{' '}
             {model.vah != null ? fmt(model.vah) : '—'}]
           </div>
           <table className="w-full border-collapse">
-            <thead className="sticky top-6 bg-[#0b0e11] text-[10px] text-[#5e6673]">
+            <thead className="sticky top-7 bg-[#0b0e11] text-[10px] text-[#5e6673] z-10">
               <tr>
                 <th className="text-right px-1 py-0.5">Sell</th>
                 <th className="text-right px-1 py-0.5">Price</th>
