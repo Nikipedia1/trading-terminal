@@ -170,7 +170,6 @@ export function ChartPanel({ config }: ChartPanelProps) {
           <option value="C">Sync C</option>
         </select>
 
-        {/* Open standalone instrument VIEWS (data panels, not chart controls) */}
         <button
           type="button"
           className={toolBtn}
@@ -206,6 +205,30 @@ export function ChartPanel({ config }: ChartPanelProps) {
           onMouseDown={(e) => e.stopPropagation()}
         >
           DOM
+        </button>
+        <button
+          type="button"
+          className={toolBtn}
+          title="Pannello Footprint"
+          onClick={(e) => {
+            e.stopPropagation()
+            openInstrumentPanel('footprint')
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          FP
+        </button>
+        <button
+          type="button"
+          className={toolBtn}
+          title="Pannello Gamma / GEX (Deribit)"
+          onClick={(e) => {
+            e.stopPropagation()
+            openInstrumentPanel('gex')
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          GEX
         </button>
 
         <button
