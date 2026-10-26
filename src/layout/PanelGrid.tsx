@@ -28,13 +28,20 @@ import { LiveTvPanel } from '@/panels/livetv'
 import { LearnPanel } from '@/panels/learn'
 import { OpsHealthPanel } from '@/panels/ops'
 import { OnchainPanel } from '@/panels/onchain'
-import { DrawToolsPanel, CyclesToolsPanel } from '@/panels/tools'
+import { DrawToolsPanel } from '@/panels/tools'
 import {
   DeepPrintPanel,
   VolumeProfilePanel,
   DomPanel,
   FootprintPanel,
   GammaPanel,
+  CvdPanel,
+  AbsorptionPanel,
+  ImbalancePanel,
+  DeepTradesPanel,
+  OfiPanel,
+  CyclesViewPanel,
+  IcebergPanel,
 } from '@/panels/instruments'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { LargeTradesWidget } from '@/ui/OrderBookWidget'
@@ -116,8 +123,20 @@ function renderWidget(kind: WidgetKind) {
       return <FootprintPanel />
     case 'gex':
       return <GammaPanel />
+    case 'cvd':
+      return <CvdPanel />
+    case 'absorption':
+      return <AbsorptionPanel />
+    case 'imbalance':
+      return <ImbalancePanel />
+    case 'deeptrades':
+      return <DeepTradesPanel />
+    case 'ofi':
+      return <OfiPanel />
+    case 'iceberg':
+      return <IcebergPanel />
     case 'cycles':
-      return <CyclesToolsPanel />
+      return <CyclesViewPanel />
     default: {
       const reg = getRegisteredPanel(kind as string)
       if (reg) {
