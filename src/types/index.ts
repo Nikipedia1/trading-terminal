@@ -113,6 +113,7 @@ export type WidgetKind =
   | 'domladder'
   | 'footprint'
   | 'cluster'
+  | 'tpo'
   | 'gex'
   | 'cvd'
   | 'absorption'
