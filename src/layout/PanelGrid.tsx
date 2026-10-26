@@ -125,7 +125,6 @@ export function PanelGrid({ width }: { width?: number }) {
   const panels = useLayoutStore((s) => s.panels)
   const widgets = useLayoutStore((s) => s.widgets)
   const layout = useLayoutStore((s) => s.layout)
-  const primaryPanelId = useLayoutStore((s) => s.primaryPanelId)
   const removeWidget = useLayoutStore((s) => s.removeWidget)
   const setLayout = useLayoutStore((s) => s.setLayout)
 
@@ -184,4 +183,3 @@ export function PanelGrid({ width }: { width?: number }) {
 }
 
 void WIDGET_META
-void primaryPanelId
