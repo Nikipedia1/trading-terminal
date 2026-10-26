@@ -53,6 +53,12 @@ export const WIDGET_META: Record<
   domladder: { title: 'DOM Ladder', minW: 2, minH: 6, defaultW: 3, defaultH: 14 },
   footprint: { title: 'Footprint', minW: 3, minH: 6, defaultW: 4, defaultH: 14 },
   gex: { title: 'Gamma / GEX', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
+  cvd: { title: 'CVD / Delta', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
+  absorption: { title: 'Absorption', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
+  imbalance: { title: 'Stacked Imbalance', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
+  deeptrades: { title: 'Deep Trades', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
+  ofi: { title: 'OFI / VPIN', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
+  iceberg: { title: 'Iceberg', minW: 3, minH: 5, defaultW: 3, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
