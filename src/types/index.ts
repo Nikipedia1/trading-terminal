@@ -108,6 +108,9 @@ export type WidgetKind =
   | 'draw'
   | 'orderflow'
   | 'cycles'
+  | 'deepprint'
+  | 'volprofile'
+  | 'domladder'
 
 export interface WidgetPanelConfig {
   id: string

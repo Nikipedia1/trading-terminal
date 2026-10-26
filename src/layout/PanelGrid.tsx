@@ -28,11 +28,12 @@ import { LiveTvPanel } from '@/panels/livetv'
 import { LearnPanel } from '@/panels/learn'
 import { OpsHealthPanel } from '@/panels/ops'
 import { OnchainPanel } from '@/panels/onchain'
+import { DrawToolsPanel, CyclesToolsPanel } from '@/panels/tools'
 import {
-  DrawToolsPanel,
-  OrderflowToolsPanel,
-  CyclesToolsPanel,
-} from '@/panels/tools'
+  DeepPrintPanel,
+  VolumeProfilePanel,
+  DomPanel,
+} from '@/panels/instruments'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
 import { LargeTradesWidget } from '@/ui/OrderBookWidget'
 import { getRegisteredPanel } from '@/panels'
@@ -103,7 +104,12 @@ function renderWidget(kind: WidgetKind) {
     case 'draw':
       return <DrawToolsPanel />
     case 'orderflow':
-      return <OrderflowToolsPanel />
+    case 'deepprint':
+      return <DeepPrintPanel />
+    case 'volprofile':
+      return <VolumeProfilePanel />
+    case 'domladder':
+      return <DomPanel />
     case 'cycles':
       return <CyclesToolsPanel />
     default: {

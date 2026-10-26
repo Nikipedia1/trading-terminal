@@ -1,6 +1,5 @@
 /**
  * Layout store – multi-panel desk: charts + movable widgets on one grid.
- * Default: only the main chart. Add Trade / Wallet / Book etc. via + Panel.
  */
 
 import { create } from 'zustand'
@@ -47,8 +46,11 @@ export const WIDGET_META: Record<
   quantlab: { title: 'Quant Lab', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
   battlefield: { title: 'Battlefield', minW: 5, minH: 10, defaultW: 8, defaultH: 16 },
   draw: { title: 'Draw Tools', minW: 3, minH: 4, defaultW: 4, defaultH: 8 },
-  orderflow: { title: 'Orderflow', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
+  orderflow: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
   cycles: { title: 'Cycles', minW: 3, minH: 4, defaultW: 3, defaultH: 10 },
+  deepprint: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
+  volprofile: { title: 'Volume Profile', minW: 3, minH: 6, defaultW: 3, defaultH: 14 },
+  domladder: { title: 'DOM Ladder', minW: 2, minH: 6, defaultW: 3, defaultH: 14 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
@@ -205,7 +207,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }),
 }))
 
-/* Cross-panel sync bus */
 export type SyncPayload = {
   logicalRange?: { from: number; to: number }
   timeRange?: { from: number; to: number }
