@@ -34,6 +34,7 @@ import {
   VolumeProfilePanel,
   DomPanel,
   FootprintPanel,
+  ClusterChartPanel,
   GammaPanel,
   CvdPanel,
   AbsorptionPanel,
@@ -121,6 +122,8 @@ function renderWidget(kind: WidgetKind) {
       return <DomPanel />
     case 'footprint':
       return <FootprintPanel />
+    case 'cluster':
+      return <ClusterChartPanel />
     case 'gex':
       return <GammaPanel />
     case 'cvd':
@@ -145,7 +148,7 @@ function renderWidget(kind: WidgetKind) {
       }
       return (
         <div className="h-full flex items-center justify-center text-[11px] text-[#5e6673]">
-          Unknown panel: {String(kind)}
+          Unknown widget: {kind}
         </div>
       )
     }
