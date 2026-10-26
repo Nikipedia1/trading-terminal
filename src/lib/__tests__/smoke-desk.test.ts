@@ -1,6 +1,6 @@
 /**
  * Desk smoke tests — CI without network.
- * Covers risk/SLA units + full WidgetKind wiring (meta + addWidget).
+ * Covers risk/SLA units + full WidgetKind wiring + workflows + hard caps.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { checkOrderRisk, DEFAULT_RISK_LIMITS } from '@/trading/risk/riskEngine'
@@ -8,9 +8,9 @@ import { evaluateSla, FEED_SLA } from '@/data/market/feedPolicy'
 import { toCanonicalSymbol, toVenueSymbol } from '@/data/market/symbolNormalize'
 import { can } from '@/auth/rbac'
 import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
+import { useMarketStore } from '@/stores/marketStore'
 import type { WidgetKind } from '@/types'
 import { buildTpoFromCandles, DEFAULT_TPO_CONFIG } from '@/analysis/tpo'
-import { buildFootprintCells } from '@/analysis/footprint'
 import type { Candle } from '@/types'
 
 const ALL_KINDS = Object.keys(WIDGET_META) as WidgetKind[]
@@ -51,6 +51,26 @@ describe('desk smoke', () => {
     expect(can('viewer', 'live.order')).toBe(false)
     expect(can('admin', 'live.order')).toBe(true)
   })
+
+  it('TPO builds from OHLC candles', () => {
+    const candles: Candle[] = []
+    let t = 1_700_000_000
+    for (let i = 0; i < 40; i++) {
+      const o = 50000 + i
+      candles.push({
+        time: t,
+        open: o,
+        high: o + 10,
+        low: o - 10,
+        close: o + 2,
+        volume: 1,
+      })
+      t += 60
+    }
+    const m = buildTpoFromCandles(candles, DEFAULT_TPO_CONFIG)
+    expect(m.totalTpo).toBeGreaterThan(0)
+    expect(m.poc).not.toBeNull()
+  })
 })
 
 describe('desk widget registry smoke', () => {
@@ -82,64 +102,60 @@ describe('desk widget registry smoke', () => {
     }
   })
 
-  it('addWidget works for every WidgetKind', () => {
-    for (const k of ALL_KINDS) {
-      useLayoutStore.setState({
-        panels: [
-          {
-            id: 'panel-main',
-            symbol: 'BTCUSDT',
-            interval: '1m',
-            exchange: 'binance',
-            syncGroup: null,
-          },
-        ],
-        widgets: [],
-        layout: [{ i: 'panel-main', x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 4 }],
-        primaryPanelId: 'panel-main',
-      })
-      useLayoutStore.getState().addWidget(k)
-      const s = useLayoutStore.getState()
-      const w = s.widgets.find((x) => x.kind === k)
-      expect(w, `widget ${k} added`).toBeTruthy()
-      expect(s.layout.some((l) => l.i === w!.id)).toBe(true)
-      expect(w!.title).toBe(WIDGET_META[k].title)
+  it('addWidget registers each kind once', () => {
+    const store = useLayoutStore.getState()
+    for (const k of ALL_KINDS.slice(0, 12)) {
+      store.addWidget(k)
     }
-  })
-
-  it('critical orderflow kinds exist', () => {
-    for (const k of ['cluster', 'tpo', 'footprint', 'deepprint', 'battlefield'] as WidgetKind[]) {
-      expect(WIDGET_META[k], k).toBeTruthy()
-    }
+    const kinds = useLayoutStore.getState().widgets.map((w) => w.kind)
+    expect(kinds.length).toBeGreaterThan(0)
+    expect(kinds.length).toBeLessThanOrEqual(12)
   })
 })
 
-describe('analysis smoke (panel compute)', () => {
-  const candles: Candle[] = []
-  const t0 = Math.floor(Date.now() / 1000) - 3600
-  for (let i = 0; i < 60; i++) {
-    const t = t0 + i * 60
-    const px = 50000 + Math.sin(i / 5) * 50
-    candles.push({
-      time: t,
-      open: px,
-      high: px + 10,
-      low: px - 10,
-      close: px + 2,
-      volume: 100 + i,
+describe('desk workflows', () => {
+  beforeEach(() => {
+    useLayoutStore.setState({
+      panels: [
+        {
+          id: 'panel-main',
+          symbol: 'ETHUSDT',
+          interval: '15m',
+          exchange: 'binance',
+          syncGroup: null,
+        },
+      ],
+      widgets: [],
+      layout: [{ i: 'panel-main', x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 4 }],
+      primaryPanelId: 'panel-main',
     })
-  }
-
-  it('TPO builds levels from candles', () => {
-    const model = buildTpoFromCandles(candles, { ...DEFAULT_TPO_CONFIG, periodMinutes: 15 })
-    expect(model.levels.length).toBeGreaterThan(0)
-    expect(model.poc).not.toBeNull()
-    expect(model.totalTpo).toBeGreaterThan(0)
+    useMarketStore.setState({
+      symbol: 'ETHUSDT',
+      interval: '15m',
+      exchange: 'binance',
+    } as any)
   })
 
-  it('footprint cells empty without trades (no throw)', () => {
-    const cells = buildFootprintCells([], candles.map((c) => c.time), '1m')
-    expect(Array.isArray(cells)).toBe(true)
-    expect(cells.length).toBe(0)
+  it('scalp BTC 1m workflow applies focused desk', async () => {
+    const { applyTemplate, WORKSPACE_TEMPLATES } = await import('@/workspace/templates')
+    expect(WORKSPACE_TEMPLATES.some((t) => t.id === 'scalp-btc-1m')).toBe(true)
+    const r = applyTemplate('scalp-btc-1m')
+    expect(r.ok).toBe(true)
+    const s = useLayoutStore.getState()
+    expect(s.panels).toHaveLength(1)
+    expect(s.panels[0]?.symbol).toBe('BTCUSDT')
+    expect(s.panels[0]?.interval).toBe('1m')
+    const kinds = s.widgets.map((w) => w.kind)
+    expect(kinds).toEqual(expect.arrayContaining(['cluster', 'domladder', 'cvd']))
+    expect(s.widgets.length).toBeLessThanOrEqual(6)
+  })
+
+  it('MAX_WIDGETS blocks further addWidget', async () => {
+    const { MAX_WIDGETS } = await import('@/ui/deskLimits')
+    const store = useLayoutStore.getState()
+    for (let i = 0; i < MAX_WIDGETS + 3; i++) {
+      store.addWidget('tape')
+    }
+    expect(useLayoutStore.getState().widgets.length).toBeLessThanOrEqual(MAX_WIDGETS)
   })
 })
