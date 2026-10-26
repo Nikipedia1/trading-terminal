@@ -72,7 +72,7 @@ const DEFAULT_CHART: ChartPanelConfig = {
   syncGroup: null,
 }
 
-functionfunction defaultLayout(): GridLayoutItem[] {
+function defaultLayout(): GridLayoutItem[] {
   return [{ i: DEFAULT_CHART.id, x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 8 }]
 }
 
