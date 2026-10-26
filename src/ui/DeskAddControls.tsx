@@ -4,6 +4,9 @@ import { useLayoutStore, WIDGET_META } from '@/stores/layoutStore'
 import type { WidgetKind } from '@/types'
 
 const PRIORITY: WidgetKind[] = [
+  'draw',
+  'orderflow',
+  'cycles',
   'battlefield',
   'book',
   'tape',
@@ -34,6 +37,9 @@ const PRIORITY: WidgetKind[] = [
 ]
 
 const LABELS: Partial<Record<WidgetKind, string>> = {
+  draw: '✎ Draw Tools',
+  orderflow: 'Orderflow',
+  cycles: 'Cycles',
   battlefield: '⚔ Battlefield',
   book: 'Order Book',
   tape: 'Tape',
