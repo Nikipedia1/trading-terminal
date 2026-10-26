@@ -2,18 +2,14 @@
 
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useLocale } from '@/i18n'
+import { MAX_CHART_PANELS, MAX_WIDGETS, SOFT_PANEL_WARN } from '@/ui/deskLimits'
 
-const SOFT_LIMIT = 8
-
-/** Cap concurrent chart panels for DOM safety. */
-export const MAX_CHART_PANELS = 6
-/** Cap concurrent widgets (addWidget no-ops beyond this). */
-export const MAX_WIDGETS = 12
+export { MAX_CHART_PANELS, MAX_WIDGETS } from '@/ui/deskLimits'
 
 export function PerfGuard() {
   const n = useLayoutStore((s) => s.panels.length + s.widgets.length)
   const { t } = useLocale()
-  if (n < SOFT_LIMIT) return null
+  if (n < SOFT_PANEL_WARN) return null
   const hard = n >= MAX_WIDGETS + MAX_CHART_PANELS
   return (
     <div

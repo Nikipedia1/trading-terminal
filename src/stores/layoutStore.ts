@@ -9,7 +9,7 @@ import type {
   WidgetKind,
   WidgetPanelConfig,
 } from '@/types'
-import { MAX_CHART_PANELS, MAX_WIDGETS } from '@/ui/PerfGuard'
+import { MAX_CHART_PANELS, MAX_WIDGETS } from '@/ui/deskLimits'
 
 function uid(prefix = 'panel') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -72,7 +72,7 @@ const DEFAULT_CHART: ChartPanelConfig = {
   syncGroup: null,
 }
 
-function defaultLayout(): GridLayoutItem[] {
+functionfunction defaultLayout(): GridLayoutItem[] {
   return [{ i: DEFAULT_CHART.id, x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 8 }]
 }
 
