@@ -27,7 +27,11 @@
     "cf:kv:create:preview": "wrangler kv namespace create WORKSPACE_KV --preview",
     "cf:pages:dev": "npm run build && wrangler pages dev dist --kv WORKSPACE_KV",
     "deploy:cf": "npm run build && wrangler pages deploy dist",
-    "deploy:cf:preview": "npm run build && wrangler pages deploy dist --branch preview"
+    "deploy:cf:preview": "npm run build && wrangler pages deploy dist --branch preview",
+    "assert:placeholders": "node scripts/assert-no-placeholders.mjs",
+    "assert:widgets": "node scripts/assert-widget-coverage.mjs",
+    "assert:stability": "npm run assert:placeholders && npm run assert:widgets",
+    "ci": "npm run assert:stability && npm run typecheck && npm run lint && npm test && npm run build"
   },
   "build": {
     "appId": "lab.nacs.terminal",
