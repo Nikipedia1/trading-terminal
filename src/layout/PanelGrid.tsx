@@ -35,6 +35,7 @@ import {
   DomPanel,
   FootprintPanel,
   ClusterChartPanel,
+  TpoChartPanel,
   GammaPanel,
   CvdPanel,
   AbsorptionPanel,
@@ -124,6 +125,8 @@ function renderWidget(kind: WidgetKind) {
       return <FootprintPanel />
     case 'cluster':
       return <ClusterChartPanel />
+    case 'tpo':
+      return <TpoChartPanel />
     case 'gex':
       return <GammaPanel />
     case 'cvd':
