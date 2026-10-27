@@ -6,6 +6,7 @@ import { useResolvedChartLink } from '@/hooks/ChartLinkContext'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { retainTradeBuffer, queryTradesInRange } from '@/analysis/deepPrint'
 import { intervalToSeconds } from '@/analysis/deepPrint/interval'
+import { MetricHonestyRow } from '@/ui/MetricHonesty'
 import {
   buildFootprintCells,
   buildFootprintBars,
@@ -69,6 +70,7 @@ export function FootprintPanel() {
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[#eaecef] text-[11px] font-mono">
       <div className="shrink-0 px-2 py-1.5 border-b border-[#1e2329] flex flex-wrap gap-2 items-center">
         <span className="text-[#f0b90b] font-semibold">FOOTPRINT</span>
+        <MetricHonestyRow kinds={['aggressor', 'ring-buffer']} />
         <span className="text-[#848e9c]">
           {symbol} · {interval} · {exchange}
         </span>
