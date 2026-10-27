@@ -73,10 +73,10 @@ export function createBoundedQueue<T>(max: number) {
   }
 }
 
-export function tradeThrottle<T extends unknown[]>(fn: (...args: T) => void) {
+export function tradeThrottle(fn: (...args: any[]) => void) {
   return createHzThrottle(STREAM_POLICY.tradeEmitHz, fn)
 }
 
-export function bookThrottle<T extends unknown[]>(fn: (...args: T) => void) {
+export function bookThrottle(fn: (...args: any[]) => void) {
   return createHzThrottle(STREAM_POLICY.bookEmitHz, fn)
 }
