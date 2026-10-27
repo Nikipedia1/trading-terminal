@@ -83,18 +83,27 @@ async function startFeed(e: Entry) {
     e.status = 'connected'
     notify(e)
 
-    e.unsubLive = client.subscribeKlines(e.symbol, e.interval, (bar) => {
-      if (gen !== e.gen) return
-      const next = [...e.candles]
-      const last = next[next.length - 1]
-      if (last && last.time === bar.time) next[next.length - 1] = bar
-      else next.push(bar)
-      if (next.length > LIVE_BUFFER_MAX) next.splice(0, next.length - LIVE_BUFFER_MAX)
-      e.candles = next
-      e.lastPrice = bar.close
-      e.status = 'connected'
-      notify(e)
-    })
+    e.unsubLive = client.subscribeKlines(
+      e.symbol,
+      e.interval,
+      (bar) => {
+        if (gen !== e.gen) return
+        const next = [...e.candles]
+        const last = next[next.length - 1]
+        if (last && last.time === bar.time) next[next.length - 1] = bar
+        else next.push(bar)
+        if (next.length > LIVE_BUFFER_MAX) next.splice(0, next.length - LIVE_BUFFER_MAX)
+        e.candles = next
+        e.lastPrice = bar.close
+        e.status = 'connected'
+        notify(e)
+      },
+      (err) => {
+        e.status = 'error'
+        notify(e)
+        console.warn('[instrumentRegistry] kline error', err)
+      }
+    )
   } catch (err) {
     if (gen !== e.gen) return
     e.status = 'error'
