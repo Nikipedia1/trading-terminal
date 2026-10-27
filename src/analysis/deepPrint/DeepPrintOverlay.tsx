@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import type { Time } from 'lightweight-charts'
 import type { CoordinateBridge } from '@/charts/coordinate-bridge'
 import type { Candle, ExchangeId, Interval } from '@/types'
 import { retainTradeBuffer, queryTradesInRange, tradeBufferSize } from './tradeBuffer'
@@ -25,6 +26,10 @@ interface DeepPrintOverlayProps {
 }
 
 const IMB_THRESHOLD = 0.7
+
+function asTime(t: number): Time {
+  return t as Time
+}
 
 function candleAt(candles: Candle[], t: number): Candle | undefined {
   return candles.find((c) => c.time === t)
@@ -77,7 +82,7 @@ export function DeepPrintOverlay({
         setPos({ x: 16, y: 48 })
         return
       }
-      const x = bridge.timeToCoordinate(candleTime)
+      const x = bridge.timeToCoordinate(asTime(candleTime))
       const y = midPrice > 0 ? bridge.priceToCoordinate(midPrice) : null
       if (x != null && y != null && Number.isFinite(x) && Number.isFinite(y)) {
         setPos({ x, y })
@@ -281,7 +286,6 @@ export function DeepPrintOverlay({
 
         {model && model.tradeCount > 0 && (
           <>
-            {/* Candle totals + buy/sell % bar */}
             <div className="px-2 py-1.5 border-b border-[#1e2329] space-y-1">
               <div className="flex items-center gap-2 text-[9px] text-[#5e6673]">
                 <span>
@@ -296,7 +300,6 @@ export function DeepPrintOverlay({
                 <div className="h-full bg-[#0ecb81]" style={{ width: `${model.buyPct}%` }} />
                 <div className="h-full bg-[#f6465d]" style={{ width: `${model.sellPct}%` }} />
               </div>
-              {/* VP summary */}
               <div className="flex items-center gap-2 text-[9px] font-mono">
                 {model.poc != null && (
                   <span className="text-[#f0b90b]">POC {fmtPrice(model.poc)}</span>
@@ -331,7 +334,6 @@ export function DeepPrintOverlay({
               </div>
             </div>
 
-            {/* Level rows: price | sell% | vol bar | buy% | delta */}
             <div className="grid grid-cols-[52px_1fr_36px] gap-x-1 px-2 py-0.5 text-[8px] text-[#5e6673] border-b border-[#1e2329]">
               <span className="text-right">Price</span>
               <span className="text-center">S% · vol · B%</span>

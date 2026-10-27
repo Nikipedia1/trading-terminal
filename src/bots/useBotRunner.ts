@@ -52,7 +52,7 @@ function buildDeps(sentimentRef: MutableRefObject<SentimentSnapshot | null>) {
     getPrimaryPrice: () => {
       const t = useMarketStore.getState().ticker
       const c = useMarketStore.getState().candles
-      return t?.last ?? (c.length ? c[c.length - 1]!.close : null)
+      return t?.lastPrice ?? (c.length ? c[c.length - 1]!.close : null)
     },
     getEquity: () => {
       const p = usePaperStore.getState()
@@ -159,7 +159,8 @@ function buildDeps(sentimentRef: MutableRefObject<SentimentSnapshot | null>) {
   }
 }
 
-export function useBotRunner() {
+/** Starts bot scheduler; returns live market sentiment for UI badges. */
+export function useBotRunner(): SentimentSnapshot | null {
   const sentiment = useMarketSentiment()
   const sentimentRef = useRef(sentiment)
   sentimentRef.current = sentiment
@@ -177,7 +178,7 @@ export function useBotRunner() {
     return c.length ? c[c.length - 1]!.time : 0
   })
   const lastPrice = useMarketStore((s) => {
-    if (s.ticker?.last != null) return s.ticker.last
+    if (s.ticker?.lastPrice != null) return s.ticker.lastPrice
     const c = s.candles
     return c.length ? c[c.length - 1]!.close : null
   })
@@ -210,4 +211,6 @@ export function useBotRunner() {
     if (!enabledBotIds || !schedulerRef.current) return
     void schedulerRef.current.forceTick()
   }, [enabledBotIds, candleCloseTime, lastPrice])
+
+  return sentiment
 }
