@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useResolvedChartLink } from '@/hooks/ChartLinkContext'
 import { subscribeOrderBookFeed, type OrderBookSnapshot } from '@/data/shared'
+import { MetricHonestyRow } from '@/ui/MetricHonesty'
 
 function fmt(n: number) {
   if (n >= 1000) return n.toFixed(2)
@@ -41,6 +42,7 @@ export function DomPanel() {
     <div className="h-full flex flex-col min-h-0 bg-[#0b0e11] text-[11px] font-mono">
       <div className="shrink-0 px-2 py-1.5 border-b border-[#1e2329] flex gap-2 items-center">
         <span className="text-[#f0b90b] font-semibold">DOM LADDER</span>
+        <MetricHonestyRow kinds={['feed-limit', 'synthetic-none']} />
         <span className="text-[#848e9c]">
           {symbol} · {exchange}
         </span>
