@@ -7,7 +7,7 @@ const log = createLogger('EventBus')
 
 export type Unsubscribe = () => void
 
-export class EventBus<Events extends Record<string, unknown>> {
+export class EventBus<Events extends Record<string, any>> {
   private listeners = new Map<
     keyof Events,
     Set<(payload: Events[keyof Events]) => void>

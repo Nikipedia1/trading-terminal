@@ -262,9 +262,9 @@ export function DeepDomOverlay({
 
   useEffect(() => {
     if (!bridge || !enabled) return
-    const unsub = bridge.subscribe?.(() => paint())
+    const unsub = bridge.onVisibleRangeChange(() => paint())
     return () => {
-      if (typeof unsub === 'function') unsub()
+      unsub()
     }
   }, [bridge, enabled, paint])
 

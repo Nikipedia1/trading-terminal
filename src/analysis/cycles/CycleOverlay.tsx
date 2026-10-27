@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react'
+import type { Time } from 'lightweight-charts'
 import type { CoordinateBridge } from '@/charts/coordinate-bridge'
 import type { Candle } from '@/types'
 import { LAYER_Z } from '@/charts/layerStack'
@@ -23,6 +24,10 @@ interface CycleOverlayProps {
 const MONO = '11px ui-monospace, SFMono-Regular, Menlo, monospace'
 const MONO_SM = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
 
+function asTime(t: number): Time {
+  return t as Time
+}
+
 function strokePath(
   ctx: CanvasRenderingContext2D,
   bridge: CoordinateBridge,
@@ -38,7 +43,7 @@ function strokePath(
   if (dash) ctx.setLineDash(dash)
   let started = false
   for (const p of pts) {
-    const x = bridge.timeToCoordinate(p.time)
+    const x = bridge.timeToCoordinate(asTime(p.time))
     const y = bridge.priceToCoordinate(p.value)
     if (x == null || y == null) continue
     if (!started) {
@@ -61,7 +66,7 @@ function fillEnvelope(
   const coords: { x: number; yu: number; yl: number }[] = []
   const n = Math.min(upper.length, lower.length)
   for (let i = 0; i < n; i++) {
-    const x = bridge.timeToCoordinate(upper[i].time)
+    const x = bridge.timeToCoordinate(asTime(upper[i].time))
     const yu = bridge.priceToCoordinate(upper[i].value)
     const yl = bridge.priceToCoordinate(lower[i].value)
     if (x == null || yu == null || yl == null) continue
@@ -147,7 +152,7 @@ export function CycleOverlay({
 
     if (config.showPhaseMarks) {
       for (const t of model.cycleHighTimes) {
-        const x = bridge.timeToCoordinate(t)
+        const x = bridge.timeToCoordinate(asTime(t))
         if (x == null) continue
         ctx.strokeStyle = 'rgba(14, 203, 129, 0.4)'
         ctx.lineWidth = 1
@@ -159,7 +164,7 @@ export function CycleOverlay({
         ctx.setLineDash([])
       }
       for (const t of model.cycleLowTimes) {
-        const x = bridge.timeToCoordinate(t)
+        const x = bridge.timeToCoordinate(asTime(t))
         if (x == null) continue
         ctx.strokeStyle = 'rgba(246, 70, 93, 0.4)'
         ctx.lineWidth = 1
@@ -175,7 +180,7 @@ export function CycleOverlay({
     if (config.showProjections) {
       const drawProj = (t: number | null, color: string, label: string) => {
         if (t == null) return
-        const x = bridge.timeToCoordinate(t)
+        const x = bridge.timeToCoordinate(asTime(t))
         if (x == null) return
         ctx.strokeStyle = color
         ctx.lineWidth = 1.2
