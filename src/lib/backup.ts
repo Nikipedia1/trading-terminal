@@ -5,6 +5,7 @@
 
 import { buildSnapshot, applyWorkspace } from '@/workspace/snapshot'
 import type { WorkspaceDocument } from '@/workspace/types'
+import { WORKSPACE_VERSION } from '@/workspace/types'
 import { getLogBuffer } from '@/lib/logger'
 import { getMetricsSnapshot } from '@/lib/metrics'
 import { listFeatureOverrides } from '@/lib/features'
@@ -56,6 +57,7 @@ export function restoreDeskBackup(data: unknown): { ok: true } | { ok: false; er
       return { ok: false, error: 'Invalid backup format' }
     }
     const doc: WorkspaceDocument = {
+      version: WORKSPACE_VERSION,
       id: 'restored',
       name: b.workspace.name || 'Restored',
       updatedAt: Date.now(),
