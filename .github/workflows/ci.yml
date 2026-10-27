@@ -14,29 +14,34 @@ jobs:
   check:
     name: Stability · Typecheck · Test · Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Do NOT use cache: npm without package-lock.json — setup-node fails hard.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
 
+      # npm ci requires lockfile; fall back to npm install when missing
       - name: Install
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "WARN: no package-lock.json — using npm install (commit a lockfile for reproducible CI)"
+            npm install
+          fi
 
-      # --- Stability gates (fail fast) ---
       - name: Assert no panel placeholders
         run: npm run assert:placeholders
 
       - name: Assert WidgetKind → PanelGrid coverage
         run: npm run assert:widgets
 
-      # --- Compile: fails if any panel/module does not typecheck ---
       - name: Typecheck (panels must compile)
         run: npm run typecheck
 
