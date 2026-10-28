@@ -29,29 +29,14 @@ export function LivePriceBadge({
   containerRef,
   candles,
 }: {
-  bridge: CoordinateBridge | null
-  containerRef: React.RefObject<HTMLDivElement | null>
+  bridge?: CoordinateBridge | null
+  containerRef?: React.RefObject<HTMLDivElement | null>
   candles: Candle[]
 }) {
   const [y, setY] = useState<number | null>(null)
-  const [price, setPrice] = useState<number | null>(null)
-  const [bull, setBull] = useState(true)
-  const [flash, setFlash] = useState(false)
-
   const last = candles.length > 0 ? candles[candles.length - 1] : null
-
-  useEffect(() => {
-    if (!last) {
-      setY(null)
-      setPrice(null)
-      return
-    }
-    setPrice(last.close)
-    setBull(last.close >= last.open)
-    setFlash(true)
-    const t = window.setTimeout(() => setFlash(false), 180)
-    return () => window.clearTimeout(t)
-  }, [last?.time, last?.close, last?.open])
+  const price = last?.close ?? null
+  const bull = last != null ? last.close >= last.open : true
 
   useEffect(() => {
     if (!bridge || price == null) {
@@ -60,21 +45,32 @@ export function LivePriceBadge({
     }
     const sync = () => {
       const py = bridge.priceToCoordinate(price)
+      if (py == null || !Number.isFinite(py)) {
+        setY(null)
+        return
+      }
+      const h = containerRef?.current?.clientHeight
+      if (h != null && (py < -4 || py > h + 4)) {
+        setY(null)
+        return
+      }
       setY(py)
     }
     sync()
     const unsub = bridge.onVisibleRangeChange(sync)
-    const el = containerRef.current
+    const el = containerRef?.current
     let ro: ResizeObserver | null = null
     if (el) {
       ro = new ResizeObserver(sync)
       ro.observe(el)
     }
+    const id = window.setInterval(sync, 250)
     return () => {
       unsub()
       ro?.disconnect()
+      window.clearInterval(id)
     }
-  }, [bridge, price, containerRef])
+  }, [bridge, price, containerRef, candles.length])
 
   if (y == null || price == null) return null
 
@@ -91,13 +87,7 @@ export function LivePriceBadge({
       }}
       aria-hidden
     >
-      <div
-        className="flex items-center"
-        style={{
-          filter: flash ? 'brightness(1.25)' : undefined,
-          transition: 'filter 120ms ease-out',
-        }}
-      >
+      <div className="flex items-center">
         <div
           style={{
             width: 0,
