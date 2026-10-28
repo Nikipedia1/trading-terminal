@@ -3,7 +3,6 @@
 @tailwind utilities;
 
 :root {
-  /* Fluid pro desk — cool neutrals, restrained accent */
   --nacs-void: #06080c;
   --nacs-bg: #0a0d12;
   --nacs-panel: #0f141b;
@@ -27,14 +26,10 @@
   --nacs-radius-sm: 8px;
   --nacs-glow-gold: 0 0 32px rgba(232, 197, 71, 0.12);
   --nacs-glow-cyan: 0 0 28px rgba(61, 214, 198, 0.1);
-  --nacs-card-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --nacs-card-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --nacs-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --nacs-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --nacs-duration: 180ms;
-
   --bg: var(--nacs-bg);
   --panel: var(--nacs-panel);
   --border: var(--nacs-border);
@@ -69,21 +64,9 @@ body {
     var(--nacs-void);
 }
 
-#root {
-  background: transparent;
-}
+#root { background: transparent; }
 
-*,
-*::before,
-*::after {
-  border-color: var(--nacs-border);
-}
-
-button,
-a,
-input,
-select,
-textarea {
+button, a, input, select, textarea {
   transition:
     background-color var(--nacs-duration) var(--nacs-ease),
     border-color var(--nacs-duration) var(--nacs-ease),
@@ -92,28 +75,18 @@ textarea {
     transform 120ms var(--nacs-ease),
     opacity var(--nacs-duration) var(--nacs-ease);
 }
-
-button:active:not(:disabled) {
-  transform: scale(0.98);
-}
+button:active:not(:disabled) { transform: scale(0.98); }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 999px;
@@ -126,99 +99,53 @@ button:active:not(:disabled) {
   background-clip: padding-box;
 }
 
-.font-mono-nums,
-.tabular-nums {
+.font-mono-nums, .tabular-nums {
   font-variant-numeric: tabular-nums;
   font-family: 'JetBrains Mono', 'Roboto Mono', ui-monospace, monospace;
   font-feature-settings: 'tnum' 1;
 }
 
-html[data-density='research'] .density-hide-research {
-  display: none;
-}
-
-html[data-density='scalp'] .density-chrome {
-  display: none !important;
-}
+html[data-density='research'] .density-hide-research { display: none; }
+html[data-density='scalp'] .density-chrome { display: none !important; }
 html[data-density='scalp'] .density-compact {
   padding-top: 0.125rem !important;
   padding-bottom: 0.125rem !important;
 }
-html[data-density='scalp'] header .nacs-header-brand {
-}
-html[data-density='scalp'] .grid.grid-cols-3 {
-  grid-template-columns: 1fr 280px;
-}
+html[data-density='scalp'] .grid.grid-cols-3 { grid-template-columns: 1fr 280px; }
 
 .react-grid-item.react-grid-placeholder {
   background: rgba(107, 159, 255, 0.08) !important;
   border: 1px dashed rgba(107, 159, 255, 0.35) !important;
   border-radius: 12px;
   opacity: 1 !important;
-  transition: transform 120ms var(--nacs-ease-out) !important;
 }
 
-.react-grid-item > .react-resizable-handle {
-  z-index: 20;
-  opacity: 0.55;
-}
-.react-grid-item > .react-resizable-handle:hover {
-  opacity: 1;
-}
-.react-grid-item > .react-resizable-handle::after {
-  border-color: #848e9c !important;
-}
-
-.react-resizable-handle-n,
-.react-resizable-handle-s {
-  height: 12px !important;
-  margin-left: -6px;
-}
-.react-resizable-handle-e,
-.react-resizable-handle-w {
-  width: 12px !important;
-  margin-top: -6px;
-}
+.react-grid-item > .react-resizable-handle { z-index: 20; opacity: 0.55; }
+.react-grid-item > .react-resizable-handle:hover { opacity: 1; }
+.react-grid-item > .react-resizable-handle::after { border-color: #8b95a8 !important; }
+.react-resizable-handle-n, .react-resizable-handle-s { height: 12px !important; margin-left: -6px; }
+.react-resizable-handle-e, .react-resizable-handle-w { width: 12px !important; margin-top: -6px; }
 .react-resizable-handle-n { cursor: ns-resize; top: 0; }
 .react-resizable-handle-s { cursor: ns-resize; bottom: 0; }
 .react-resizable-handle-e { cursor: ew-resize; right: 0; }
 .react-resizable-handle-w { cursor: ew-resize; left: 0; }
-
-.react-resizable-handle-se,
-.react-resizable-handle-sw,
-.react-resizable-handle-ne,
-.react-resizable-handle-nw {
-  width: 16px !important;
-  height: 16px !important;
+.react-resizable-handle-se, .react-resizable-handle-sw,
+.react-resizable-handle-ne, .react-resizable-handle-nw {
+  width: 16px !important; height: 16px !important;
 }
-.react-resizable-handle-se { cursor: se-resize; }
-.react-resizable-handle-sw { cursor: sw-resize; }
-.react-resizable-handle-ne { cursor: ne-resize; }
-.react-resizable-handle-nw { cursor: nw-resize; }
-
 .react-grid-item > .react-resizable-handle-se::after {
   content: '';
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 8px;
-  height: 8px;
+  right: 3px; bottom: 3px;
+  width: 8px; height: 8px;
   border-right: 2px solid rgba(107, 159, 255, 0.75);
   border-bottom: 2px solid rgba(107, 159, 255, 0.75);
 }
 
-.nacs-desk {
-  background: transparent;
-  color: var(--nacs-text);
-}
+.nacs-desk { background: transparent; color: var(--nacs-text); }
+.nacs-surface { background: var(--nacs-bg); border: 1px solid var(--nacs-border); }
 
-.nacs-surface {
-  background: var(--nacs-bg);
-  border: 1px solid var(--nacs-border);
-}
-
-.nacs-panel,
-.nacs-card {
+.nacs-panel, .nacs-card {
   background: linear-gradient(165deg, rgba(21, 27, 36, 0.95) 0%, rgba(12, 16, 22, 0.98) 100%);
   border: 1px solid var(--nacs-border-strong);
   border-radius: var(--nacs-radius);
@@ -226,13 +153,11 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-
 .nacs-panel-flat {
   background: var(--nacs-panel);
   border: 1px solid var(--nacs-border);
   border-radius: var(--nacs-radius-sm);
 }
-
 .nacs-glass {
   background: rgba(15, 20, 27, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -251,20 +176,13 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   border-radius: var(--nacs-radius);
   box-shadow: var(--nacs-card-shadow);
   overflow: hidden;
-  transition:
-    border-color var(--nacs-duration) var(--nacs-ease),
-    box-shadow var(--nacs-duration) var(--nacs-ease);
+  transition: border-color var(--nacs-duration) var(--nacs-ease), box-shadow var(--nacs-duration) var(--nacs-ease);
 }
-
 .react-grid-item > .nacs-widget-shell:hover,
 .nacs-widget-shell:hover {
   border-color: rgba(107, 159, 255, 0.18);
-  box-shadow:
-    0 0 0 1px rgba(107, 159, 255, 0.06),
-    0 12px 40px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 1px rgba(107, 159, 255, 0.06), 0 12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
-
 .nacs-widget-title {
   display: flex;
   align-items: center;
@@ -277,7 +195,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   color: var(--nacs-secondary);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
   border-bottom: 1px solid var(--nacs-border);
-  backdrop-filter: blur(8px);
 }
 
 .nacs-desk input:not([type='checkbox']):not([type='radio']):not([type='range']),
@@ -288,7 +205,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   color: var(--nacs-text);
   color-scheme: dark;
 }
-
 .nacs-desk input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
 .nacs-desk select:focus,
 .nacs-desk textarea:focus {
@@ -296,7 +212,6 @@ html[data-density='scalp'] .grid.grid-cols-3 {
   outline: none;
   box-shadow: 0 0 0 2px rgba(107, 159, 255, 0.18);
 }
-
 .nacs-desk ::selection {
   background: rgba(107, 159, 255, 0.35);
   color: var(--nacs-text);
@@ -314,12 +229,8 @@ header.nacs-app-header,
 .bg-terminal-panel {
   background: linear-gradient(165deg, rgba(18, 24, 32, 0.95) 0%, rgba(10, 13, 18, 0.98) 100%) !important;
 }
-.border-terminal-border {
-  border-color: rgba(255, 255, 255, 0.07) !important;
-}
-.bg-terminal-bg {
-  background-color: rgba(10, 13, 18, 0.9) !important;
-}
+.border-terminal-border { border-color: rgba(255, 255, 255, 0.07) !important; }
+.bg-terminal-bg { background-color: rgba(10, 13, 18, 0.9) !important; }
 
 .nacs-panel-menu {
   border-radius: 12px !important;
@@ -329,6 +240,27 @@ header.nacs-app-header,
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
 }
-.nacs-panel-menu-item {
-  transition: background 150ms var(--nacs-ease), color 150ms var(--nacs-ease) !important;
+
+/* Keep essential logo mark (static, no heavy AI spin) */
+.nacs-logo3d {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.nacs-logo3d-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.nacs-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.nacs-header-logo-img {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
 }
