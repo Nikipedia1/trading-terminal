@@ -1,6 +1,6 @@
 /**
  * Candlestick + volume + delta/CVD series management.
- * Reactive price scale for every instrument (adaptive precision + autoScale).
+ * Right price scale is driven ONLY by candle OHLC (never volume/delta/cvd).
  */
 
 import { LastPriceAnimationMode } from 'lightweight-charts'
@@ -53,6 +53,20 @@ export function inferPriceFormat(refPrice: number): {
   return { type: 'price', precision: 10, minMove: 0.0000000001 }
 }
 
+function candlePriceRange(candles: Candle[]): { min: number; max: number } | null {
+  let min = Infinity
+  let max = -Infinity
+  for (const c of candles) {
+    if (!Number.isFinite(c.low) || !Number.isFinite(c.high)) continue
+    if (c.low <= 0 && c.high <= 0) continue
+    if (c.low < min) min = c.low
+    if (c.high > max) max = c.high
+  }
+  if (!(max > min) || !Number.isFinite(min) || !Number.isFinite(max)) return null
+  const pad = Math.max((max - min) * 0.02, Math.abs(max) * 0.001)
+  return { min: min - pad, max: max + pad }
+}
+
 export class SeriesManager {
   private chart: IChartApi | null = null
   private candleSeries: ISeriesApi<'Candlestick'> | null = null
@@ -74,22 +88,29 @@ export class SeriesManager {
       wickUpColor: this.candleStyle.upWick,
       wickDownColor: this.candleStyle.downWick,
       lastValueVisible: true,
-      lastPriceAnimation: LastPriceAnimationMode.OnDataUpdate,
+      lastPriceAnimation: LastPriceAnimationMode.OnDataUpdate as any,
       priceLineVisible: true,
       priceLineWidth: 1,
       priceLineStyle: 2,
       priceLineColor: this.candleStyle.upBody,
       crosshairMarkerVisible: true,
+      priceScaleId: 'right',
     })
 
+    // Volume / delta / CVD must NEVER join the right (price) scale
     this.volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      base: 0,
     })
 
     this.deltaSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'delta',
+      lastValueVisible: false,
+      priceLineVisible: false,
       base: 0,
     })
 
@@ -97,24 +118,31 @@ export class SeriesManager {
       color: CVD_COLOR,
       lineWidth: 2,
       priceScaleId: 'cvd',
-      lastValueVisible: true,
+      lastValueVisible: false,
       priceLineVisible: false,
-      crosshairMarkerVisible: true,
+      crosshairMarkerVisible: false,
     })
 
     chart.priceScale('volume').applyOptions({
-      scaleMargins: { top: 0.72, bottom: 0.16 },
+      scaleMargins: { top: 0.78, bottom: 0 },
+      visible: false,
+      autoScale: true,
     })
     chart.priceScale('delta').applyOptions({
       scaleMargins: { top: 0.88, bottom: 0 },
+      visible: false,
+      autoScale: true,
     })
     chart.priceScale('cvd').applyOptions({
       scaleMargins: { top: 0.55, bottom: 0.35 },
       visible: false,
+      autoScale: true,
     })
     chart.priceScale('right').applyOptions({
-      scaleMargins: { top: 0.05, bottom: 0.32 },
+      scaleMargins: { top: 0.06, bottom: 0.22 },
       autoScale: true,
+      borderVisible: true,
+      entireTextOnly: false,
     })
   }
 
@@ -155,11 +183,24 @@ export class SeriesManager {
   }
 
   resetPriceScale() {
-    this.candleSeries?.applyOptions({
-      autoscaleInfoProvider: undefined,
-    })
+    this.applyCandleOnlyAutoscale(this.lastCandles)
     this.chart?.priceScale('right').applyOptions({
       autoScale: true,
+    })
+  }
+
+  /** Lock right scale to candle OHLC only — ignores volume/delta/cvd/equity. */
+  private applyCandleOnlyAutoscale(candles: Candle[]) {
+    const range = candlePriceRange(candles)
+    if (!range || !this.candleSeries) {
+      this.candleSeries?.applyOptions({ autoscaleInfoProvider: undefined })
+      return
+    }
+    const { min, max } = range
+    this.candleSeries.applyOptions({
+      autoscaleInfoProvider: () => ({
+        priceRange: { minValue: min, maxValue: max },
+      }),
     })
   }
 
@@ -185,7 +226,7 @@ export class SeriesManager {
 
     const volumeData: HistogramData[] = candles.map((c) => ({
       time: c.time as Time,
-      value: c.volume,
+      value: Number.isFinite(c.volume) ? c.volume : 0,
       color: c.close >= c.open ? upVol : downVol,
     }))
 
@@ -197,10 +238,10 @@ export class SeriesManager {
       this.applyPriceFormatFor(last.close)
       this.candleSeries.applyOptions({
         priceLineColor: bull ? this.candleStyle.upBody : this.candleStyle.downBody,
-        autoscaleInfoProvider: undefined,
       })
     }
-    this.resetPriceScale()
+    this.applyCandleOnlyAutoscale(candles)
+    this.chart?.priceScale('right').applyOptions({ autoScale: true })
   }
 
   updateCandle(candle: Candle) {
@@ -214,6 +255,8 @@ export class SeriesManager {
         this.lastCandles.push(candle)
         if (this.lastCandles.length > 500) this.lastCandles.shift()
       }
+    } else {
+      this.lastCandles = [candle]
     }
 
     this.candleSeries.update({
@@ -233,9 +276,12 @@ export class SeriesManager {
     const downVol = hexToRgba(this.candleStyle.downBody, 0.4)
     this.volumeSeries.update({
       time: candle.time as Time,
-      value: candle.volume,
+      value: Number.isFinite(candle.volume) ? candle.volume : 0,
       color: candle.close >= candle.open ? upVol : downVol,
     })
+
+    // Keep scale anchored to candle range on live ticks
+    this.applyCandleOnlyAutoscale(this.lastCandles)
   }
 
   setDeltaBars(bars: CandleDeltaBar[]) {
@@ -259,7 +305,8 @@ export class SeriesManager {
       value: p.value,
     }))
     this.cvdSeries.setData(data)
-    this.chart?.priceScale('cvd').applyOptions({ visible: points.length > 0 })
+    // CVD stays on its own scale; never force right scale
+    this.chart?.priceScale('cvd').applyOptions({ visible: false })
   }
 
   clearCvd() {
