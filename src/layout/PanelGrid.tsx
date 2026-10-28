@@ -64,10 +64,6 @@ function renderWidget(kind: WidgetKind) {
       return <OrderBookWidget />
     case 'tape':
       return <VirtualizedTape />
-    case 'large':
-      return <LargeTradesWidget />
-    case 'futures':
-      return <FuturesMetricsPanel />
     case 'alerts':
       return <AlertPanel />
     case 'journal':
@@ -92,7 +88,7 @@ function renderWidget(kind: WidgetKind) {
       return <LiveKeysPanel />
     case 'plugins':
       return <PluginIndicatorPanel />
-    case 'micro':
+    case 'microstructure':
       return <MicrostructurePanel />
     case 'viz3d':
       return <Viz3DPanel />
@@ -112,9 +108,8 @@ function renderWidget(kind: WidgetKind) {
       return <OpsHealthPanel />
     case 'onchain':
       return <OnchainPanel />
-    case 'draw':
+    case 'drawtools':
       return <DrawToolsPanel />
-    case 'orderflow':
     case 'deepprint':
       return <DeepPrintPanel />
     case 'volprofile':
@@ -139,19 +134,20 @@ function renderWidget(kind: WidgetKind) {
       return <DeepTradesPanel />
     case 'ofi':
       return <OfiPanel />
+    case 'cyclesview':
+      return <CyclesViewPanel />
     case 'iceberg':
       return <IcebergPanel />
-    case 'cycles':
-      return <CyclesViewPanel />
+    case 'futures':
+      return <FuturesMetricsPanel />
+    case 'largetrades':
+      return <LargeTradesWidget />
     default: {
-      const reg = getRegisteredPanel(kind as string)
-      if (reg) {
-        const C = reg.component
-        return <C />
-      }
+      const Reg = getRegisteredPanel(kind)
+      if (Reg) return <Reg />
       return (
         <div className="h-full flex items-center justify-center text-[11px] text-[#5e6673]">
-          Unknown widget: {kind}
+          Unknown panel: {kind}
         </div>
       )
     }
@@ -179,6 +175,9 @@ export function PanelGrid({ width }: { width?: number }) {
         onLayoutChange={(l) => setLayout(l)}
         draggableHandle=".panel-drag-handle"
         isResizable
+        useCSSTransforms
+        compactType="vertical"
+        preventCollision={false}
         resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
       >
         {panels.map((p) => (
@@ -188,11 +187,11 @@ export function PanelGrid({ width }: { width?: number }) {
         ))}
         {widgets.map((w) => (
           <div key={w.id} data-panel-id={w.id} className="nacs-widget-shell overflow-visible flex flex-col">
-            <div className="panel-drag-handle nacs-widget-title cursor-move select-none min-h-[32px]">
-              <span className="truncate font-semibold tracking-wide text-[#c8cdd5]">{w.title}</span>
+            <div className="panel-drag-handle nacs-widget-title cursor-move select-none min-h-[34px]">
+              <span className="truncate font-semibold tracking-wide text-[#c8d0dc]">{w.title}</span>
               <button
                 type="button"
-                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded border border-[#2b3139] bg-[#12161c] text-[#f6465d] text-sm font-bold leading-none hover:bg-[#f6465d]/15 hover:border-[#f6465d]/60 active:scale-95"
+                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded-lg border border-white/10 bg-white/[0.03] text-[#f2556d] text-sm font-bold leading-none hover:bg-[#f2556d]/15 hover:border-[#f2556d]/40 active:scale-95"
                 title="Chiudi pannello"
                 aria-label="Chiudi pannello"
                 onClick={(e) => {
