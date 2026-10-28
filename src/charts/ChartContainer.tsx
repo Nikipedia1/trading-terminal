@@ -72,6 +72,7 @@ import { ReplayBar } from '@/analysis/replay'
 import { PaperPositionLines } from '@/trading/paper'
 import { LOAD_MORE_THRESHOLD } from '@/data/klines/history'
 import { ChartViewportBridge } from './ChartViewportBridge'
+import { applyCandlesPreservingViewport } from './apply-candles-viewport'
 
 function intervalToSeconds(interval: Interval): number {
   const m: Record<string, number> = {
@@ -319,7 +320,7 @@ export function ChartContainer({
       layout: opts.layout,
       grid: opts.grid,
       crosshair: opts.crosshair,
-      rightPriceScale: { borderColor: chartStyle.canvas.border, autoScale: true },
+      rightPriceScale: { borderColor: chartStyle.canvas.border },
       timeScale: { borderColor: chartStyle.canvas.border },
     })
     mgr.applyStyle(chartStyle.candle)
@@ -341,14 +342,11 @@ export function ChartContainer({
     candlesSigRef.current = { len: 0, first: null, last: null }
     const mgr = seriesMgrRef.current
     if (mgr) {
-      mgr.setCandles([])
-      const chart = chartRef.current
-      if (chart) {
-        try {
-          chart.priceScale('right').applyOptions({ autoScale: true })
-        } catch {
-          /* */
-        }
+      mgr.clearCandles()
+      try {
+        mgr.resetViewForSymbolChange()
+      } catch {
+        /* */
       }
     }
   }, [symbolKey])
@@ -356,31 +354,13 @@ export function ChartContainer({
   useEffect(() => {
     const mgr = seriesMgrRef.current
     if (!mgr) return
-    const prev = candlesSigRef.current
-    const len = candles?.length ?? 0
-    const first = len ? candles[0].time : null
-    const last = len ? candles[len - 1].time : null
-    const prepended =
-      prev.len > 0 &&
-      len > prev.len &&
-      first != null &&
-      prev.first != null &&
-      first < prev.first &&
-      last === prev.last
-    if (prepended && chartRef.current) {
-      const ts = chartRef.current.timeScale()
-      const lr = ts.getVisibleLogicalRange()
-      mgr.setCandles(candles)
-      if (lr) {
-        const added = len - prev.len
-        ts.setVisibleLogicalRange({ from: lr.from + added, to: lr.to + added })
-      }
-    } else {
-      mgr.setCandles(candles ?? [])
-    }
-    candlesSigRef.current = { len, first, last }
-    const times = (candles ?? []).map((c) => c.time)
-    bridgeRef.current?.setDataTimes(times)
+    candlesSigRef.current = applyCandlesPreservingViewport({
+      mgr,
+      chart: chartRef.current,
+      bridge: bridgeRef.current,
+      candles,
+      prev: candlesSigRef.current,
+    })
   }, [candles, symbolKey])
 
   useEffect(() => {
