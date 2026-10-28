@@ -73,7 +73,7 @@ export class SeriesManager {
   private volumeSeries: ISeriesApi<'Histogram'> | null = null
   private deltaSeries: ISeriesApi<'Histogram'> | null = null
   private cvdSeries: ISeriesApi<'Line'> | null = null
-  private candleStyle: CandleStyle = { ...DEFAULT_CHART_STYLE.candle }
+  private candleStyle: CandleStyle = DEFAULT_CHART_STYLE.candle
   private lastCandles: Candle[] = []
 
   attach(chart: IChartApi, style?: CandleStyle) {
@@ -87,23 +87,15 @@ export class SeriesManager {
       borderDownColor: this.candleStyle.downBorder,
       wickUpColor: this.candleStyle.upWick,
       wickDownColor: this.candleStyle.downWick,
-      lastValueVisible: true,
-      lastPriceAnimation: LastPriceAnimationMode.OnDataUpdate as any,
       priceLineVisible: true,
-      priceLineWidth: 1,
-      priceLineStyle: 2,
-      priceLineColor: this.candleStyle.upBody,
-      crosshairMarkerVisible: true,
-      priceScaleId: 'right',
+      lastValueVisible: true,
     })
 
-    // Volume / delta / CVD must NEVER join the right (price) scale
     this.volumeSeries = chart.addHistogramSeries({
       priceFormat: { type: 'volume' },
       priceScaleId: 'volume',
       lastValueVisible: false,
       priceLineVisible: false,
-      base: 0,
     })
 
     this.deltaSeries = chart.addHistogramSeries({
@@ -111,7 +103,6 @@ export class SeriesManager {
       priceScaleId: 'delta',
       lastValueVisible: false,
       priceLineVisible: false,
-      base: 0,
     })
 
     this.cvdSeries = chart.addLineSeries({
@@ -124,25 +115,23 @@ export class SeriesManager {
     })
 
     chart.priceScale('volume').applyOptions({
-      scaleMargins: { top: 0.78, bottom: 0 },
+      scaleMargins: { top: 0.8, bottom: 0 },
       visible: false,
       autoScale: true,
     })
     chart.priceScale('delta').applyOptions({
-      scaleMargins: { top: 0.88, bottom: 0 },
+      scaleMargins: { top: 0.75, bottom: 0 },
       visible: false,
       autoScale: true,
     })
     chart.priceScale('cvd').applyOptions({
-      scaleMargins: { top: 0.55, bottom: 0.35 },
+      scaleMargins: { top: 0.1, bottom: 0.3 },
       visible: false,
       autoScale: true,
     })
     chart.priceScale('right').applyOptions({
       scaleMargins: { top: 0.06, bottom: 0.22 },
       autoScale: true,
-      borderVisible: true,
-      entireTextOnly: false,
     })
   }
 
@@ -170,6 +159,17 @@ export class SeriesManager {
       wickDownColor: this.candleStyle.downWick,
     })
     if (this.lastCandles.length > 0) this.setCandles(this.lastCandles)
+  }
+
+  /** Call only on symbol/interval change — resets price scale to candles. */
+  resetViewForSymbolChange() {
+    this.applyCandleOnlyAutoscale(this.lastCandles)
+    this.chart?.priceScale('right').applyOptions({ autoScale: true })
+    try {
+      this.chart?.timeScale().fitContent()
+    } catch {
+      /* */
+    }
   }
 
   clearCandles() {
@@ -240,8 +240,7 @@ export class SeriesManager {
         priceLineColor: bull ? this.candleStyle.upBody : this.candleStyle.downBody,
       })
     }
-    this.applyCandleOnlyAutoscale(candles)
-    this.chart?.priceScale('right').applyOptions({ autoScale: true })
+    // Do NOT force autoScale / full-range autoscale here — that resets user pan/zoom.
   }
 
   updateCandle(candle: Candle) {
@@ -279,9 +278,7 @@ export class SeriesManager {
       value: Number.isFinite(candle.volume) ? candle.volume : 0,
       color: candle.close >= candle.open ? upVol : downVol,
     })
-
-    // Keep scale anchored to candle range on live ticks
-    this.applyCandleOnlyAutoscale(this.lastCandles)
+    // Live ticks must not reset price scale or visible time range.
   }
 
   setDeltaBars(bars: CandleDeltaBar[]) {
@@ -305,7 +302,6 @@ export class SeriesManager {
       value: p.value,
     }))
     this.cvdSeries.setData(data)
-    // CVD stays on its own scale; never force right scale
     this.chart?.priceScale('cvd').applyOptions({ visible: false })
   }
 
