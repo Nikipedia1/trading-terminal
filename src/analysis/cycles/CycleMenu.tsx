@@ -251,9 +251,9 @@ export function CycleMenu({ config, candles, onChange }: CycleMenuProps) {
               <span className="text-[12px] text-[#848e9c]">Seasonality UTC</span>
             </div>
 
-            {cfg.showSeasonality && model?.seasonality && model.seasonality.length > 0 && (
+            {cfg.showSeasonality && model?.weekdayReturns && model.weekdayReturns.length > 0 && (
               <div className="py-1.5 space-y-0.5 border-b border-[#2b3139]/50">
-                {model.seasonality.map((r) => (
+                {model.weekdayReturns.map((r) => (
                   <div key={r.dow} className="flex justify-between text-[10px]">
                     <span className="text-[#5e6673]">{DOW[r.dow] ?? r.dow}</span>
                     <span
