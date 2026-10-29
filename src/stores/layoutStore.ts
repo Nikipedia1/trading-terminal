@@ -46,6 +46,7 @@ export const WIDGET_META: Record<
   onchain: { title: 'On-chain', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
   quantlab: { title: 'Quant Lab', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
   battlefield: { title: 'Battlefield', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
+  orderblock: { title: 'Order Block', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
   draw: { title: 'Draw', minW: 2, minH: 4, defaultW: 3, defaultH: 8 },
   orderflow: { title: 'Orderflow', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   cycles: { title: 'Cycles', minW: 3, minH: 6, defaultW: 4, defaultH: 10 },
@@ -128,6 +129,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set((s) => ({
       panels: [...s.panels, panel],
       layout: [...s.layout, item],
+      primaryPanelId: id,
     }))
   },
 
@@ -135,9 +137,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set((s) => {
       const panels = s.panels.filter((p) => p.id !== id)
       const layout = s.layout.filter((l) => l.i !== id)
-      let primary = s.primaryPanelId
-      if (primary === id) primary = panels[0]?.id ?? ''
-      return { panels, layout, primaryPanelId: primary }
+      let primaryPanelId = s.primaryPanelId
+      if (primaryPanelId === id) primaryPanelId = panels[0]?.id ?? ''
+      return { panels, layout, primaryPanelId }
     })
   },
 
@@ -249,43 +251,33 @@ export type SyncPayload = {
 type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
 
 const syncListeners = new Map<string, Set<SyncListener>>()
-const syncHighlights = new Map<string, SyncHighlight | null>()
 
-export function publishSync(group: string, sourceId: string, payload: SyncPayload): void {
-  const set = syncListeners.get(group)
-  if (!set) return
-  const msg = { ...payload, sourceId }
-  for (const cb of set) {
-    try {
-      cb(msg)
-    } catch {
-      /* */
-    }
-  }
-}
-
-export function subscribeSyncGroup(
-  group: string,
-  panelId: string,
-  cb: SyncListener
-): () => void {
-  void panelId
+export function subscribeSyncGroup(group: string, listener: SyncListener): () => void {
   let set = syncListeners.get(group)
   if (!set) {
     set = new Set()
     syncListeners.set(group, set)
   }
-  set.add(cb)
+  set.add(listener)
   return () => {
-    set!.delete(cb)
+    set!.delete(listener)
     if (set!.size === 0) syncListeners.delete(group)
   }
 }
 
-export function setSyncHighlight(group: string, highlight: SyncHighlight | null): void {
-  syncHighlights.set(group, highlight)
+export function publishSync(group: string, payload: SyncPayload, sourceId?: string): void {
+  const set = syncListeners.get(group)
+  if (!set) return
+  const msg = { ...payload, sourceId }
+  for (const fn of set) {
+    try {
+      fn(msg)
+    } catch (e) {
+      console.warn('[sync]', e)
+    }
+  }
 }
 
-export function getSyncHighlight(group: string): SyncHighlight | null {
-  return syncHighlights.get(group) ?? null
+export function getSyncHighlight(_group?: string): SyncHighlight | null {
+  return null
 }
