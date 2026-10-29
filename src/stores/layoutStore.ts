@@ -251,33 +251,43 @@ export type SyncPayload = {
 type SyncListener = (payload: SyncPayload & { sourceId?: string }) => void
 
 const syncListeners = new Map<string, Set<SyncListener>>()
+const syncHighlights = new Map<string, SyncHighlight | null>()
 
-export function subscribeSyncGroup(group: string, listener: SyncListener): () => void {
+export function publishSync(group: string, sourceId: string, payload: SyncPayload): void {
+  const set = syncListeners.get(group)
+  if (!set) return
+  const msg = { ...payload, sourceId }
+  for (const cb of set) {
+    try {
+      cb(msg)
+    } catch {
+      /* */
+    }
+  }
+}
+
+export function subscribeSyncGroup(
+  group: string,
+  panelId: string,
+  cb: SyncListener
+): () => void {
+  void panelId
   let set = syncListeners.get(group)
   if (!set) {
     set = new Set()
     syncListeners.set(group, set)
   }
-  set.add(listener)
+  set.add(cb)
   return () => {
-    set!.delete(listener)
+    set!.delete(cb)
     if (set!.size === 0) syncListeners.delete(group)
   }
 }
 
-export function publishSync(group: string, payload: SyncPayload, sourceId?: string): void {
-  const set = syncListeners.get(group)
-  if (!set) return
-  const msg = { ...payload, sourceId }
-  for (const fn of set) {
-    try {
-      fn(msg)
-    } catch (e) {
-      console.warn('[sync]', e)
-    }
-  }
+export function setSyncHighlight(group: string, highlight: SyncHighlight | null): void {
+  syncHighlights.set(group, highlight)
 }
 
-export function getSyncHighlight(_group?: string): SyncHighlight | null {
-  return null
+export function getSyncHighlight(group: string): SyncHighlight | null {
+  return syncHighlights.get(group) ?? null
 }
