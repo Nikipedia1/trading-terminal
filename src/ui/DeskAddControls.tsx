@@ -21,6 +21,7 @@ const PRIORITY: WidgetKind[] = [
   'book',
   'tape',
   'battlefield',
+  'orderblock',
   'viz3d',
   'quantlab',
   'news',
@@ -66,6 +67,7 @@ const LABELS: Partial<Record<WidgetKind, string>> = {
   draw: '✎ Draw Tools',
   cycles: 'Cycles',
   battlefield: '⚔ Battlefield',
+  orderblock: '▣ Order Block',
   book: 'Order Book',
   tape: 'Tape',
   large: 'Large Trades',
@@ -256,6 +258,14 @@ export function DeskAddControls() {
         onClick={() => pick('battlefield')}
       >
         ⚔ Battlefield
+      </button>
+      <button
+        type="button"
+        className="text-[11px] px-2.5 py-1 rounded border border-[#0ecb81]/40 bg-[#0ecb81]/10 text-[#0ecb81] hover:border-[#0ecb81] hover:bg-[#0ecb81]/20 font-medium"
+        title="Order Block market X-ray"
+        onClick={() => pick('orderblock')}
+      >
+        ▣ Order Block
       </button>
       <button
         ref={btnRef}
