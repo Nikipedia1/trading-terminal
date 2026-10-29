@@ -10,6 +10,7 @@ import './ops'
 import './onchain'
 import './quantlab'
 import './battlefield'
+import './orderblock'
 
 export {
   registerPanelType,
@@ -26,4 +27,5 @@ export { OpsHealthPanel } from './ops'
 export { OnchainPanel } from './onchain'
 export { QuantLabPanel } from './quantlab'
 export { BattlefieldPanel } from './battlefield'
+export { OrderBlockPanel } from './orderblock'
 export type { NewsItem, NewsAssetFilter, NewsPanelProps } from './news'

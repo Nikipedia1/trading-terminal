@@ -105,6 +105,7 @@ export type WidgetKind =
   | 'onchain'
   | 'quantlab'
   | 'battlefield'
+  | 'orderblock'
   | 'draw'
   | 'orderflow'
   | 'cycles'
