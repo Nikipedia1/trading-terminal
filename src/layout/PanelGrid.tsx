@@ -22,6 +22,7 @@ import { MicrostructurePanel } from '@/analysis/microstructure/MicrostructurePan
 import { Viz3DPanel } from '@/analysis/viz3d'
 import { QuantLabPanel } from '@/panels/quantlab/QuantLabPanel'
 import { BattlefieldPanel } from '@/panels/battlefield/BattlefieldPanel'
+import { OrderBlockPanel } from '@/panels/orderblock/OrderBlockPanel'
 import { NewsPanel } from '@/panels/news'
 import { CalendarPanel } from '@/panels/calendar'
 import { LiveTvPanel } from '@/panels/livetv'
@@ -142,9 +143,12 @@ function renderWidget(kind: WidgetKind) {
       return <FuturesMetricsPanel />
     case 'largetrades':
       return <LargeTradesWidget />
+    case 'orderblock':
+      return <OrderBlockPanel />
     default: {
       const Reg = getRegisteredPanel(kind)
-      if (Reg) return <Reg />
+      const Comp = Reg?.component
+      if (Comp) return <Comp />
       return (
         <div className="h-full flex items-center justify-center text-[11px] text-[#5e6673]">
           Unknown panel: {kind}
@@ -178,35 +182,34 @@ export function PanelGrid({ width }: { width?: number }) {
         useCSSTransforms
         compactType="vertical"
         preventCollision={false}
-        resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
       >
         {panels.map((p) => (
-          <div key={p.id} className="nacs-widget-shell overflow-visible">
-            <ChartPanel config={p} />
+          <div key={p.id} data-panel-id={p.id} className="h-full min-h-0">
+            <ErrorBoundary name={`chart:${p.id}`}>
+              <ChartPanel panelId={p.id} />
+            </ErrorBoundary>
           </div>
         ))}
         {widgets.map((w) => (
-          <div key={w.id} data-panel-id={w.id} className="nacs-widget-shell overflow-visible flex flex-col">
-            <div className="panel-drag-handle nacs-widget-title cursor-move select-none min-h-[34px]">
-              <span className="truncate font-semibold tracking-wide text-[#c8d0dc]">{w.title}</span>
+          <div key={w.id} data-panel-id={w.id} className="h-full min-h-0 flex flex-col rounded border border-[#2b3139] bg-[#0b0e11] overflow-hidden">
+            <div className="panel-drag-handle flex items-center gap-2 px-2 py-1 border-b border-[#2b3139] cursor-move shrink-0 bg-[#12161c]">
+              <span className="text-[11px] font-medium text-[#eaecef] truncate">
+                {WIDGET_META[w.kind]?.title ?? w.title}
+              </span>
               <button
                 type="button"
-                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded-lg border border-white/10 bg-white/[0.03] text-[#f2556d] text-sm font-bold leading-none hover:bg-[#f2556d]/15 hover:border-[#f2556d]/40 active:scale-95"
-                title="Chiudi pannello"
-                aria-label="Chiudi pannello"
+                className="ml-auto text-[10px] text-[#848e9c] hover:text-[#f6465d] px-1"
                 onClick={(e) => {
                   e.stopPropagation()
                   removeWidget(w.id)
                 }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
               >
-                ×
+                ✕
               </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              <ErrorBoundary name={w.kind}>
-                <WidgetChartLinkShell>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ErrorBoundary name={`panel:${w.kind}`}>
+                <WidgetChartLinkShell panelId={w.id}>
                   {renderWidget(w.kind)}
                 </WidgetChartLinkShell>
               </ErrorBoundary>
@@ -217,5 +220,3 @@ export function PanelGrid({ width }: { width?: number }) {
     </div>
   )
 }
-
-void WIDGET_META
