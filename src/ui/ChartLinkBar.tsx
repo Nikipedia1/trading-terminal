@@ -2,7 +2,7 @@
  * Chart link bar – follow a chart panel or pick own symbol / timeframe.
  * Used by analysis widgets (AI, Quant Lab, 3D, micro, etc.).
  */
-import { SYMBOL_PRESETS, ALL_INTERVALS } from '@/data/symbols'
+import { SYMBOL_PRESETS, ALL_INTERVALS, normalizeSymbolInput } from '@/data/symbols'
 import { formatSymbolOption } from '@/data/symbolMeta'
 import { SUPPORTED_EXCHANGES, EXCHANGE_LABELS } from '@/data/exchanges/registry'
 import type { Interval, ExchangeId } from '@/types'
@@ -104,13 +104,11 @@ export function ChartLinkBar(p: ChartLinkBarProps) {
       ) : (
         <>
           <input
-            className="bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-0.5 text-[10px] font-mono w-[5.5rem] text-[#eaecef]"
+            className="bg-[#12161c] border border-[#2b3139] rounded px-1.5 py-0.5 text-[10px] font-mono w-[7rem] text-[#eaecef]"
             value={p.customSymbol}
             list="chart-link-symbols"
-            placeholder="BTCUSDT"
-            onChange={(e) =>
-              p.setCustomSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
-            }
+            placeholder="AAPL / BTCUSDT"
+            onChange={(e) => p.setCustomSymbol(normalizeSymbolInput(e.target.value))}
           />
           <datalist id="chart-link-symbols">
             {SYMBOL_PRESETS.map((s) => (
