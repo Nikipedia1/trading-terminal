@@ -19,7 +19,7 @@ import { DrawingToolbar } from '@/drawings/DrawingToolbar'
 import { SUPPORTED_EXCHANGES, EXCHANGE_LABELS } from '@/data/exchanges/registry'
 import { detachChartPanel } from '@/layout/detachPanel'
 import { SymbolBadge } from '@/ui/SymbolBadge'
-import { SYMBOL_PRESETS } from '@/data/symbols'
+import { SYMBOL_PRESETS, normalizeSymbolInput, inferAssetFromSymbol } from '@/data/symbols'
 import { formatSymbolOption } from '@/data/symbolMeta'
 import type { ChartPanelConfig, Interval, ExchangeId, WidgetKind } from '@/types'
 
@@ -84,14 +84,23 @@ export function ChartPanel({ config }: ChartPanelProps) {
   }, [symbol])
 
   const commitSymbol = (raw: string) => {
-    const next = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
-    if (!next || next.length < 4) return
-    if (next === symbol) {
+    const inferred = inferAssetFromSymbol(raw)
+    const next = normalizeSymbolInput(raw, inferred.preferredExchange)
+    if (!next || next.length < 1) return
+    // Crypto pairs need length; yahoo tickers can be short (V, MA)
+    if (inferred.preferredExchange !== 'yahoo' && next.length < 4) return
+    const patch: { symbol: string; exchange?: typeof exchange } = { symbol: next }
+    if (inferred.preferredExchange === 'yahoo' && exchange !== 'yahoo') {
+      patch.exchange = 'yahoo'
+    } else if (inferred.preferredExchange === 'binance' && exchange === 'yahoo') {
+      patch.exchange = 'binance'
+    }
+    if (next === symbol && (!patch.exchange || patch.exchange === exchange)) {
       setSymbolDraft(next)
       return
     }
     setSymbolDraft(next)
-    updatePanel(id, { symbol: next })
+    updatePanel(id, patch)
     if (isPrimary) setMarketSymbol(next)
   }
 
@@ -104,7 +113,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
         <SymbolBadge symbol={symbol} size="md" showName />
 
         <input
-          className="bg-[#12161c] border border-[#f0b90b]/50 rounded px-1.5 py-0.5 text-xs w-[7.5rem] font-mono font-semibold text-[#eaecef]"
+          className="bg-[#12161c] border border-[#f0b90b]/50 rounded px-1.5 py-0.5 text-xs w-[8.5rem] font-mono font-semibold text-[#eaecef]"
           value={symbolDraft}
           list={`panel-symbols-${id}`}
           onChange={(e) => setSymbolDraft(e.target.value.toUpperCase())}
@@ -118,7 +127,7 @@ export function ChartPanel({ config }: ChartPanelProps) {
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          title="Full trading pair — Enter or blur to apply"
+          title="Symbol — crypto pair or Yahoo ticker (AAPL, EURUSD=X, ^GSPC). Enter to apply"
           aria-label="Symbol"
         />
         <datalist id={`panel-symbols-${id}`}>
