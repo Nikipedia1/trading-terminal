@@ -9,6 +9,7 @@ import { binanceFuturesClient } from './binanceFutures'
 import { kucoinClient } from './kucoin'
 import { bybitClient } from './bybit'
 import { okxClient } from './okx'
+import { yahooClient } from './yahoo'
 
 const CLIENTS: Record<ExchangeId, ExchangeClient> = {
   binance: binanceClient,
@@ -16,6 +17,7 @@ const CLIENTS: Record<ExchangeId, ExchangeClient> = {
   kucoin: kucoinClient,
   bybit: bybitClient,
   okx: okxClient,
+  yahoo: yahooClient,
 }
 
 export function getExchangeClient(exchange: ExchangeId): ExchangeClient {
@@ -32,6 +34,7 @@ export const SUPPORTED_EXCHANGES: ExchangeId[] = [
   'kucoin',
   'bybit',
   'okx',
+  'yahoo',
 ]
 
 export const EXCHANGE_LABELS: Record<ExchangeId, string> = {
@@ -40,4 +43,10 @@ export const EXCHANGE_LABELS: Record<ExchangeId, string> = {
   kucoin: 'KuCoin',
   bybit: 'Bybit',
   okx: 'OKX',
+  yahoo: 'Global (Yahoo)',
+}
+
+/** True when venue has public L2/trades suitable for orderflow panels */
+export function exchangeSupportsOrderflow(exchange: ExchangeId): boolean {
+  return exchange !== 'yahoo'
 }

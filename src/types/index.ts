@@ -12,6 +12,8 @@ export type ExchangeId =
   | 'kucoin'
   | 'bybit'
   | 'okx'
+  /** Stocks, ETFs, indices, forex, commodities via Yahoo Finance (chart + poll) */
+  | 'yahoo'
 
 export interface Candle {
   time: number

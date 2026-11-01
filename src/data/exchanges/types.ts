@@ -60,4 +60,11 @@ export const PUBLIC_API_LIMITS = {
   okx: {
     notes: ['v5 public; instId BASE-QUOTE.', 'books5 = top 5 – not full depth.'],
   },
+  yahoo: {
+    notes: [
+      'Stocks/ETFs/indices/forex/commodities via Yahoo chart API (proxied).',
+      'No public L2/tape – orderflow panels disabled.',
+      'Live updates via polling (not true tick stream).',
+    ],
+  },
 } as const
