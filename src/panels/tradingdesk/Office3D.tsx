@@ -1,8 +1,10 @@
 /**
- * 3D trading office — carpet floor, pan / zoom / rotate orbit.
+ * 3D trading office — monitors show real mini candlesticks per agent asset.
  */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { AutonomyAgent, DeskSlot } from './autonomy'
+
+type MiniBar = { o: number; h: number; l: number; c: number }
 
 type Props = {
   slots: DeskSlot[]
@@ -10,9 +12,9 @@ type Props = {
   agents: AutonomyAgent[]
   selectedSlotId: string | null
   onSelectSlot: (id: string) => void
+  candleMap?: Record<string, MiniBar[]>
 }
 
-/** ox/oy = pan · scale = zoom · yaw = rotation around Y (radians) */
 type Cam = { ox: number; oy: number; scale: number; yaw: number }
 
 const FMIN = -5.5
@@ -73,11 +75,71 @@ function box(
   face([4, 5, 6, 7], 1.08)
 }
 
+function drawMiniChart(
+  ctx: CanvasRenderingContext2D,
+  left: number,
+  top: number,
+  bw: number,
+  bh: number,
+  bars: MiniBar[] | undefined,
+  accent: string
+) {
+  const pad = 3
+  const chartTop = top + 16
+  const chartH = Math.max(8, bh - 22)
+  const chartLeft = left + pad
+  const chartW = bw - pad * 2
+  if (!bars || bars.length < 2) {
+    ctx.beginPath()
+    ctx.moveTo(chartLeft, chartTop + chartH * 0.6)
+    for (let i = 1; i < 10; i++) {
+      const t = i / 9
+      const wave = Math.sin(Date.now() / 400 + i * 0.8) * chartH * 0.25
+      ctx.lineTo(chartLeft + t * chartW, chartTop + chartH * 0.55 - wave)
+    }
+    ctx.strokeStyle = accent
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    return
+  }
+  const slice = bars.slice(-14)
+  let lo = Infinity
+  let hi = -Infinity
+  for (const b of slice) {
+    if (b.l < lo) lo = b.l
+    if (b.h > hi) hi = b.h
+  }
+  const span = hi - lo || 1
+  const gap = chartW / slice.length
+  const bodyW = Math.max(1.5, gap * 0.55)
+  for (let i = 0; i < slice.length; i++) {
+    const b = slice[i]!
+    const cx = chartLeft + i * gap + gap * 0.5
+    const yH = chartTop + ((hi - b.h) / span) * chartH
+    const yL = chartTop + ((hi - b.l) / span) * chartH
+    const yO = chartTop + ((hi - b.o) / span) * chartH
+    const yC = chartTop + ((hi - b.c) / span) * chartH
+    const up = b.c >= b.o
+    const col = up ? '#0ecb81' : '#f6465d'
+    ctx.strokeStyle = col
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(cx, yH)
+    ctx.lineTo(cx, yL)
+    ctx.stroke()
+    const topB = Math.min(yO, yC)
+    const hB = Math.max(1, Math.abs(yC - yO))
+    ctx.fillStyle = col
+    ctx.fillRect(cx - bodyW / 2, topB, bodyW, hB)
+  }
+}
+
 function paint(
   ctx: CanvasRenderingContext2D,
   w: number, h: number,
   slots: DeskSlot[], agents: AutonomyAgent[],
-  selected: string | null, cam: Cam
+  selected: string | null, cam: Cam,
+  candleMap: Record<string, MiniBar[]>
 ) {
   ctx.fillStyle = '#0e1412'
   ctx.fillRect(0, 0, w, h)
@@ -119,53 +181,48 @@ function paint(
       box(ctx, x + 1.0, 0, z - 1.0, 0.1, 1.7, 1.8, '#6E1423', w, h, cam)
     }
     box(ctx, x - 0.6, 0.05, z - 0.38, 1.2, 0.48, 0.78, '#6b5230', w, h, cam)
-
     box(ctx, x - 0.28, 0.55, z - 0.28, 0.56, 0.48, 0.1, '#151515', w, h, cam)
+
     const ag = agents.find((a) => a.slotId === slot.id)
     const scr = project(x, 0.82, z - 0.22, w, h, cam)
-    const bw = Math.max(56, cam.scale * 2.3)
-    const bh = Math.max(32, cam.scale * 1.35)
-    let bg = '#0d1a18'
+    const bw = Math.max(64, cam.scale * 2.6)
+    const bh = Math.max(40, cam.scale * 1.55)
+    const left = scr.sx - bw / 2
+    const top = scr.sy - bh / 2
+
+    let bg = '#0a1210'
     let fg = '#5e8f7a'
-    let l1 = 'idle'
-    let l2 = ''
+    let label = 'idle'
     if (ag) {
-      l1 = (ag.asset || '—').slice(0, 10)
+      label = (ag.asset || '—').slice(0, 10)
       if (ag.activity === 'researching') {
-        bg = '#0a1f18'; fg = '#0ecb81'; l2 = (ag.screenLine || 'scan').slice(0, 14)
+        bg = '#071a14'; fg = '#0ecb81'
       } else if (ag.activity === 'strategizing') {
-        bg = ag.bias === 'bullish' ? '#0a2018' : ag.bias === 'bearish' ? '#20100e' : '#1a180a'
+        bg = ag.bias === 'bullish' ? '#071a12' : ag.bias === 'bearish' ? '#1a0c0a' : '#1a180a'
         fg = ag.bias === 'bullish' ? '#0ecb81' : ag.bias === 'bearish' ? '#f6465d' : '#F4D35E'
-        l2 = (ag.screenLine || 'probe').slice(0, 14)
       } else if (ag.activity === 'reporting') {
-        bg = '#1a1520'; fg = '#F4D35E'; l2 = 'report → boss'
+        bg = '#14101a'; fg = '#F4D35E'
       } else if (ag.activity === 'walking') {
-        bg = '#121818'; fg = '#848e9c'; l2 = 'moving…'
-      } else l2 = (ag.screenLine || 'desk').slice(0, 14)
-    }
-    ctx.fillStyle = bg
-    ctx.fillRect(scr.sx - bw / 2, scr.sy - bh / 2, bw, bh)
-    ctx.strokeStyle = '#000'
-    ctx.strokeRect(scr.sx - bw / 2, scr.sy - bh / 2, bw, bh)
-    if (ag && (ag.activity === 'researching' || ag.activity === 'strategizing')) {
-      ctx.beginPath()
-      const by = scr.sy + 4
-      ctx.moveTo(scr.sx - bw / 2 + 4, by)
-      for (let i = 1; i < 8; i++) {
-        const t = i / 7
-        const wave = Math.sin(Date.now() / 280 + i + (ag.x || 0)) * (ag.bias === 'bearish' ? -7 : 7)
-        ctx.lineTo(scr.sx - bw / 2 + 4 + t * (bw - 8), by - wave - t * 5)
+        bg = '#0e1412'; fg = '#848e9c'
       }
-      ctx.strokeStyle = fg
-      ctx.lineWidth = 1.5
-      ctx.stroke()
     }
+
+    ctx.fillStyle = bg
+    ctx.fillRect(left, top, bw, bh)
+    ctx.strokeStyle = '#000'
+    ctx.strokeRect(left, top, bw, bh)
+
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'
+    ctx.fillRect(left, top, bw, 14)
     ctx.fillStyle = fg
-    ctx.font = `bold ${Math.max(11, Math.round(cam.scale * 0.5))}px monospace`
-    ctx.fillText(l1, scr.sx - bw / 2 + 5, scr.sy - bh / 2 + 15)
-    ctx.fillStyle = '#c8cdd3'
-    ctx.font = `${Math.max(10, Math.round(cam.scale * 0.42))}px monospace`
-    ctx.fillText(l2, scr.sx - bw / 2 + 5, scr.sy - bh / 2 + 28)
+    ctx.font = `bold ${Math.max(9, Math.round(cam.scale * 0.42))}px monospace`
+    ctx.fillText(label, left + 4, top + 11)
+
+    const bars =
+      ag && candleMap
+        ? candleMap[ag.asset] || candleMap[ag.asset?.toUpperCase?.() ?? ''] || candleMap[Object.keys(candleMap)[0] ?? '']
+        : undefined
+    drawMiniChart(ctx, left, top, bw, bh, bars, fg)
 
     const plate = project(x, 0.08, z + 0.95, w, h, cam)
     const nameFs = Math.max(14, Math.round(cam.scale * 0.6))
@@ -216,22 +273,30 @@ function paint(
   }
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)'
-  ctx.fillRect(8, h - 28, 320, 20)
+  ctx.fillRect(8, h - 28, 340, 20)
   ctx.fillStyle = '#9aa3ad'
   ctx.font = '11px monospace'
-  ctx.fillText('drag = pan  ·  Shift+drag / destro = gira  ·  wheel = zoom', 12, h - 14)
+  ctx.fillText('drag=pan · Shift/destro=gira · wheel=zoom · dblclick=reset', 12, h - 14)
 }
 
-export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }: Props) {
+export function Office3D({
+  slots,
+  agentsLiveRef,
+  selectedSlotId,
+  onSelectSlot,
+  candleMap,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const slotsRef = useRef(slots)
   const selRef = useRef(selectedSlotId)
   const clickRef = useRef(onSelectSlot)
+  const mapRef = useRef(candleMap || {})
   const camRef = useRef<Cam>({ ox: 0, oy: 0, scale: 28, yaw: 0 })
   slotsRef.current = slots
   selRef.current = selectedSlotId
   clickRef.current = onSelectSlot
+  mapRef.current = candleMap || {}
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -273,7 +338,7 @@ export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }:
             x: clamp(a.x),
             z: clamp(a.z),
           }))
-          paint(ctx, canvas.width, canvas.height, slotsRef.current, live, selRef.current, camRef.current)
+          paint(ctx, canvas.width, canvas.height, slotsRef.current, live, selRef.current, camRef.current, mapRef.current)
         }
       } catch { /* keep alive */ }
       raf = requestAnimationFrame(loop)
