@@ -1,6 +1,5 @@
 /**
- * Trading Desk — multi-agent office floor (Munder Difflin-inspired) for NACS Lab.
- * UI: agent cards + chat + task feed. Pipeline: local TA/SMC/liquidity + optional LLM.
+ * Trading Desk — multi-agent office floor (Munder Difflin pixel style) for NACS Lab.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -17,6 +16,7 @@ import {
 } from '@/analysis/aiDesk/aiApi'
 import { DESK_AGENTS, agentMeta } from './agents'
 import { runDeskBriefing } from './orchestrator'
+import { OfficeFloor } from './OfficeFloor'
 import type {
   DeskAgentId,
   DeskAgentStatus,
@@ -33,63 +33,15 @@ const QUICK = [
   'Setup summary',
 ]
 
-const STATUS_DOT: Record<DeskAgentStatus, string> = {
-  idle: 'bg-[#5e6673]',
-  thinking: 'bg-[#f0b90b] animate-pulse',
-  ready: 'bg-[#0ecb81]',
-  error: 'bg-[#f6465d]',
-}
-
-function AgentCard({
-  id,
-  status,
-  lastBrief,
-  selected,
-  onSelect,
-}: {
-  id: DeskAgentId
-  status: DeskAgentStatus
-  lastBrief: string
-  selected: boolean
-  onSelect: () => void
-}) {
-  const m = agentMeta(id)
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`text-left rounded-lg border p-2 transition-colors min-w-0 ${
-        selected
-          ? 'border-[#f0b90b]/70 bg-[#1e2329]'
-          : 'border-[#2b3139] bg-[#0d1117] hover:border-[#3d4550]'
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        <div
-          className="h-8 w-8 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0"
-          style={{ background: m.accent, color: m.color, border: `1px solid ${m.color}55` }}
-        >
-          {m.name.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-[#eaecef] truncate">{m.name}</span>
-            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[status]}`} />
-          </div>
-          <div className="text-[9px] text-[#848e9c] truncate">{m.role}</div>
-        </div>
-      </div>
-      <p className="mt-1.5 text-[9px] text-[#848e9c] leading-snug line-clamp-2">
-        {lastBrief || m.tagline}
-      </p>
-    </button>
-  )
-}
-
 function MsgBubble({ m }: { m: DeskMessage }) {
   if (m.role === 'sys') {
     return (
-      <div className="text-[9px] text-[#5e6673] text-center py-0.5">{m.text}</div>
+      <div
+        className="text-[9px] text-center py-0.5"
+        style={{ color: '#848e9c', fontFamily: 'ui-monospace, monospace' }}
+      >
+        {m.text}
+      </div>
     )
   }
   const isUser = m.role === 'user'
@@ -97,14 +49,21 @@ function MsgBubble({ m }: { m: DeskMessage }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[92%] rounded-lg px-2.5 py-1.5 text-[11px] leading-snug whitespace-pre-wrap ${
-          isUser
-            ? 'bg-[#f0b90b]/15 border border-[#f0b90b]/35 text-[#eaecef]'
-            : 'bg-[#1e2329] border border-[#2b3139] text-[#eaecef]'
-        }`}
+        style={{
+          maxWidth: '92%',
+          borderRadius: 0,
+          padding: '6px 8px',
+          fontSize: 11,
+          lineHeight: 1.35,
+          whiteSpace: 'pre-wrap',
+          fontFamily: 'ui-monospace, monospace',
+          background: isUser ? '#F4D35E' : '#1e2329',
+          color: isUser ? '#1a1a1a' : '#eaecef',
+          boxShadow: '2px 2px 0 #1a1a1a, inset 0 0 0 1px #1a1a1a',
+        }}
       >
         {!isUser && meta && (
-          <div className="text-[9px] font-semibold mb-0.5" style={{ color: meta.color }}>
+          <div style={{ fontSize: 9, fontWeight: 700, marginBottom: 2, color: meta.color }}>
             {meta.name} · {meta.role}
           </div>
         )}
@@ -154,7 +113,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: 'Trading Desk online — chiedi un floor brief o seleziona un agente. Non è consiglio finanziario.',
+      text: 'Floor online — chiedi un brief. Non è consiglio finanziario.',
       ts: Date.now(),
     },
   ])
@@ -235,20 +194,35 @@ export function TradingDeskPanel() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-[#0b0e11] text-[#eaecef]">
-      <div className="shrink-0 flex items-center justify-between gap-2 px-2 py-1.5 border-b border-[#2b3139]">
+    <div
+      className="h-full min-h-0 flex flex-col"
+      style={{ background: '#12161c', color: '#eaecef', fontFamily: 'ui-monospace, monospace' }}
+    >
+      <div
+        className="shrink-0 flex items-center justify-between gap-2 px-2 py-1.5"
+        style={{ background: '#6E1423', borderBottom: '3px solid #1a1a1a' }}
+      >
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold text-[#f0b90b] tracking-wide">
-            TRADING DESK
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#F4D35E', letterSpacing: '0.06em' }}>
+            MUNDER · TRADING DESK
           </div>
-          <div className="text-[9px] text-[#848e9c] truncate">
+          <div style={{ fontSize: 9, color: '#f0c9c9' }}>
             {symbol} · {interval} · {exchange} · {candles.length} bars
             {ctx.lastPrice != null ? ` · ${ctx.lastPrice.toFixed(2)}` : ''}
           </div>
         </div>
         <button
           type="button"
-          className="text-[10px] px-2 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:text-[#eaecef] hover:border-[#f0b90b]/40"
+          style={{
+            fontSize: 10,
+            padding: '3px 8px',
+            background: '#F4D35E',
+            color: '#1a1a1a',
+            border: 'none',
+            boxShadow: '2px 2px 0 #1a1a1a',
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
           onClick={() => setSettingsOpen((v) => !v)}
         >
           AI API
@@ -256,20 +230,27 @@ export function TradingDeskPanel() {
       </div>
 
       {settingsOpen && (
-        <div className="shrink-0 border-b border-[#2b3139] bg-[#0d1117] p-2 space-y-1.5 text-[10px]">
-          <div className="text-[#848e9c]">
-            Keys stay in sessionStorage. Local rule engine works without a key.
+        <div
+          className="shrink-0 p-2 space-y-1.5 text-[10px]"
+          style={{ background: '#1a1214', borderBottom: '2px solid #1a1a1a' }}
+        >
+          <div style={{ color: '#848e9c' }}>
+            Keys in sessionStorage. Local engine works without a key.
           </div>
           <div className="flex flex-wrap gap-1">
             {AI_PROVIDERS.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                className={`px-1.5 py-0.5 rounded border ${
-                  aiSettings.provider === p.id
-                    ? 'border-[#f0b90b] text-[#f0b90b]'
-                    : 'border-[#2b3139] text-[#848e9c]'
-                }`}
+                style={{
+                  padding: '2px 6px',
+                  border: 'none',
+                  boxShadow: '1px 1px 0 #1a1a1a',
+                  background: aiSettings.provider === p.id ? '#F4D35E' : '#2b3139',
+                  color: aiSettings.provider === p.id ? '#1a1a1a' : '#eaecef',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                }}
                 onClick={() =>
                   setAiSettings((s) => ({
                     ...s,
@@ -285,14 +266,16 @@ export function TradingDeskPanel() {
           {aiSettings.provider !== 'local' && (
             <>
               <input
-                className="w-full bg-[#0b0e11] border border-[#2b3139] rounded px-2 py-1 text-[11px]"
+                className="w-full px-2 py-1 text-[11px]"
+                style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef' }}
                 placeholder="API key"
                 type="password"
                 value={aiSettings.apiKey}
                 onChange={(e) => setAiSettings((s) => ({ ...s, apiKey: e.target.value }))}
               />
               <input
-                className="w-full bg-[#0b0e11] border border-[#2b3139] rounded px-2 py-1 text-[11px]"
+                className="w-full px-2 py-1 text-[11px]"
+                style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef' }}
                 placeholder="Model"
                 value={aiSettings.model}
                 onChange={(e) => setAiSettings((s) => ({ ...s, model: e.target.value }))}
@@ -301,7 +284,15 @@ export function TradingDeskPanel() {
           )}
           <button
             type="button"
-            className="text-[10px] px-2 py-0.5 rounded bg-[#f0b90b]/20 text-[#f0b90b] border border-[#f0b90b]/40"
+            style={{
+              fontSize: 10,
+              padding: '3px 8px',
+              background: '#F4D35E',
+              color: '#1a1a1a',
+              border: 'none',
+              boxShadow: '2px 2px 0 #1a1a1a',
+              fontWeight: 700,
+            }}
             onClick={saveSettings}
           >
             Save
@@ -309,32 +300,33 @@ export function TradingDeskPanel() {
         </div>
       )}
 
-      <div className="shrink-0 p-2 border-b border-[#2b3139]">
-        <div className="text-[9px] uppercase tracking-wide text-[#5e6673] mb-1.5">
-          Office floor
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-          {DESK_AGENTS.map((a) => (
-            <AgentCard
-              key={a.id}
-              id={a.id}
-              status={agentStatus[a.id]}
-              lastBrief={lastBrief[a.id]}
-              selected={selected === a.id}
-              onSelect={() => setSelected(a.id)}
-            />
-          ))}
-        </div>
+      <div className="shrink-0" style={{ borderBottom: '2px solid #1a1a1a' }}>
+        <OfficeFloor
+          agentStatus={agentStatus}
+          lastBrief={lastBrief}
+          selected={selected}
+          onSelect={setSelected}
+        />
       </div>
 
       {tasks.length > 0 && (
-        <div className="shrink-0 px-2 py-1 border-b border-[#2b3139] flex gap-1 overflow-x-auto">
+        <div
+          className="shrink-0 px-2 py-1 flex gap-1 overflow-x-auto"
+          style={{ borderBottom: '2px solid #1a1a1a', background: '#0d1117' }}
+        >
           {tasks.map((t) => {
             const m = agentMeta(t.assignee)
             return (
               <span
                 key={t.id}
-                className="shrink-0 text-[9px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#848e9c]"
+                style={{
+                  flexShrink: 0,
+                  fontSize: 9,
+                  padding: '2px 6px',
+                  background: '#1e2329',
+                  color: '#848e9c',
+                  boxShadow: '1px 1px 0 #1a1a1a',
+                }}
               >
                 <span style={{ color: m.color }}>{m.name}</span> · {t.status}
               </span>
@@ -349,14 +341,26 @@ export function TradingDeskPanel() {
         ))}
       </div>
 
-      <div className="shrink-0 border-t border-[#2b3139] p-2 space-y-1.5">
+      <div
+        className="shrink-0 p-2 space-y-1.5"
+        style={{ borderTop: '3px solid #1a1a1a', background: '#0d1117' }}
+      >
         <div className="flex flex-wrap gap-1">
           {QUICK.map((q) => (
             <button
               key={q}
               type="button"
               disabled={busy}
-              className="text-[9px] px-1.5 py-0.5 rounded border border-[#2b3139] text-[#848e9c] hover:border-[#f0b90b]/40 hover:text-[#eaecef] disabled:opacity-40"
+              style={{
+                fontSize: 9,
+                padding: '3px 6px',
+                background: '#1e2329',
+                color: '#eaecef',
+                border: 'none',
+                boxShadow: '2px 2px 0 #1a1a1a',
+                cursor: busy ? 'default' : 'pointer',
+                opacity: busy ? 0.4 : 1,
+              }}
               onClick={() => run(q)}
             >
               {q}
@@ -371,7 +375,13 @@ export function TradingDeskPanel() {
           }}
         >
           <input
-            className="flex-1 min-w-0 bg-[#0d1117] border border-[#2b3139] rounded px-2 py-1.5 text-[11px] text-[#eaecef] placeholder:text-[#5e6673]"
+            className="flex-1 min-w-0 px-2 py-1.5 text-[11px]"
+            style={{
+              background: '#0b0e11',
+              border: '2px solid #1a1a1a',
+              color: '#eaecef',
+              outline: 'none',
+            }}
             placeholder={`Ask ${agentMeta(selected).name} or the floor…`}
             value={input}
             disabled={busy}
@@ -380,13 +390,24 @@ export function TradingDeskPanel() {
           <button
             type="submit"
             disabled={busy || !input.trim()}
-            className="shrink-0 px-3 py-1.5 rounded text-[11px] font-semibold bg-[#f0b90b]/20 text-[#f0b90b] border border-[#f0b90b]/50 disabled:opacity-40"
+            style={{
+              flexShrink: 0,
+              padding: '6px 12px',
+              fontSize: 11,
+              fontWeight: 800,
+              background: '#F4D35E',
+              color: '#1a1a1a',
+              border: 'none',
+              boxShadow: '2px 2px 0 #1a1a1a',
+              opacity: busy || !input.trim() ? 0.4 : 1,
+              cursor: busy || !input.trim() ? 'default' : 'pointer',
+            }}
           >
-            {busy ? '…' : 'Send'}
+            {busy ? '…' : 'SEND'}
           </button>
         </form>
-        <p className="text-[8px] text-[#5e6673] leading-snug">
-          Interpretazione multi-agente, non consiglio finanziario. Nessun ordine inviato dal desk.
+        <p style={{ fontSize: 8, color: '#5e6673', lineHeight: 1.3 }}>
+          Interpretazione multi-agente, non consiglio finanziario. Nessun ordine dal desk.
         </p>
       </div>
     </div>
