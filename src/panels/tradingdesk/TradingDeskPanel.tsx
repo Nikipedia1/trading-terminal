@@ -1,8 +1,6 @@
 /**
- * Trading Desk — 3D autonomous office (Munder Difflin × trading floor).
- * Agents walk, research assets, probe strategies, report to the boss.
+ * Trading Desk — 3D autonomous office.
  */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
@@ -29,26 +27,14 @@ import {
   type DeskSlot,
   RESEARCH_UNIVERSE,
 } from './autonomy'
-import type {
-  DeskAgentId,
-  DeskAgentStatus,
-  DeskMessage,
-  DeskTask,
-} from './types'
+import type { DeskAgentId, DeskAgentStatus, DeskMessage, DeskTask } from './types'
 
-const QUICK = [
-  'Floor brief',
-  'Technical bias',
-  'Orderflow',
-  'Risk frame',
-  'Sentiment',
-  'Setup summary',
-]
+const QUICK = ['Floor brief', 'Technical bias', 'Orderflow', 'Risk frame', 'Sentiment', 'Setup summary']
 
 function MsgBubble({ m }: { m: DeskMessage }) {
   if (m.role === 'sys') {
     return (
-      <div style={{ fontSize: 9, textAlign: 'center', color: '#848e9c', fontFamily: 'monospace' }}>
+      <div style={{ fontSize: 10, textAlign: 'center', color: '#848e9c', fontFamily: 'monospace', padding: '4px 0' }}>
         {m.text}
       </div>
     )
@@ -56,13 +42,13 @@ function MsgBubble({ m }: { m: DeskMessage }) {
   const isUser = m.role === 'user'
   const meta = m.agentId ? agentMeta(m.agentId) : null
   return (
-    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 6 }}>
       <div
         style={{
-          maxWidth: '92%',
-          padding: '6px 8px',
-          fontSize: 11,
-          lineHeight: 1.35,
+          maxWidth: '94%',
+          padding: '8px 10px',
+          fontSize: 12,
+          lineHeight: 1.45,
           whiteSpace: 'pre-wrap',
           fontFamily: 'ui-monospace, monospace',
           background: isUser ? '#F4D35E' : '#1e2329',
@@ -71,7 +57,7 @@ function MsgBubble({ m }: { m: DeskMessage }) {
         }}
       >
         {!isUser && meta && (
-          <div style={{ fontSize: 9, fontWeight: 700, marginBottom: 2, color: meta.color }}>
+          <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4, color: meta.color }}>
             {meta.name} · {meta.role}
           </div>
         )}
@@ -86,9 +72,7 @@ export function TradingDeskPanel() {
   const panels = useLayoutStore((s) => s.panels)
   const storePrimary = useLayoutStore((s) => s.primaryPanelId)
   const targetPanelId =
-    (link.linkedPanelId && panels.some((p) => p.id === link.linkedPanelId)
-      ? link.linkedPanelId
-      : null) ||
+    (link.linkedPanelId && panels.some((p) => p.id === link.linkedPanelId) ? link.linkedPanelId : null) ||
     storePrimary ||
     panels[0]?.id ||
     ''
@@ -112,7 +96,6 @@ export function TradingDeskPanel() {
   const [autonomous, setAutonomous] = useState(true)
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
   const [autoReports, setAutoReports] = useState<AutonomyReport[]>([])
-
   const [agentStatus, setAgentStatus] = useState<Record<DeskAgentId, DeskAgentStatus>>(() => {
     const init = {} as Record<DeskAgentId, DeskAgentStatus>
     for (const a of DESK_AGENTS) init[a.id] = 'idle'
@@ -127,7 +110,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: '3D Desk online — drag per esplorare, wheel per zoom. Solo analisi.',
+      text: '3D Desk — drag per esplorare, wheel per zoom. Solo analisi.',
       ts: Date.now(),
     },
   ])
@@ -146,9 +129,7 @@ export function TradingDeskPanel() {
   const candleMap = useMemo(() => {
     const map: Record<string, typeof candles> = {}
     map[symbol] = candles
-    for (const s of RESEARCH_UNIVERSE) {
-      if (!map[s]) map[s] = candles
-    }
+    for (const s of RESEARCH_UNIVERSE) if (!map[s]) map[s] = candles
     return map
   }, [symbol, candles])
 
@@ -215,10 +196,7 @@ export function TradingDeskPanel() {
       const q = text.trim()
       if (!q || busy) return
       setBusy(true)
-      setMessages((prev) => [
-        ...prev,
-        { id: `u-${Date.now()}`, role: 'user', text: q, ts: Date.now() },
-      ])
+      setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text: q, ts: Date.now() }])
       setInput('')
       try {
         const result = await runDeskBriefing(q, candles, ctx, (id, status) => {
@@ -228,28 +206,19 @@ export function TradingDeskPanel() {
         setMessages((prev) => [...prev, ...result.messages])
         setLastBrief((prev) => {
           const next = { ...prev }
-          for (const r of result.reports) {
-            next[r.agentId] = r.bullets[0] ?? r.title
-          }
+          for (const r of result.reports) next[r.agentId] = r.bullets[0] ?? r.title
           next.orchestrator = result.floorBrief.bullets[0] ?? result.floorBrief.title
           return next
         })
         setAgentStatus((s) => {
           const next = { ...s }
-          for (const a of DESK_AGENTS) {
-            if (next[a.id] === 'thinking') next[a.id] = 'ready'
-          }
+          for (const a of DESK_AGENTS) if (next[a.id] === 'thinking') next[a.id] = 'ready'
           return next
         })
       } catch (e) {
         setMessages((prev) => [
           ...prev,
-          {
-            id: `e-${Date.now()}`,
-            role: 'sys',
-            text: `Desk error: ${e instanceof Error ? e.message : 'unknown'}`,
-            ts: Date.now(),
-          },
+          { id: `e-${Date.now()}`, role: 'sys', text: `Desk error: ${e instanceof Error ? e.message : 'unknown'}`, ts: Date.now() },
         ])
       } finally {
         setBusy(false)
@@ -263,15 +232,6 @@ export function TradingDeskPanel() {
     setSlots(res.slots)
     agentsRef.current = res.agents
     setAgents3d(res.agents)
-    setMessages((m) => [
-      ...m,
-      {
-        id: `hire-${Date.now()}`,
-        role: 'sys',
-        text: `Hired ${agentMeta(id).name} — new desk on the floor.`,
-        ts: Date.now(),
-      },
-    ])
   }
 
   const fire = () => {
@@ -281,10 +241,6 @@ export function TradingDeskPanel() {
     agentsRef.current = res.agents
     setAgents3d(res.agents)
     setSelectedSlotId(null)
-    setMessages((m) => [
-      ...m,
-      { id: `fire-${Date.now()}`, role: 'sys', text: 'Desk removed.', ts: Date.now() },
-    ])
   }
 
   const onSelectSlot = useCallback((id: string) => {
@@ -296,297 +252,122 @@ export function TradingDeskPanel() {
     })
   }, [])
 
-  const saveSettings = () => {
-    saveAiSettings(aiSettings)
-    setSettingsOpen(false)
-  }
-
   const selectedAgent = agents3d.find((a) => a.slotId === selectedSlotId)
 
   return (
-    <div
-      className="h-full min-h-0 flex flex-col"
-      style={{ background: '#12161c', color: '#eaecef', fontFamily: 'ui-monospace, monospace' }}
-    >
-      <div
-        className="shrink-0 flex items-center justify-between gap-2 px-2 py-1.5"
-        style={{ background: '#6E1423', borderBottom: '3px solid #1a1a1a' }}
-      >
+    <div className="h-full min-h-0 flex flex-col" style={{ background: '#12161c', color: '#eaecef', fontFamily: 'ui-monospace, monospace' }}>
+      <div className="shrink-0 flex items-center justify-between gap-2 px-2 py-1.5" style={{ background: '#6E1423', borderBottom: '3px solid #1a1a1a' }}>
         <div className="min-w-0">
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#F4D35E', letterSpacing: '0.06em' }}>
-            MUNDER · 3D TRADING DESK
-          </div>
-          <div style={{ fontSize: 9, color: '#f0c9c9' }}>
-            {symbol} · {interval} · {agents3d.length} agents ·{' '}
-            {autonomous ? 'AUTO ON' : 'AUTO OFF'}
+          <div style={{ fontSize: 12, fontWeight: 800, color: '#F4D35E', letterSpacing: '0.06em' }}>MUNDER · 3D TRADING DESK</div>
+          <div style={{ fontSize: 10, color: '#f0c9c9' }}>
+            {symbol} · {interval} · {agents3d.length} agents · {autonomous ? 'AUTO ON' : 'AUTO OFF'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            type="button"
-            style={{
-              fontSize: 10,
-              padding: '3px 8px',
-              background: autonomous ? '#0ecb81' : '#2b3139',
-              color: autonomous ? '#0b0e11' : '#eaecef',
-              border: 'none',
-              boxShadow: '2px 2px 0 #1a1a1a',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-            onClick={() => setAutonomous((v) => !v)}
-          >
+          <button type="button" style={{ fontSize: 11, padding: '4px 10px', background: autonomous ? '#0ecb81' : '#2b3139', color: autonomous ? '#0b0e11' : '#eaecef', border: 'none', boxShadow: '2px 2px 0 #1a1a1a', fontWeight: 700, cursor: 'pointer' }} onClick={() => setAutonomous((v) => !v)}>
             {autonomous ? 'AUTO' : 'PAUSE'}
           </button>
-          <button
-            type="button"
-            style={{
-              fontSize: 10,
-              padding: '3px 8px',
-              background: '#F4D35E',
-              color: '#1a1a1a',
-              border: 'none',
-              boxShadow: '2px 2px 0 #1a1a1a',
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-            onClick={() => setSettingsOpen((v) => !v)}
-          >
+          <button type="button" style={{ fontSize: 11, padding: '4px 10px', background: '#F4D35E', color: '#1a1a1a', border: 'none', boxShadow: '2px 2px 0 #1a1a1a', fontWeight: 700, cursor: 'pointer' }} onClick={() => setSettingsOpen((v) => !v)}>
             AI API
           </button>
         </div>
       </div>
 
       {settingsOpen && (
-        <div
-          className="shrink-0 p-2 space-y-1.5 text-[10px]"
-          style={{ background: '#1a1214', borderBottom: '2px solid #1a1a1a' }}
-        >
+        <div className="shrink-0 p-2 space-y-1.5 text-[11px]" style={{ background: '#1a1214', borderBottom: '2px solid #1a1a1a' }}>
           <div style={{ color: '#848e9c' }}>Keys in sessionStorage. Local engine works without key.</div>
           <div className="flex flex-wrap gap-1">
             {AI_PROVIDERS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                style={{
-                  padding: '2px 6px',
-                  border: 'none',
-                  boxShadow: '1px 1px 0 #1a1a1a',
-                  background: aiSettings.provider === p.id ? '#F4D35E' : '#2b3139',
-                  color: aiSettings.provider === p.id ? '#1a1a1a' : '#eaecef',
-                  fontSize: 10,
-                  cursor: 'pointer',
-                }}
-                onClick={() =>
-                  setAiSettings((s) => ({
-                    ...s,
-                    provider: p.id as AiProviderId,
-                    model: p.defaultModel,
-                  }))
-                }
-              >
+              <button key={p.id} type="button" style={{ padding: '3px 8px', border: 'none', boxShadow: '1px 1px 0 #1a1a1a', background: aiSettings.provider === p.id ? '#F4D35E' : '#2b3139', color: aiSettings.provider === p.id ? '#1a1a1a' : '#eaecef', fontSize: 11, cursor: 'pointer' }} onClick={() => setAiSettings((s) => ({ ...s, provider: p.id as AiProviderId, model: p.defaultModel }))}>
                 {p.label}
               </button>
             ))}
           </div>
           {aiSettings.provider !== 'local' && (
             <>
-              <input
-                className="w-full px-2 py-1 text-[11px]"
-                style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef' }}
-                placeholder="API key"
-                type="password"
-                value={aiSettings.apiKey}
-                onChange={(e) => setAiSettings((s) => ({ ...s, apiKey: e.target.value }))}
-              />
-              <input
-                className="w-full px-2 py-1 text-[11px]"
-                style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef' }}
-                placeholder="Model"
-                value={aiSettings.model}
-                onChange={(e) => setAiSettings((s) => ({ ...s, model: e.target.value }))}
-              />
+              <input className="w-full px-2 py-1.5 text-[12px]" style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef' }} placeholder="API key" type="password" value={aiSettings.apiKey} onChange={(e) => setAiSettings((s) => ({ ...s, apiKey: e.target.value }))} />
+              <input className="w-full px-2 py-1.5 text-[12px]" style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef' }} placeholder="Model" value={aiSettings.model} onChange={(e) => setAiSettings((s) => ({ ...s, model: e.target.value }))} />
             </>
           )}
-          <button
-            type="button"
-            style={{
-              fontSize: 10,
-              padding: '3px 8px',
-              background: '#F4D35E',
-              color: '#1a1a1a',
-              border: 'none',
-              boxShadow: '2px 2px 0 #1a1a1a',
-              fontWeight: 700,
-            }}
-            onClick={saveSettings}
-          >
+          <button type="button" style={{ fontSize: 11, padding: '4px 10px', background: '#F4D35E', color: '#1a1a1a', border: 'none', boxShadow: '2px 2px 0 #1a1a1a', fontWeight: 700 }} onClick={() => { saveAiSettings(aiSettings); setSettingsOpen(false) }}>
             Save
           </button>
         </div>
       )}
 
       <div className="shrink-0" style={{ borderBottom: '2px solid #1a1a1a' }}>
-        <Office3D
-          slots={slots}
-          agents={agents3d}
-          agentsLiveRef={agentsRef}
-          selectedSlotId={selectedSlotId}
-          onSelectSlot={onSelectSlot}
-        />
+        <Office3D slots={slots} agents={agents3d} agentsLiveRef={agentsRef} selectedSlotId={selectedSlotId} onSelectSlot={onSelectSlot} />
       </div>
 
-      <div
-        className="shrink-0 px-2 py-1.5 flex flex-wrap items-center gap-1.5"
-        style={{ borderBottom: '2px solid #1a1a1a', background: '#0d1117' }}
-      >
-        <span style={{ fontSize: 9, color: '#848e9c' }}>POSTI</span>
+      <div className="shrink-0 px-2 py-2 flex flex-wrap items-center gap-2" style={{ borderBottom: '2px solid #1a1a1a', background: '#0d1117' }}>
+        <span style={{ fontSize: 10, color: '#848e9c' }}>POSTI</span>
         {(['technical', 'orderflow', 'risk', 'sentiment', 'trader'] as DeskAgentId[]).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => hire(id)}
-            style={{
-              fontSize: 9,
-              padding: '2px 6px',
-              background: '#1e2329',
-              color: agentMeta(id).color,
-              border: 'none',
-              boxShadow: '1px 1px 0 #1a1a1a',
-              cursor: 'pointer',
-            }}
-          >
+          <button key={id} type="button" onClick={() => hire(id)} style={{ fontSize: 11, padding: '4px 8px', background: '#1e2329', color: agentMeta(id).color, border: 'none', boxShadow: '1px 1px 0 #1a1a1a', cursor: 'pointer' }}>
             + {agentMeta(id).name}
           </button>
         ))}
-        <button
-          type="button"
-          disabled={!selectedSlotId || slots.find((s) => s.id === selectedSlotId)?.isBoss}
-          onClick={fire}
-          style={{
-            fontSize: 9,
-            padding: '2px 6px',
-            background: '#2e0a12',
-            color: '#f6465d',
-            border: 'none',
-            boxShadow: '1px 1px 0 #1a1a1a',
-            cursor: 'pointer',
-            opacity: !selectedSlotId ? 0.4 : 1,
-          }}
-        >
-          - Rimuovi posto
+        <button type="button" disabled={!selectedSlotId || slots.find((s) => s.id === selectedSlotId)?.isBoss} onClick={fire} style={{ fontSize: 11, padding: '4px 8px', background: '#2e0a12', color: '#f6465d', border: 'none', boxShadow: '1px 1px 0 #1a1a1a', cursor: 'pointer', opacity: !selectedSlotId ? 0.4 : 1 }}>
+          − Rimuovi posto
         </button>
         {selectedAgent && (
-          <span style={{ fontSize: 9, color: '#F4D35E', marginLeft: 4 }}>
-            {selectedAgent.name}: {selectedAgent.activity} · {selectedAgent.asset} · {selectedAgent.bias}
+          <span style={{ fontSize: 11, color: '#F4D35E', marginLeft: 6 }}>
+            {selectedAgent.name}: {selectedAgent.activity} · {selectedAgent.asset}
           </span>
         )}
       </div>
 
       {autoReports[0] && (
-        <div
-          className="shrink-0 px-2 py-1.5"
-          style={{
-            borderBottom: '2px solid #1a1a1a',
-            background: '#0f1612',
-            fontSize: 10,
-            fontFamily: 'ui-monospace, monospace',
-            display: 'flex',
-            gap: 8,
-            alignItems: 'baseline',
-            overflow: 'hidden',
-          }}
-        >
-          <span style={{ color: '#0ecb81', fontWeight: 700, flexShrink: 0 }}>CAPO</span>
-          <span style={{ color: '#F4D35E', flexShrink: 0 }}>{autoReports[0].name}</span>
-          <span style={{ color: '#848e9c', flexShrink: 0 }}>{autoReports[0].asset}</span>
-          <span
-            style={{
-              color: '#eaecef',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-            }}
-          >
+        <div className="shrink-0 px-3 py-2.5" style={{ borderBottom: '2px solid #1a1a1a', background: '#0f1612', fontFamily: 'ui-monospace, monospace' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: '#0b0e11', background: '#0ecb81', fontWeight: 800, fontSize: 11, padding: '4px 10px', letterSpacing: '0.06em' }}>
+              CAPO
+            </span>
+            <span style={{ color: '#F4D35E', fontWeight: 700, fontSize: 14 }}>{autoReports[0].name}</span>
+            <span style={{ color: '#848e9c', fontSize: 13 }}>{autoReports[0].asset}</span>
+            <span
+              style={{
+                marginLeft: 'auto',
+                fontSize: 12,
+                fontWeight: 700,
+                color:
+                  autoReports[0].bias === 'bullish'
+                    ? '#0ecb81'
+                    : autoReports[0].bias === 'bearish'
+                      ? '#f6465d'
+                      : '#848e9c',
+              }}
+            >
+              {autoReports[0].bias.toUpperCase()}
+            </span>
+          </div>
+          <div style={{ color: '#eaecef', fontSize: 13, lineHeight: 1.55, whiteSpace: 'normal', wordBreak: 'break-word' }}>
             {autoReports[0].body}
-          </span>
+          </div>
         </div>
       )}
 
-      <div ref={scroller} className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-2">
+      <div ref={scroller} className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         {messages.map((m) => (
           <MsgBubble key={m.id} m={m} />
         ))}
       </div>
 
-      <div
-        className="shrink-0 p-2 space-y-1.5"
-        style={{ borderTop: '3px solid #1a1a1a', background: '#0d1117' }}
-      >
-        <div className="flex flex-wrap gap-1">
+      <div className="shrink-0 p-2 space-y-2" style={{ borderTop: '3px solid #1a1a1a', background: '#0d1117' }}>
+        <div className="flex flex-wrap gap-1.5">
           {QUICK.map((q) => (
-            <button
-              key={q}
-              type="button"
-              disabled={busy}
-              style={{
-                fontSize: 9,
-                padding: '3px 6px',
-                background: '#1e2329',
-                color: '#eaecef',
-                border: 'none',
-                boxShadow: '2px 2px 0 #1a1a1a',
-                cursor: busy ? 'default' : 'pointer',
-                opacity: busy ? 0.4 : 1,
-              }}
-              onClick={() => run(q)}
-            >
+            <button key={q} type="button" disabled={busy} style={{ fontSize: 11, padding: '4px 8px', background: '#1e2329', color: '#eaecef', border: 'none', boxShadow: '2px 2px 0 #1a1a1a', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.4 : 1 }} onClick={() => run(q)}>
               {q}
             </button>
           ))}
         </div>
-        <form
-          className="flex gap-1.5"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void run(input)
-          }}
-        >
-          <input
-            className="flex-1 min-w-0 px-2 py-1.5 text-[11px]"
-            style={{
-              background: '#0b0e11',
-              border: '2px solid #1a1a1a',
-              color: '#eaecef',
-              outline: 'none',
-            }}
-            placeholder={`Ask ${agentMeta(selected).name} or the floor…`}
-            value={input}
-            disabled={busy}
-            onChange={(e) => setInput(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={busy || !input.trim()}
-            style={{
-              flexShrink: 0,
-              padding: '6px 12px',
-              fontSize: 11,
-              fontWeight: 800,
-              background: '#F4D35E',
-              color: '#1a1a1a',
-              border: 'none',
-              boxShadow: '2px 2px 0 #1a1a1a',
-              opacity: busy || !input.trim() ? 0.4 : 1,
-              cursor: busy || !input.trim() ? 'default' : 'pointer',
-            }}
-          >
+        <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void run(input) }}>
+          <input className="flex-1 min-w-0 px-2 py-2 text-[12px]" style={{ background: '#0b0e11', border: '2px solid #1a1a1a', color: '#eaecef', outline: 'none' }} placeholder={`Ask ${agentMeta(selected).name} or the floor…`} value={input} disabled={busy} onChange={(e) => setInput(e.target.value)} />
+          <button type="submit" disabled={busy || !input.trim()} style={{ flexShrink: 0, padding: '8px 14px', fontSize: 12, fontWeight: 800, background: '#F4D35E', color: '#1a1a1a', border: 'none', boxShadow: '2px 2px 0 #1a1a1a', opacity: busy || !input.trim() ? 0.4 : 1, cursor: busy || !input.trim() ? 'default' : 'pointer' }}>
             {busy ? '…' : 'SEND'}
           </button>
         </form>
-        <p style={{ fontSize: 8, color: '#5e6673', lineHeight: 1.3 }}>
-          Drag = esplora ufficio · wheel = zoom. Solo analisi, nessun ordine.
+        <p style={{ fontSize: 9, color: '#5e6673', lineHeight: 1.35 }}>
+          Drag = esplora · wheel = zoom. Solo analisi, nessun ordine.
         </p>
       </div>
     </div>
