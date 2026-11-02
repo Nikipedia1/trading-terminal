@@ -1,5 +1,5 @@
 /**
- * 3D trading office — carpet floor, readable nameplates, pan/zoom.
+ * 3D trading office — carpet floor, pan / zoom / rotate orbit.
  */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { AutonomyAgent, DeskSlot } from './autonomy'
@@ -11,15 +11,24 @@ type Props = {
   selectedSlotId: string | null
   onSelectSlot: (id: string) => void
 }
-type Cam = { ox: number; oy: number; scale: number }
+
+/** ox/oy = pan · scale = zoom · yaw = rotation around Y (radians) */
+type Cam = { ox: number; oy: number; scale: number; yaw: number }
 
 const FMIN = -5.5
 const FMAX = 5.5
 const clamp = (v: number) => Math.max(FMIN, Math.min(FMAX, v))
 
+function rotXZ(x: number, z: number, yaw: number) {
+  const c = Math.cos(yaw)
+  const s = Math.sin(yaw)
+  return { x: x * c - z * s, z: x * s + z * c }
+}
+
 function project(x: number, y: number, z: number, w: number, h: number, cam: Cam) {
-  const isoX = (x - z) * cam.scale
-  const isoY = (x + z) * (cam.scale * 0.5) - y * (cam.scale * 1.25)
+  const r = rotXZ(x, z, cam.yaw)
+  const isoX = (r.x - r.z) * cam.scale
+  const isoY = (r.x + r.z) * (cam.scale * 0.5) - y * (cam.scale * 1.25)
   return { sx: w * 0.5 + cam.ox + isoX, sy: h * 0.42 + cam.oy + isoY }
 }
 
@@ -97,7 +106,11 @@ function paint(
   }
   box(ctx, 4.4, 0, -2.8, 0.2, 1.8, 3.2, '#243044', w, h, cam)
 
-  const sorted = [...slots].sort((a, b) => a.homeX + a.homeZ - (b.homeX + b.homeZ))
+  const sorted = [...slots].sort((a, b) => {
+    const ra = rotXZ(a.homeX, a.homeZ, cam.yaw)
+    const rb = rotXZ(b.homeX, b.homeZ, cam.yaw)
+    return ra.x + ra.z - (rb.x + rb.z)
+  })
   for (const slot of sorted) {
     const x = clamp(slot.homeX)
     const z = clamp(slot.homeZ)
@@ -178,7 +191,11 @@ function paint(
     ctx.textAlign = 'left'
   }
 
-  for (const ag of [...agents].sort((a, b) => a.x + a.z - (b.x + b.z))) {
+  for (const ag of [...agents].sort((a, b) => {
+    const ra = rotXZ(a.x, a.z, cam.yaw)
+    const rb = rotXZ(b.x, b.z, cam.yaw)
+    return ra.x + ra.z - (rb.x + rb.z)
+  })) {
     const ax = clamp(ag.x)
     const az = clamp(ag.z)
     const bob = ag.activity === 'walking' ? Math.sin(Date.now() / 140) * 0.04 : 0
@@ -198,11 +215,11 @@ function paint(
     ctx.textAlign = 'left'
   }
 
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'
-  ctx.fillRect(8, h - 24, 240, 18)
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+  ctx.fillRect(8, h - 28, 320, 20)
   ctx.fillStyle = '#9aa3ad'
   ctx.font = '11px monospace'
-  ctx.fillText('drag = pan  ·  wheel = zoom  ·  click desk', 12, h - 11)
+  ctx.fillText('drag = pan  ·  Shift+drag / destro = gira  ·  wheel = zoom', 12, h - 14)
 }
 
 export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }: Props) {
@@ -211,7 +228,7 @@ export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }:
   const slotsRef = useRef(slots)
   const selRef = useRef(selectedSlotId)
   const clickRef = useRef(onSelectSlot)
-  const camRef = useRef<Cam>({ ox: 0, oy: 0, scale: 28 })
+  const camRef = useRef<Cam>({ ox: 0, oy: 0, scale: 28, yaw: 0 })
   slotsRef.current = slots
   selRef.current = selectedSlotId
   clickRef.current = onSelectSlot
@@ -223,8 +240,10 @@ export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }:
     let raf = 0
     let running = true
     let dragging = false
+    let mode: 'pan' | 'orbit' = 'pan'
     let lx = 0
     let ly = 0
+    let moved = false
 
     const resize = () => {
       const r = parent.getBoundingClientRect()
@@ -263,27 +282,41 @@ export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }:
 
     const onDown = (e: PointerEvent) => {
       dragging = true
+      moved = false
       lx = e.clientX
       ly = e.clientY
+      mode = e.button === 2 || e.shiftKey || e.altKey || e.metaKey ? 'orbit' : 'pan'
       canvas.setPointerCapture(e.pointerId)
+      canvas.style.cursor = mode === 'orbit' ? 'grabbing' : 'move'
     }
     const onMove = (e: PointerEvent) => {
       if (!dragging) return
+      const dx = e.clientX - lx
+      const dy = e.clientY - ly
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true
       const dpr = Math.min(2, window.devicePixelRatio || 1)
-      camRef.current.ox += (e.clientX - lx) * dpr
-      camRef.current.oy += (e.clientY - ly) * dpr
+      if (mode === 'orbit') {
+        camRef.current.yaw += dx * 0.008
+        camRef.current.oy += dy * dpr * 0.35
+      } else {
+        camRef.current.ox += dx * dpr
+        camRef.current.oy += dy * dpr
+      }
       lx = e.clientX
       ly = e.clientY
     }
     const onUp = (e: PointerEvent) => {
       dragging = false
+      canvas.style.cursor = 'grab'
       try { canvas.releasePointerCapture(e.pointerId) } catch { /* */ }
     }
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       camRef.current.scale = Math.max(16, Math.min(52, camRef.current.scale * (e.deltaY > 0 ? 0.92 : 1.08)))
     }
+    const onContext = (e: Event) => { e.preventDefault() }
     const onClick = (e: MouseEvent) => {
+      if (moved) return
       const rect = canvas.getBoundingClientRect()
       const mx = ((e.clientX - rect.left) / rect.width) * canvas.width
       const my = ((e.clientY - rect.top) / rect.height) * canvas.height
@@ -295,13 +328,19 @@ export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }:
       }
       if (best && best.d < 80 * 80) clickRef.current(best.id)
     }
+    const onDbl = () => {
+      camRef.current = { ox: 0, oy: 0, scale: 28, yaw: 0 }
+    }
 
     canvas.addEventListener('pointerdown', onDown)
     canvas.addEventListener('pointermove', onMove)
     canvas.addEventListener('pointerup', onUp)
     canvas.addEventListener('pointercancel', onUp)
     canvas.addEventListener('wheel', onWheel, { passive: false })
+    canvas.addEventListener('contextmenu', onContext)
     canvas.addEventListener('click', onClick)
+    canvas.addEventListener('dblclick', onDbl)
+
     return () => {
       running = false
       cancelAnimationFrame(raf)
@@ -311,7 +350,9 @@ export function Office3D({ slots, agentsLiveRef, selectedSlotId, onSelectSlot }:
       canvas.removeEventListener('pointerup', onUp)
       canvas.removeEventListener('pointercancel', onUp)
       canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('contextmenu', onContext)
       canvas.removeEventListener('click', onClick)
+      canvas.removeEventListener('dblclick', onDbl)
     }
   }, [agentsLiveRef])
 
