@@ -155,6 +155,7 @@ export function TradingDeskPanel() {
   useEffect(() => {
     let raf = 0
     let last = performance.now()
+    let lastUi = 0
     const loop = (t: number) => {
       const dt = Math.min(50, t - last)
       last = t
@@ -166,7 +167,13 @@ export function TradingDeskPanel() {
         candleMap as Record<string, typeof candles>,
         autonomous
       )
-      setAgents3d(res.agents)
+      // keep sim on refs every frame
+      agentsRef.current = res.agents
+      // throttle React UI updates (~8 fps) to avoid grey flash / canvas thrash
+      if (t - lastUi > 120) {
+        lastUi = t
+        setAgents3d(res.agents)
+      }
       if (res.reports.length) {
         setAutoReports((prev) => [...res.reports, ...prev].slice(0, 40))
         setMessages((prev) => [
@@ -184,14 +191,6 @@ export function TradingDeskPanel() {
           setAgentStatus((st) => ({ ...st, [r.agentId]: 'ready' }))
         }
       }
-      setAgentStatus((st) => {
-        const next = { ...st }
-        for (const a of res.agents) {
-          if (a.activity === 'researching' || a.activity === 'strategizing') next[a.agentId] = 'thinking'
-          else if (a.activity === 'reporting') next[a.agentId] = 'ready'
-        }
-        return next
-      })
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -262,8 +261,9 @@ export function TradingDeskPanel() {
   )
 
   const hire = (id: DeskAgentId) => {
-    const res = addSeat(slots, agents3d, id)
+    const res = addSeat(slots, agentsRef.current, id)
     setSlots(res.slots)
+    agentsRef.current = res.agents
     setAgents3d(res.agents)
     setMessages((m) => [
       ...m,
@@ -278,8 +278,9 @@ export function TradingDeskPanel() {
 
   const fire = () => {
     if (!selectedSlotId) return
-    const res = removeSeat(slots, agents3d, selectedSlotId)
+    const res = removeSeat(slots, agentsRef.current, selectedSlotId)
     setSlots(res.slots)
+    agentsRef.current = res.agents
     setAgents3d(res.agents)
     setSelectedSlotId(null)
     setMessages((m) => [
@@ -288,11 +289,14 @@ export function TradingDeskPanel() {
     ])
   }
 
-  const onSelectSlot = (id: string) => {
+  const onSelectSlot = useCallback((id: string) => {
     setSelectedSlotId(id)
-    const s = slots.find((x) => x.id === id)
-    if (s) setSelected(s.agentId)
-  }
+    setSlots((cur) => {
+      const s = cur.find((x) => x.id === id)
+      if (s) setSelected(s.agentId)
+      return cur
+    })
+  }, [])
 
   const saveSettings = () => {
     saveAiSettings(aiSettings)
@@ -428,6 +432,7 @@ export function TradingDeskPanel() {
         <Office3D
           slots={slots}
           agents={agents3d}
+          agentsLiveRef={agentsRef}
           selectedSlotId={selectedSlotId}
           onSelectSlot={onSelectSlot}
         />
