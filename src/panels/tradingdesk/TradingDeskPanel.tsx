@@ -1,5 +1,5 @@
 /**
- * Trading Desk — 3D autonomous office.
+ * Trading Desk — 3D autonomous office with live monitor charts.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
@@ -27,7 +27,7 @@ import {
   type DeskSlot,
   RESEARCH_UNIVERSE,
 } from './autonomy'
-import type { DeskAgentId, DeskAgentStatus, DeskMessage, DeskTask } from './types'
+import type { DeskAgentId, DeskAgentStatus, DeskMessage } from './types'
 
 const QUICK = [
   'Report completo',
@@ -113,7 +113,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: '3D Desk — premi “Report completo” per analisi dettagliata sull\'asset del chart.',
+      text: '3D Desk — i monitor mostrano candele reali. Premi Report completo per analisi dettagliata.',
       ts: Date.now(),
     },
   ])
@@ -133,6 +133,16 @@ export function TradingDeskPanel() {
     map[symbol] = candles
     for (const s of RESEARCH_UNIVERSE) if (!map[s]) map[s] = candles
     return map
+  }, [symbol, candles])
+
+  const monitorCandleMap = useMemo(() => {
+    const out: Record<string, { o: number; h: number; l: number; c: number }[]> = {}
+    const toMini = (arr: typeof candles) =>
+      arr.slice(-40).map((c) => ({ o: c.open, h: c.high, l: c.low, c: c.close }))
+    const mini = toMini(candles)
+    out[symbol] = mini
+    for (const s of RESEARCH_UNIVERSE) out[s] = mini
+    return out
   }, [symbol, candles])
 
   useEffect(() => {
@@ -290,7 +300,14 @@ export function TradingDeskPanel() {
       )}
 
       <div className="shrink-0" style={{ borderBottom: '2px solid #1a1a1a' }}>
-        <Office3D slots={slots} agents={agents3d} agentsLiveRef={agentsRef} selectedSlotId={selectedSlotId} onSelectSlot={onSelectSlot} />
+        <Office3D
+          slots={slots}
+          agents={agents3d}
+          agentsLiveRef={agentsRef}
+          selectedSlotId={selectedSlotId}
+          onSelectSlot={onSelectSlot}
+          candleMap={monitorCandleMap}
+        />
       </div>
 
       <div className="shrink-0 px-2 py-2 flex flex-wrap items-center gap-2" style={{ borderBottom: '2px solid #1a1a1a', background: '#0d1117' }}>
@@ -313,24 +330,10 @@ export function TradingDeskPanel() {
       {autoReports[0] && (
         <div className="shrink-0 px-3 py-2.5" style={{ borderBottom: '2px solid #1a1a1a', background: '#0f1612', fontFamily: 'ui-monospace, monospace' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-            <span style={{ color: '#0b0e11', background: '#0ecb81', fontWeight: 800, fontSize: 11, padding: '4px 10px', letterSpacing: '0.06em' }}>
-              CAPO
-            </span>
+            <span style={{ color: '#0b0e11', background: '#0ecb81', fontWeight: 800, fontSize: 11, padding: '4px 10px' }}>CAPO</span>
             <span style={{ color: '#F4D35E', fontWeight: 700, fontSize: 14 }}>{autoReports[0].name}</span>
             <span style={{ color: '#848e9c', fontSize: 13 }}>{autoReports[0].asset}</span>
-            <span
-              style={{
-                marginLeft: 'auto',
-                fontSize: 12,
-                fontWeight: 700,
-                color:
-                  autoReports[0].bias === 'bullish'
-                    ? '#0ecb81'
-                    : autoReports[0].bias === 'bearish'
-                      ? '#f6465d'
-                      : '#848e9c',
-              }}
-            >
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: autoReports[0].bias === 'bullish' ? '#0ecb81' : autoReports[0].bias === 'bearish' ? '#f6465d' : '#848e9c' }}>
               {autoReports[0].bias.toUpperCase()}
             </span>
           </div>
@@ -360,9 +363,6 @@ export function TradingDeskPanel() {
             {busy ? '…' : 'SEND'}
           </button>
         </form>
-        <p style={{ fontSize: 9, color: '#5e6673', lineHeight: 1.35 }}>
-          Report completo = TA + SMC + liquidità + risk + setup sull\'asset del chart. Solo analisi.
-        </p>
       </div>
     </div>
   )
