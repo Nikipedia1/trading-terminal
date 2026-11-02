@@ -63,6 +63,7 @@ export const WIDGET_META: Record<
   deeptrades: { title: 'Deep Trades', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
   ofi: { title: 'OFI', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
   iceberg: { title: 'Iceberg', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
+  tradingdesk: { title: 'Trading Desk', minW: 4, minH: 10, defaultW: 5, defaultH: 16 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
