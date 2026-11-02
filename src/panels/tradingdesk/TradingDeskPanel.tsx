@@ -127,7 +127,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: '3D Desk online — agenti in autonomia. Capo in ufficio. Solo analisi, zero ordini.',
+      text: '3D Desk online — drag per esplorare, wheel per zoom. Solo analisi.',
       ts: Date.now(),
     },
   ])
@@ -167,9 +167,7 @@ export function TradingDeskPanel() {
         candleMap as Record<string, typeof candles>,
         autonomous
       )
-      // keep sim on refs every frame
       agentsRef.current = res.agents
-      // throttle React UI updates (~8 fps) to avoid grey flash / canvas thrash
       if (t - lastUi > 120) {
         lastUi = t
         setAgents3d(res.agents)
@@ -487,12 +485,31 @@ export function TradingDeskPanel() {
 
       {autoReports[0] && (
         <div
-          className="shrink-0 px-2 py-1"
-          style={{ borderBottom: '2px solid #1a1a1a', background: '#141a12', fontSize: 10 }}
+          className="shrink-0 px-2 py-1.5"
+          style={{
+            borderBottom: '2px solid #1a1a1a',
+            background: '#0f1612',
+            fontSize: 10,
+            fontFamily: 'ui-monospace, monospace',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'baseline',
+            overflow: 'hidden',
+          }}
         >
-          <span style={{ color: '#0ecb81' }}>CAPO riceve:</span>{' '}
-          <span style={{ color: '#eaecef' }}>
-            {autoReports[0].name} → {autoReports[0].asset}: {autoReports[0].body.slice(0, 90)}
+          <span style={{ color: '#0ecb81', fontWeight: 700, flexShrink: 0 }}>CAPO</span>
+          <span style={{ color: '#F4D35E', flexShrink: 0 }}>{autoReports[0].name}</span>
+          <span style={{ color: '#848e9c', flexShrink: 0 }}>{autoReports[0].asset}</span>
+          <span
+            style={{
+              color: '#eaecef',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {autoReports[0].body}
           </span>
         </div>
       )}
@@ -569,7 +586,7 @@ export function TradingDeskPanel() {
           </button>
         </form>
         <p style={{ fontSize: 8, color: '#5e6673', lineHeight: 1.3 }}>
-          Agenti autonomi: ricerca multi-asset, probe strategie, report al capo. Nessun ordine reale.
+          Drag = esplora ufficio · wheel = zoom. Solo analisi, nessun ordine.
         </p>
       </div>
     </div>
