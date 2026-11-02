@@ -73,6 +73,12 @@ export interface DeskSlot {
   isBoss: boolean
 }
 
+const FLOOR_MIN = -5.2
+const FLOOR_MAX = 5.2
+function clampFloor(v: number) {
+  return Math.max(FLOOR_MIN, Math.min(FLOOR_MAX, v))
+}
+
 const STRATEGY_LABELS = [
   'mean-reversion probe',
   'breakout watch',
@@ -112,8 +118,8 @@ export function defaultSlots(): DeskSlot[] {
       name: m.name,
       role: m.role,
       color: m.color,
-      homeX: r.boss ? -4.5 : -2 + col * 3.2,
-      homeZ: r.boss ? -3.5 : -1.5 + row * 3.2,
+      homeX: clampFloor(r.boss ? -3.8 : -2.2 + col * 2.6),
+      homeZ: clampFloor(r.boss ? -3.2 : -1.2 + row * 2.6),
       isBoss: !!r.boss,
     })
     i++
@@ -144,17 +150,17 @@ export function agentsFromSlots(slots: DeskSlot[], now = Date.now()): AutonomyAg
 
 function pickStation(slots: DeskSlot[], self: AutonomyAgent): { x: number; z: number } {
   const roll = Math.random()
-  if (roll < 0.35) return { x: 0, z: 4.5 }
-  if (roll < 0.55) return { x: 5, z: -2 }
+  if (roll < 0.35) return { x: clampFloor(0), z: clampFloor(4.2) }
+  if (roll < 0.55) return { x: clampFloor(4.2), z: clampFloor(-1.8) }
   if (roll < 0.7) {
     const other = slots.filter((s) => s.id !== self.slotId)
     if (other.length) {
       const t = rnd(other)
-      return { x: t.homeX + 0.8, z: t.homeZ }
+      return { x: clampFloor(t.homeX + 0.6), z: clampFloor(t.homeZ) }
     }
   }
   const home = slots.find((s) => s.id === self.slotId)
-  return { x: home?.homeX ?? self.x, z: home?.homeZ ?? self.z }
+  return { x: clampFloor(home?.homeX ?? self.x), z: clampFloor(home?.homeZ ?? self.z) }
 }
 
 export function probeStrategy(
@@ -264,8 +270,8 @@ export function tickAutonomy(
       ag.activity = 'reporting'
       const boss = slots.find((s) => s.isBoss)
       if (boss && ag.agentId !== 'orchestrator') {
-        ag.targetX = boss.homeX + 1.2
-        ag.targetZ = boss.homeZ + 0.5
+        ag.targetX = clampFloor(boss.homeX + 1.0)
+        ag.targetZ = clampFloor(boss.homeZ + 0.4)
       }
       reports.push({
         id: uid('rep'),
@@ -302,13 +308,15 @@ function stepMove(ag: AutonomyAgent, dt: number): AutonomyAgent {
   const dz = ag.targetZ - ag.z
   const dist = Math.hypot(dx, dz)
   if (dist < 0.02) {
-    ag.x = ag.targetX
-    ag.z = ag.targetZ
+    ag.x = clampFloor(ag.targetX)
+    ag.z = clampFloor(ag.targetZ)
     return ag
   }
   const step = Math.min(maxStep, dist)
-  ag.x += (dx / dist) * step
-  ag.z += (dz / dist) * step
+  ag.x = clampFloor(ag.x + (dx / dist) * step)
+  ag.z = clampFloor(ag.z + (dz / dist) * step)
+  ag.targetX = clampFloor(ag.targetX)
+  ag.targetZ = clampFloor(ag.targetZ)
   return ag
 }
 
@@ -328,8 +336,8 @@ export function addSeat(
     name: m.name,
     role: m.role,
     color: m.color,
-    homeX: -2 + col * 3.2,
-    homeZ: -1.5 + row * 3.2,
+    homeX: clampFloor(-2.2 + col * 2.6),
+    homeZ: clampFloor(-1.2 + row * 2.6),
     isBoss: false,
   }
   const agent: AutonomyAgent = {
