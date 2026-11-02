@@ -124,6 +124,7 @@ export type WidgetKind =
   | 'deeptrades'
   | 'ofi'
   | 'iceberg'
+  | 'tradingdesk'
 
 export interface WidgetPanelConfig {
   id: string

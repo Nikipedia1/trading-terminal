@@ -11,6 +11,7 @@ import './onchain'
 import './quantlab'
 import './battlefield'
 import './orderblock'
+import './tradingdesk'
 
 export {
   registerPanelType,
@@ -28,4 +29,5 @@ export { OnchainPanel } from './onchain'
 export { QuantLabPanel } from './quantlab'
 export { BattlefieldPanel } from './battlefield'
 export { OrderBlockPanel } from './orderblock'
+export { TradingDeskPanel } from './tradingdesk'
 export type { NewsItem, NewsAssetFilter, NewsPanelProps } from './news'
