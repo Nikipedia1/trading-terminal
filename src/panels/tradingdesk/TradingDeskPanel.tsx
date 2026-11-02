@@ -1,5 +1,6 @@
 /**
- * Trading Desk — multi-agent office floor (Munder Difflin pixel style) for NACS Lab.
+ * Trading Desk — 3D autonomous office (Munder Difflin × trading floor).
+ * Agents walk, research assets, probe strategies, report to the boss.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -16,7 +17,18 @@ import {
 } from '@/analysis/aiDesk/aiApi'
 import { DESK_AGENTS, agentMeta } from './agents'
 import { runDeskBriefing } from './orchestrator'
-import { OfficeFloor } from './OfficeFloor'
+import { Office3D } from './Office3D'
+import {
+  addSeat,
+  agentsFromSlots,
+  defaultSlots,
+  removeSeat,
+  tickAutonomy,
+  type AutonomyAgent,
+  type AutonomyReport,
+  type DeskSlot,
+  RESEARCH_UNIVERSE,
+} from './autonomy'
 import type {
   DeskAgentId,
   DeskAgentStatus,
@@ -36,10 +48,7 @@ const QUICK = [
 function MsgBubble({ m }: { m: DeskMessage }) {
   if (m.role === 'sys') {
     return (
-      <div
-        className="text-[9px] text-center py-0.5"
-        style={{ color: '#848e9c', fontFamily: 'ui-monospace, monospace' }}
-      >
+      <div style={{ fontSize: 9, textAlign: 'center', color: '#848e9c', fontFamily: 'monospace' }}>
         {m.text}
       </div>
     )
@@ -47,11 +56,10 @@ function MsgBubble({ m }: { m: DeskMessage }) {
   const isUser = m.role === 'user'
   const meta = m.agentId ? agentMeta(m.agentId) : null
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
       <div
         style={{
           maxWidth: '92%',
-          borderRadius: 0,
           padding: '6px 8px',
           fontSize: 11,
           lineHeight: 1.35,
@@ -59,7 +67,7 @@ function MsgBubble({ m }: { m: DeskMessage }) {
           fontFamily: 'ui-monospace, monospace',
           background: isUser ? '#F4D35E' : '#1e2329',
           color: isUser ? '#1a1a1a' : '#eaecef',
-          boxShadow: '2px 2px 0 #1a1a1a, inset 0 0 0 1px #1a1a1a',
+          boxShadow: '2px 2px 0 #1a1a1a',
         }}
       >
         {!isUser && meta && (
@@ -99,6 +107,12 @@ export function TradingDeskPanel() {
         ? marketCandles
         : linkedCandles
 
+  const [slots, setSlots] = useState<DeskSlot[]>(() => defaultSlots())
+  const [agents3d, setAgents3d] = useState<AutonomyAgent[]>(() => agentsFromSlots(defaultSlots()))
+  const [autonomous, setAutonomous] = useState(true)
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [autoReports, setAutoReports] = useState<AutonomyReport[]>([])
+
   const [agentStatus, setAgentStatus] = useState<Record<DeskAgentId, DeskAgentStatus>>(() => {
     const init = {} as Record<DeskAgentId, DeskAgentStatus>
     for (const a of DESK_AGENTS) init[a.id] = 'idle'
@@ -113,7 +127,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: 'Floor online — chiedi un brief. Non è consiglio finanziario.',
+      text: '3D Desk online — agenti in autonomia. Capo in ufficio. Solo analisi, zero ordini.',
       ts: Date.now(),
     },
   ])
@@ -124,6 +138,65 @@ export function TradingDeskPanel() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiSettings, setAiSettings] = useState<AiApiSettings>(() => loadAiSettings())
   const scroller = useRef<HTMLDivElement>(null)
+  const agentsRef = useRef(agents3d)
+  const slotsRef = useRef(slots)
+  agentsRef.current = agents3d
+  slotsRef.current = slots
+
+  const candleMap = useMemo(() => {
+    const map: Record<string, typeof candles> = {}
+    map[symbol] = candles
+    for (const s of RESEARCH_UNIVERSE) {
+      if (!map[s]) map[s] = candles
+    }
+    return map
+  }, [symbol, candles])
+
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    const loop = (t: number) => {
+      const dt = Math.min(50, t - last)
+      last = t
+      const res = tickAutonomy(
+        agentsRef.current,
+        slotsRef.current,
+        Date.now(),
+        dt,
+        candleMap as Record<string, typeof candles>,
+        autonomous
+      )
+      setAgents3d(res.agents)
+      if (res.reports.length) {
+        setAutoReports((prev) => [...res.reports, ...prev].slice(0, 40))
+        setMessages((prev) => [
+          ...prev,
+          ...res.reports.map((r) => ({
+            id: r.id,
+            role: 'agent' as const,
+            agentId: r.agentId,
+            text: `AUTO · ${r.title}\n${r.body}`,
+            ts: r.ts,
+          })),
+        ])
+        for (const r of res.reports) {
+          setLastBrief((lb) => ({ ...lb, [r.agentId]: r.body.slice(0, 80) }))
+          setAgentStatus((st) => ({ ...st, [r.agentId]: 'ready' }))
+        }
+      }
+      setAgentStatus((st) => {
+        const next = { ...st }
+        for (const a of res.agents) {
+          if (a.activity === 'researching' || a.activity === 'strategizing') next[a.agentId] = 'thinking'
+          else if (a.activity === 'reporting') next[a.agentId] = 'ready'
+        }
+        return next
+      })
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [autonomous, candleMap])
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' })
@@ -188,10 +261,45 @@ export function TradingDeskPanel() {
     [busy, candles, ctx]
   )
 
+  const hire = (id: DeskAgentId) => {
+    const res = addSeat(slots, agents3d, id)
+    setSlots(res.slots)
+    setAgents3d(res.agents)
+    setMessages((m) => [
+      ...m,
+      {
+        id: `hire-${Date.now()}`,
+        role: 'sys',
+        text: `Hired ${agentMeta(id).name} — new desk on the floor.`,
+        ts: Date.now(),
+      },
+    ])
+  }
+
+  const fire = () => {
+    if (!selectedSlotId) return
+    const res = removeSeat(slots, agents3d, selectedSlotId)
+    setSlots(res.slots)
+    setAgents3d(res.agents)
+    setSelectedSlotId(null)
+    setMessages((m) => [
+      ...m,
+      { id: `fire-${Date.now()}`, role: 'sys', text: 'Desk removed.', ts: Date.now() },
+    ])
+  }
+
+  const onSelectSlot = (id: string) => {
+    setSelectedSlotId(id)
+    const s = slots.find((x) => x.id === id)
+    if (s) setSelected(s.agentId)
+  }
+
   const saveSettings = () => {
     saveAiSettings(aiSettings)
     setSettingsOpen(false)
   }
+
+  const selectedAgent = agents3d.find((a) => a.slotId === selectedSlotId)
 
   return (
     <div
@@ -204,29 +312,47 @@ export function TradingDeskPanel() {
       >
         <div className="min-w-0">
           <div style={{ fontSize: 11, fontWeight: 800, color: '#F4D35E', letterSpacing: '0.06em' }}>
-            MUNDER · TRADING DESK
+            MUNDER · 3D TRADING DESK
           </div>
           <div style={{ fontSize: 9, color: '#f0c9c9' }}>
-            {symbol} · {interval} · {exchange} · {candles.length} bars
-            {ctx.lastPrice != null ? ` · ${ctx.lastPrice.toFixed(2)}` : ''}
+            {symbol} · {interval} · {agents3d.length} agents ·{' '}
+            {autonomous ? 'AUTO ON' : 'AUTO OFF'}
           </div>
         </div>
-        <button
-          type="button"
-          style={{
-            fontSize: 10,
-            padding: '3px 8px',
-            background: '#F4D35E',
-            color: '#1a1a1a',
-            border: 'none',
-            boxShadow: '2px 2px 0 #1a1a1a',
-            fontWeight: 700,
-            cursor: 'pointer',
-          }}
-          onClick={() => setSettingsOpen((v) => !v)}
-        >
-          AI API
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            type="button"
+            style={{
+              fontSize: 10,
+              padding: '3px 8px',
+              background: autonomous ? '#0ecb81' : '#2b3139',
+              color: autonomous ? '#0b0e11' : '#eaecef',
+              border: 'none',
+              boxShadow: '2px 2px 0 #1a1a1a',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+            onClick={() => setAutonomous((v) => !v)}
+          >
+            {autonomous ? 'AUTO' : 'PAUSE'}
+          </button>
+          <button
+            type="button"
+            style={{
+              fontSize: 10,
+              padding: '3px 8px',
+              background: '#F4D35E',
+              color: '#1a1a1a',
+              border: 'none',
+              boxShadow: '2px 2px 0 #1a1a1a',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+            onClick={() => setSettingsOpen((v) => !v)}
+          >
+            AI API
+          </button>
+        </div>
       </div>
 
       {settingsOpen && (
@@ -234,9 +360,7 @@ export function TradingDeskPanel() {
           className="shrink-0 p-2 space-y-1.5 text-[10px]"
           style={{ background: '#1a1214', borderBottom: '2px solid #1a1a1a' }}
         >
-          <div style={{ color: '#848e9c' }}>
-            Keys in sessionStorage. Local engine works without a key.
-          </div>
+          <div style={{ color: '#848e9c' }}>Keys in sessionStorage. Local engine works without key.</div>
           <div className="flex flex-wrap gap-1">
             {AI_PROVIDERS.map((p) => (
               <button
@@ -301,37 +425,70 @@ export function TradingDeskPanel() {
       )}
 
       <div className="shrink-0" style={{ borderBottom: '2px solid #1a1a1a' }}>
-        <OfficeFloor
-          agentStatus={agentStatus}
-          lastBrief={lastBrief}
-          selected={selected}
-          onSelect={setSelected}
+        <Office3D
+          slots={slots}
+          agents={agents3d}
+          selectedSlotId={selectedSlotId}
+          onSelectSlot={onSelectSlot}
         />
       </div>
 
-      {tasks.length > 0 && (
-        <div
-          className="shrink-0 px-2 py-1 flex gap-1 overflow-x-auto"
-          style={{ borderBottom: '2px solid #1a1a1a', background: '#0d1117' }}
+      <div
+        className="shrink-0 px-2 py-1.5 flex flex-wrap items-center gap-1.5"
+        style={{ borderBottom: '2px solid #1a1a1a', background: '#0d1117' }}
+      >
+        <span style={{ fontSize: 9, color: '#848e9c' }}>POSTI</span>
+        {(['technical', 'orderflow', 'risk', 'sentiment', 'trader'] as DeskAgentId[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => hire(id)}
+            style={{
+              fontSize: 9,
+              padding: '2px 6px',
+              background: '#1e2329',
+              color: agentMeta(id).color,
+              border: 'none',
+              boxShadow: '1px 1px 0 #1a1a1a',
+              cursor: 'pointer',
+            }}
+          >
+            + {agentMeta(id).name}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={!selectedSlotId || slots.find((s) => s.id === selectedSlotId)?.isBoss}
+          onClick={fire}
+          style={{
+            fontSize: 9,
+            padding: '2px 6px',
+            background: '#2e0a12',
+            color: '#f6465d',
+            border: 'none',
+            boxShadow: '1px 1px 0 #1a1a1a',
+            cursor: 'pointer',
+            opacity: !selectedSlotId ? 0.4 : 1,
+          }}
         >
-          {tasks.map((t) => {
-            const m = agentMeta(t.assignee)
-            return (
-              <span
-                key={t.id}
-                style={{
-                  flexShrink: 0,
-                  fontSize: 9,
-                  padding: '2px 6px',
-                  background: '#1e2329',
-                  color: '#848e9c',
-                  boxShadow: '1px 1px 0 #1a1a1a',
-                }}
-              >
-                <span style={{ color: m.color }}>{m.name}</span> · {t.status}
-              </span>
-            )
-          })}
+          - Rimuovi posto
+        </button>
+        {selectedAgent && (
+          <span style={{ fontSize: 9, color: '#F4D35E', marginLeft: 4 }}>
+            {selectedAgent.name}: {selectedAgent.activity} · {selectedAgent.asset} · {selectedAgent.bias}
+          </span>
+        )}
+      </div>
+
+      {autoReports[0] && (
+        <div
+          className="shrink-0 px-2 py-1"
+          style={{ borderBottom: '2px solid #1a1a1a', background: '#141a12', fontSize: 10 }}
+        >
+          <span style={{ color: '#0ecb81' }}>CAPO riceve:</span>{' '}
+          <span style={{ color: '#eaecef' }}>
+            {autoReports[0].name} → {autoReports[0].asset}: {autoReports[0].body.slice(0, 90)}
+          </span>
         </div>
       )}
 
@@ -407,7 +564,7 @@ export function TradingDeskPanel() {
           </button>
         </form>
         <p style={{ fontSize: 8, color: '#5e6673', lineHeight: 1.3 }}>
-          Interpretazione multi-agente, non consiglio finanziario. Nessun ordine dal desk.
+          Agenti autonomi: ricerca multi-asset, probe strategie, report al capo. Nessun ordine reale.
         </p>
       </div>
     </div>
