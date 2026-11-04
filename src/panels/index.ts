@@ -12,6 +12,7 @@ import './quantlab'
 import './battlefield'
 import './orderblock'
 import './tradingdesk'
+import './opscanner'
 
 export {
   registerPanelType,
@@ -30,4 +31,5 @@ export { QuantLabPanel } from './quantlab'
 export { BattlefieldPanel } from './battlefield'
 export { OrderBlockPanel } from './orderblock'
 export { TradingDeskPanel } from './tradingdesk'
+export { OpsScannerPanel } from './opscanner'
 export type { NewsItem, NewsAssetFilter, NewsPanelProps } from './news'
