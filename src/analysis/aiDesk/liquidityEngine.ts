@@ -36,13 +36,13 @@ function sumSide(
   n: number
 ): number {
   if (!levels?.length) return 0
-  return levels.slice(0, n).reduce((s, x) => s + levelQty(x), 0)
+  return (levels ?? []).slice(0, n).reduce((s, x) => s + levelQty(x), 0)
 }
 
 export function analyzeLiquidity(
   candles: Candle[],
-  book: OrderBook | null,
-  trades: Trade[],
+  book: OrderBook | null = null,
+  trades: Trade[] = [],
   tickerHigh?: number | null,
   tickerLow?: number | null,
   tickerLast?: number | null
@@ -60,7 +60,7 @@ export function analyzeLiquidity(
 
   let buyVol = 0
   let sellVol = 0
-  for (const t of trades.slice(0, 80)) {
+  for (const t of (trades ?? []).slice(0, 80)) {
     if (t.isBuyerMaker) sellVol += t.qty
     else buyVol += t.qty
   }
@@ -78,15 +78,16 @@ export function analyzeLiquidity(
 
   let highBars: number | null = null
   let lowBars: number | null = null
-  if (candles.length) {
-    const w = candles.slice(-48)
+  const bars = candles ?? []
+  if (bars.length) {
+    const w = bars.slice(-48)
     highBars = Math.max(...w.map((c) => c.high))
     lowBars = Math.min(...w.map((c) => c.low))
   }
 
   const last =
     tickerLast ??
-    (candles.length ? candles[candles.length - 1]!.close : null) ??
+    (bars.length ? bars[bars.length - 1]!.close : null) ??
     mid
 
   const high24 = tickerHigh ?? highBars
