@@ -29,6 +29,7 @@ import { LiveTvPanel } from '@/panels/livetv'
 import { LearnPanel } from '@/panels/learn'
 import { OpsHealthPanel } from '@/panels/ops'
 import { OnchainPanel } from '@/panels/onchain'
+import { OpsScannerPanel } from '@/panels/opscanner'
 import { DrawToolsPanel } from '@/panels/tools'
 import {
   DeepPrintPanel,
@@ -107,6 +108,8 @@ function renderWidget(kind: WidgetKind) {
       return <LearnPanel />
     case 'ops':
       return <OpsHealthPanel />
+    case 'opscanner':
+      return <OpsScannerPanel />
     case 'onchain':
       return <OnchainPanel />
     case 'drawtools':
