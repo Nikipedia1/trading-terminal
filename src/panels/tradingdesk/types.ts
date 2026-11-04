@@ -2,11 +2,16 @@
 
 export type DeskAgentId =
   | 'orchestrator'
+  | 'masterchief'
   | 'technical'
   | 'orderflow'
   | 'risk'
   | 'sentiment'
   | 'trader'
+  | 'news'
+  | 'analyst'
+  | 'strategist'
+  | 'quant'
 
 export type DeskAgentStatus = 'idle' | 'thinking' | 'ready' | 'error'
 
