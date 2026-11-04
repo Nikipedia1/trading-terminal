@@ -19,17 +19,16 @@ export type PickRule =
   | 'NOT_PICKED_CHOPPY'
   | 'NOT_PICKED_LOW_LIQ'
 
+export type MitigationState = 'fresh' | 'tested' | 'mitigated' | 'broken'
+
 export interface RankedAsset {
   symbol: string
   base: string
   sector: CryptoSector
   lastPrice: number
   changePct: number
-  /** Directional strength: session move / day range, signed */
   strength: number
-  /** Absolute strength 0..1 for ranking */
   absStrength: number
-  /** Liquidity score 0..100 (volume + directional purity) */
   liquidityScore: number
   volumeQuote: number
   high: number
@@ -39,7 +38,6 @@ export interface RankedAsset {
   rank: number
   percentile: number
   buildUp: 'long' | 'short' | 'neutral'
-  /** True if move is clean one-direction (not choppy) */
   clean: boolean
   pickRule: PickRule
   isPick: boolean
@@ -62,7 +60,6 @@ export interface MarketBreadth {
   laggingSector: SectorRow | null
   sectors: SectorRow[]
   assets: RankedAsset[]
-  /** Top ranked boards after filters */
   bullBoard: RankedAsset[]
   bearBoard: RankedAsset[]
   picksBull: RankedAsset[]
@@ -72,23 +69,33 @@ export interface MarketBreadth {
 
 export interface ObZoneView {
   kind: ObSide
+  /** Full wick range */
   top: number
   bottom: number
+  /** Institutional body zone (more precise) */
+  bodyTop: number
+  bodyBottom: number
   time: number
   endTime: number
+  index: number
+  /** Displacement quality 0..1 */
+  quality: number
+  mitigation: MitigationState
+  /** Touches after formation */
+  touches: number
 }
 
 export interface ZoneLevels {
-  /** Zone center / primary level */
   z: number
-  /** Invalidation (stop side) */
   s1: number
-  /** First target */
   r1: number
-  /** Second target */
   r2: number
   obTop: number
   obBottom: number
+  bodyTop: number
+  bodyBottom: number
+  quality: number
+  mitigation: MitigationState
 }
 
 export interface AssetDetail {
@@ -99,6 +106,8 @@ export interface AssetDetail {
   vwap: number | null
   rr: number | null
   interval: string
+  /** Session stats for scale */
+  atr: number | null
 }
 
 export type ObBoardTab = 'bullish' | 'bearish' | 'picks' | 'breadth'
