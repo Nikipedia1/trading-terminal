@@ -42,6 +42,7 @@ const PRIORITY: WidgetKind[] = [
   'backtest',
   'ai',
   'tradingdesk',
+  'opscanner',
   'draw',
   'cycles',
   'livekeys',
@@ -96,6 +97,7 @@ const LABELS: Partial<Record<WidgetKind, string>> = {
   ops: 'Ops',
   admin: 'Admin',
   tradingdesk: '🏢 Trading Desk',
+  opscanner: '📡 Ops Scanner',
 }
 
 function labelFor(k: WidgetKind): string {
