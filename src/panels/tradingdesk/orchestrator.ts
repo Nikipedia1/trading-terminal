@@ -104,6 +104,14 @@ async function maybeLlmPolish(
   }
 }
 
+function bulletsFromPolish(polished: string, max: number): string[] {
+  return String(polished || '')
+    .split('\n')
+    .map((l) => l.replace(/^[#*\-•\s]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, max)
+}
+
 export async function runDeskBriefing(
   userText: string,
   candles: Candle[],
@@ -115,7 +123,7 @@ export async function runDeskBriefing(
   const tasks = specialists.map((id) => task(`Brief · ${id}`, id))
   const messages: DeskMessage[] = [msg('sys', `Floor routing: ${specialists.join(' → ')}`)]
   const reports: AgentReport[] = []
-  const bundle = buildAnalysis(candles, ctx)
+  const bundle = buildAnalysis(candles || [], ctx)
 
   const runners = {
     technical: runTechnical,
@@ -129,9 +137,11 @@ export async function runDeskBriefing(
     masterchief: runMasterChief,
   }
 
-  {
-    const full = buildFullAssetReport(candles, ctx)
+  try {
+    const full = buildFullAssetReport(candles || [], ctx)
     messages.push(msg('agent', full, 'orchestrator'))
+  } catch (e) {
+    messages.push(msg('sys', `Full report skipped: ${e instanceof Error ? e.message : 'error'}`))
   }
 
   for (const id of specialists) {
@@ -144,11 +154,7 @@ export async function runDeskBriefing(
       if (!runner) continue
       const report = runner(bundle)
       const polished = await maybeLlmPolish(report, userText, settings, 'technical', bundle)
-      report.bullets = polished
-        .split('\n')
-        .map((l) => l.replace(/^[#*\-•\s]+/, '').trim())
-        .filter(Boolean)
-        .slice(0, 14)
+      report.bullets = bulletsFromPolish(polished, 14)
       reports.push(report)
       if (t) {
         t.status = 'done'
@@ -169,52 +175,64 @@ export async function runDeskBriefing(
     onProgress?.('trader', 'thinking')
     const t = tasks.find((x) => x.assignee === 'trader')
     if (t) t.status = 'running'
-    const traderReport = runTrader(bundle, reports)
-    const polished = await maybeLlmPolish(traderReport, userText, settings, 'risk', bundle)
-    traderReport.bullets = polished
-      .split('\n')
-      .map((l) => l.replace(/^[#*\-•\s]+/, '').trim())
-      .filter(Boolean)
-      .slice(0, 14)
-    reports.push(traderReport)
-    if (t) {
-      t.status = 'done'
-      t.result = traderReport.bullets[0]
+    try {
+      const traderReport = runTrader(bundle, reports)
+      const polished = await maybeLlmPolish(traderReport, userText, settings, 'risk', bundle)
+      traderReport.bullets = bulletsFromPolish(polished, 14)
+      reports.push(traderReport)
+      if (t) {
+        t.status = 'done'
+        t.result = traderReport.bullets[0]
+      }
+      messages.push(msg('agent', reportToText(traderReport), 'trader'))
+      onProgress?.('trader', 'ready')
+    } catch (e) {
+      if (t) t.status = 'failed'
+      onProgress?.('trader', 'error')
+      messages.push(msg('agent', `Trader error: ${e instanceof Error ? e.message : 'failed'}`, 'trader'))
     }
-    messages.push(msg('agent', reportToText(traderReport), 'trader'))
-    onProgress?.('trader', 'ready')
   }
 
   if (specialists.includes('masterchief')) {
     onProgress?.('masterchief', 'thinking')
     const t = tasks.find((x) => x.assignee === 'masterchief')
     if (t) t.status = 'running'
-    const chiefReport = runMasterChief(bundle)
-    const polished = await maybeLlmPolish(chiefReport, userText, settings, 'risk', bundle)
-    chiefReport.bullets = polished
-      .split('\n')
-      .map((l) => l.replace(/^[#*\-•\s]+/, '').trim())
-      .filter(Boolean)
-      .slice(0, 16)
-    reports.push(chiefReport)
-    if (t) {
-      t.status = 'done'
-      t.result = chiefReport.bullets[0]
+    try {
+      const chiefReport = runMasterChief(bundle)
+      const polished = await maybeLlmPolish(chiefReport, userText, settings, 'risk', bundle)
+      chiefReport.bullets = bulletsFromPolish(polished, 16)
+      reports.push(chiefReport)
+      if (t) {
+        t.status = 'done'
+        t.result = chiefReport.bullets[0]
+      }
+      messages.push(msg('agent', reportToText(chiefReport), 'masterchief'))
+      onProgress?.('masterchief', 'ready')
+    } catch (e) {
+      if (t) t.status = 'failed'
+      onProgress?.('masterchief', 'error')
+      messages.push(msg('agent', `Master Chief error: ${e instanceof Error ? e.message : 'failed'}`, 'masterchief'))
     }
-    messages.push(msg('agent', reportToText(chiefReport), 'masterchief'))
-    onProgress?.('masterchief', 'ready')
   }
 
   onProgress?.('orchestrator', 'thinking')
-  const floorBrief = synthesizeOrchestrator(bundle, reports)
-  const floorText = await maybeLlmPolish(floorBrief, userText, settings, 'technical', bundle)
-  floorBrief.bullets = floorText
-    .split('\n')
-    .map((l) => l.replace(/^[#*\-•\s]+/, '').trim())
-    .filter(Boolean)
-    .slice(0, 16)
-  messages.push(msg('agent', reportToText(floorBrief), 'orchestrator'))
-  onProgress?.('orchestrator', 'ready')
-
-  return { messages, tasks, reports, floorBrief, bundle }
+  try {
+    const floorBrief = synthesizeOrchestrator(bundle, reports)
+    const floorText = await maybeLlmPolish(floorBrief, userText, settings, 'technical', bundle)
+    floorBrief.bullets = bulletsFromPolish(floorText, 16)
+    messages.push(msg('agent', reportToText(floorBrief), 'orchestrator'))
+    onProgress?.('orchestrator', 'ready')
+    return { messages, tasks, reports, floorBrief, bundle }
+  } catch (e) {
+    const fallback: AgentReport = {
+      agentId: 'orchestrator',
+      title: 'Orchestrator · floor',
+      bullets: [`Floor brief error: ${e instanceof Error ? e.message : 'failed'}`],
+      bias: 'neutral',
+      confidence: 0,
+    }
+    messages.push(msg('agent', reportToText(fallback), 'orchestrator'))
+    onProgress?.('orchestrator', 'error')
+    return { messages, tasks, reports, floorBrief: fallback, bundle }
+  }
 }
