@@ -1,7 +1,5 @@
 /**
- * Order Block terminal — Market X-Ray for crypto.
- * Bullish/Bearish boards, liquidity score, sector-capped PICKS,
- * OB zones (Z / S1 / R1 / R2), VWAP, R:R — OrderBlock playbook style.
+ * Order Block terminal — professional graphics + precise zones.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchAssetDetail, fetchMarketBreadth } from './engine'
@@ -19,8 +17,9 @@ function fmtPct(n: number) {
 function fmtPx(n: number) {
   if (!Number.isFinite(n)) return '—'
   if (n >= 1000) return n.toFixed(2)
+  if (n >= 10) return n.toFixed(3)
   if (n >= 1) return n.toFixed(4)
-  return n.toPrecision(4)
+  return n.toPrecision(5)
 }
 
 function ruleLabel(a: RankedAsset): string {
@@ -33,8 +32,15 @@ function ruleLabel(a: RankedAsset): string {
     case 'NOT_PICKED_LOW_LIQ':
       return 'NOT PICKED · low liq'
     default:
-      return `NOT PICKED · outside top 3`
+      return 'NOT PICKED · outside top 3'
   }
+}
+
+function mitColor(m: string) {
+  if (m === 'fresh') return '#0ecb81'
+  if (m === 'tested') return '#F4D35E'
+  if (m === 'mitigated') return '#f0b90b'
+  return '#f6465d'
 }
 
 function BreadthCanvas({ assets }: { assets: RankedAsset[] }) {
@@ -45,42 +51,67 @@ function BreadthCanvas({ assets }: { assets: RankedAsset[] }) {
     if (!c || !assets.length) return
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const w = c.clientWidth || 320
-    const h = c.clientHeight || 88
+    const h = c.clientHeight || 100
     c.width = Math.floor(w * dpr)
     c.height = Math.floor(h * dpr)
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, w, h)
+
+    const g = ctx.createLinearGradient(0, 0, 0, h)
+    g.addColorStop(0, '#0a1a14')
+    g.addColorStop(0.5, '#0d1117')
+    g.addColorStop(1, '#1a0a0c')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, w, h)
 
     const maxAbs = Math.max(3, ...assets.map((a) => Math.abs(a.changePct)))
     const midY = h / 2
-    ctx.strokeStyle = '#2b3139'
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+    ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.moveTo(8, midY)
-    ctx.lineTo(w - 8, midY)
+    ctx.moveTo(10, midY)
+    ctx.lineTo(w - 10, midY)
     ctx.stroke()
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)'
+    for (const f of [-0.5, 0.5]) {
+      const y = midY - f * (h * 0.42)
+      ctx.beginPath()
+      ctx.moveTo(10, y)
+      ctx.lineTo(w - 10, y)
+      ctx.stroke()
+    }
 
     const sorted = [...assets].sort((a, b) => a.changePct - b.changePct)
     sorted.forEach((a, i) => {
-      const x = 12 + (i / Math.max(1, sorted.length - 1)) * (w - 24)
-      const y = midY - (a.changePct / maxAbs) * (h * 0.42)
-      ctx.beginPath()
-      ctx.fillStyle = a.changePct >= 0 ? '#0ecb81' : '#f6465d'
+      const x = 14 + (i / Math.max(1, sorted.length - 1)) * (w - 28)
+      const y = midY - (a.changePct / maxAbs) * (h * 0.4)
       if (a.isPick) {
-        ctx.arc(x, y, 4.5, 0, Math.PI * 2)
+        ctx.shadowColor = '#F4D35E'
+        ctx.shadowBlur = 8
+        ctx.beginPath()
+        ctx.fillStyle = a.changePct >= 0 ? '#0ecb81' : '#f6465d'
+        ctx.arc(x, y, 5, 0, Math.PI * 2)
         ctx.fill()
+        ctx.shadowBlur = 0
         ctx.strokeStyle = '#F4D35E'
-        ctx.lineWidth = 1.2
+        ctx.lineWidth = 1.5
         ctx.stroke()
+        ctx.fillStyle = '#F4D35E'
+        ctx.font = '8px ui-monospace,monospace'
+        ctx.fillText(a.base.slice(0, 4), x - 10, y - 8)
       } else {
-        ctx.arc(x, y, 2.2, 0, Math.PI * 2)
+        ctx.beginPath()
+        ctx.fillStyle =
+          a.changePct >= 0 ? 'rgba(14,203,129,0.7)' : 'rgba(246,70,93,0.7)'
+        ctx.arc(x, y, 2.4, 0, Math.PI * 2)
         ctx.fill()
       }
     })
   }, [assets])
 
-  return <canvas ref={ref} className="w-full h-[88px] rounded bg-[#0d1117]" />
+  return <canvas ref={ref} className="w-full h-[100px] rounded-lg border border-[#1e2329]" />
 }
 
 function ZoneChart({ detail }: { detail: AssetDetail }) {
@@ -92,135 +123,220 @@ function ZoneChart({ detail }: { detail: AssetDetail }) {
     const c = ref.current
     if (!c || candles.length < 2) return
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const w = c.clientWidth || 320
-    const h = c.clientHeight || 160
+    const w = c.clientWidth || 340
+    const h = c.clientHeight || 200
     c.width = Math.floor(w * dpr)
     c.height = Math.floor(h * dpr)
     const ctx = c.getContext('2d')
     if (!ctx) return
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, w, h)
+
+    ctx.fillStyle = '#080b0f'
+    ctx.fillRect(0, 0, w, h)
+
+    const volH = 28
+    const chartH = h - volH - 4
+    const padL = 2
+    const padR = 52
+    const padT = 10
+    const padB = 4
+    const plotW = w - padL - padR
 
     const prices = candles.flatMap((x) => [x.high, x.low])
-    if (zone) prices.push(zone.s1, zone.r1, zone.r2, zone.z)
+    if (zone) {
+      prices.push(zone.s1, zone.r1, zone.r2, zone.z, zone.bodyTop, zone.bodyBottom)
+    }
     if (vwap) prices.push(vwap)
-    const hi = Math.max(...prices)
-    const lo = Math.min(...prices)
+    prices.push(asset.lastPrice)
+    let hi = Math.max(...prices)
+    let lo = Math.min(...prices)
+    const pad = (hi - lo) * 0.04 || asset.lastPrice * 0.001
+    hi += pad
+    lo -= pad
     const span = hi - lo || 1
-    const pad = 6
-    const xAt = (i: number) => pad + (i / (candles.length - 1)) * (w - pad * 2)
-    const yAt = (p: number) => h - pad - ((p - lo) / span) * (h - pad * 2)
 
-    for (const ob of orderBlocks.slice(-6)) {
-      const y1 = yAt(ob.top)
-      const y2 = yAt(ob.bottom)
-      ctx.fillStyle =
-        ob.kind === 'bullish' ? 'rgba(14,203,129,0.12)' : 'rgba(246,70,93,0.12)'
-      ctx.fillRect(pad, Math.min(y1, y2), w - pad * 2, Math.abs(y2 - y1) || 2)
+    const xAt = (i: number) => padL + (i / (candles.length - 1)) * plotW
+    const yAt = (p: number) => padT + ((hi - p) / span) * (chartH - padT - padB)
+
+    ctx.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace'
+    for (let g = 0; g <= 4; g++) {
+      const p = hi - (span * g) / 4
+      const y = yAt(p)
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)'
+      ctx.beginPath()
+      ctx.moveTo(padL, y)
+      ctx.lineTo(padL + plotW, y)
+      ctx.stroke()
+      ctx.fillStyle = '#5e6673'
+      ctx.fillText(fmtPx(p), padL + plotW + 4, y + 3)
+    }
+
+    for (const ob of orderBlocks.slice(-8)) {
+      const y1 = yAt(ob.bodyTop)
+      const y2 = yAt(ob.bodyBottom)
+      const grad = ctx.createLinearGradient(0, Math.min(y1, y2), 0, Math.max(y1, y2))
+      if (ob.kind === 'bullish') {
+        grad.addColorStop(0, 'rgba(14,203,129,0.06)')
+        grad.addColorStop(1, 'rgba(14,203,129,0.18)')
+      } else {
+        grad.addColorStop(0, 'rgba(246,70,93,0.18)')
+        grad.addColorStop(1, 'rgba(246,70,93,0.06)')
+      }
+      ctx.fillStyle = grad
+      ctx.fillRect(padL, Math.min(y1, y2), plotW, Math.max(2, Math.abs(y2 - y1)))
     }
 
     if (zone) {
-      const yTop = yAt(zone.obTop)
-      const yBot = yAt(zone.obBottom)
-      ctx.fillStyle = bull ? 'rgba(244,211,94,0.18)' : 'rgba(244,211,94,0.14)'
-      ctx.fillRect(pad, Math.min(yTop, yBot), w - pad * 2, Math.abs(yBot - yTop) || 3)
-      ctx.strokeStyle = '#F4D35E'
-      ctx.setLineDash([4, 3])
-      ctx.beginPath()
-      ctx.moveTo(pad, yAt(zone.z))
-      ctx.lineTo(w - pad, yAt(zone.z))
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.strokeStyle = '#f6465d'
-      ctx.beginPath()
-      ctx.moveTo(pad, yAt(zone.s1))
-      ctx.lineTo(w - pad, yAt(zone.s1))
-      ctx.stroke()
-      ctx.strokeStyle = '#0ecb81'
-      ctx.setLineDash([2, 3])
-      ;[zone.r1, zone.r2].forEach((lv) => {
+      const y1 = yAt(zone.bodyTop)
+      const y2 = yAt(zone.bodyBottom)
+      const top = Math.min(y1, y2)
+      const bot = Math.max(y1, y2)
+      const gg = ctx.createLinearGradient(0, top, 0, bot)
+      gg.addColorStop(0, 'rgba(244,211,94,0.08)')
+      gg.addColorStop(0.5, 'rgba(244,211,94,0.28)')
+      gg.addColorStop(1, 'rgba(244,211,94,0.08)')
+      ctx.fillStyle = gg
+      ctx.fillRect(padL, top, plotW, Math.max(3, bot - top))
+      ctx.strokeStyle = 'rgba(244,211,94,0.7)'
+      ctx.lineWidth = 1
+      ctx.strokeRect(padL + 0.5, top, plotW - 1, Math.max(3, bot - top))
+
+      const drawLevel = (price: number, color: string, dash: number[], label: string) => {
+        const y = yAt(price)
+        ctx.strokeStyle = color
+        ctx.setLineDash(dash)
+        ctx.lineWidth = 1.2
         ctx.beginPath()
-        ctx.moveTo(pad, yAt(lv))
-        ctx.lineTo(w - pad, yAt(lv))
+        ctx.moveTo(padL, y)
+        ctx.lineTo(padL + plotW, y)
         ctx.stroke()
-      })
-      ctx.setLineDash([])
+        ctx.setLineDash([])
+        ctx.fillStyle = color
+        ctx.font = 'bold 9px ui-monospace,monospace'
+        ctx.fillText(label, padL + plotW + 4, y + 3)
+      }
+      drawLevel(zone.z, '#F4D35E', [5, 3], 'Z')
+      drawLevel(zone.s1, '#f6465d', [], 'S1')
+      drawLevel(zone.r1, '#0ecb81', [3, 3], 'R1')
+      drawLevel(zone.r2, 'rgba(14,203,129,0.55)', [2, 4], 'R2')
     }
 
     if (vwap != null) {
-      ctx.strokeStyle = '#60a5fa'
+      const y = yAt(vwap)
+      ctx.strokeStyle = 'rgba(96,165,250,0.85)'
       ctx.setLineDash([6, 4])
       ctx.beginPath()
-      ctx.moveTo(pad, yAt(vwap))
-      ctx.lineTo(w - pad, yAt(vwap))
+      ctx.moveTo(padL, y)
+      ctx.lineTo(padL + plotW, y)
       ctx.stroke()
       ctx.setLineDash([])
+      ctx.fillStyle = '#60a5fa'
+      ctx.font = '9px ui-monospace,monospace'
+      ctx.fillText('VWAP', padL + plotW + 4, y + 3)
     }
 
+    const barW = Math.max(1.5, (plotW / candles.length) * 0.65)
     candles.forEach((bar, i) => {
       const x = xAt(i)
       const up = bar.close >= bar.open
       ctx.strokeStyle = up ? '#0ecb81' : '#f6465d'
-      ctx.fillStyle = up ? 'rgba(14,203,129,0.4)' : 'rgba(246,70,93,0.4)'
+      ctx.fillStyle = up ? '#0ecb81' : '#f6465d'
+      ctx.lineWidth = 1
       ctx.beginPath()
       ctx.moveTo(x, yAt(bar.high))
       ctx.lineTo(x, yAt(bar.low))
       ctx.stroke()
       const y0 = yAt(Math.max(bar.open, bar.close))
       const y1 = yAt(Math.min(bar.open, bar.close))
-      ctx.fillRect(x - 1.6, y0, 3.2, Math.max(1, y1 - y0))
+      const bh = Math.max(1, y1 - y0)
+      if (up) {
+        ctx.globalAlpha = 0.85
+        ctx.fillRect(x - barW / 2, y0, barW, bh)
+        ctx.globalAlpha = 1
+      } else {
+        ctx.fillRect(x - barW / 2, y0, barW, bh)
+      }
     })
 
-    ctx.font = '9px ui-monospace, monospace'
-    if (zone) {
-      ctx.fillStyle = '#F4D35E'
-      ctx.fillText('Z', w - 18, yAt(zone.z) - 2)
-      ctx.fillStyle = '#f6465d'
-      ctx.fillText('S1', w - 22, yAt(zone.s1) - 2)
-      ctx.fillStyle = '#0ecb81'
-      ctx.fillText('R1', w - 22, yAt(zone.r1) - 2)
-    }
-  }, [candles, orderBlocks, zone, vwap, bull])
+    const ly = yAt(asset.lastPrice)
+    ctx.strokeStyle = bull ? 'rgba(14,203,129,0.9)' : 'rgba(246,70,93,0.9)'
+    ctx.setLineDash([2, 2])
+    ctx.beginPath()
+    ctx.moveTo(padL, ly)
+    ctx.lineTo(padL + plotW, ly)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = bull ? '#0ecb81' : '#f6465d'
+    ctx.fillRect(padL + plotW + 2, ly - 7, 48, 14)
+    ctx.fillStyle = '#0b0e11'
+    ctx.font = 'bold 9px ui-monospace,monospace'
+    ctx.fillText(fmtPx(asset.lastPrice), padL + plotW + 4, ly + 3)
 
-  return <canvas ref={ref} className="w-full h-[160px] rounded bg-[#0b0e11]" />
+    const maxVol = Math.max(...candles.map((x) => x.volume), 1)
+    candles.forEach((bar, i) => {
+      const x = xAt(i)
+      const vh = (bar.volume / maxVol) * (volH - 4)
+      const up = bar.close >= bar.open
+      ctx.fillStyle = up ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)'
+      ctx.fillRect(x - barW / 2, h - 2 - vh, barW, vh)
+    })
+  }, [candles, orderBlocks, zone, vwap, asset, bull])
+
+  return (
+    <canvas
+      ref={ref}
+      className="w-full h-[200px] rounded-lg border border-[#1e2329]"
+      style={{ background: '#080b0f' }}
+    />
+  )
 }
 
-function AssetTile({
-  a,
-  onPick,
-}: {
-  a: RankedAsset
-  onPick: (a: RankedAsset) => void
-}) {
+function AssetTile({ a, onPick }: { a: RankedAsset; onPick: (a: RankedAsset) => void }) {
   const bull = a.side === 'bullish'
   return (
     <button
       type="button"
       onClick={() => onPick(a)}
-      className="text-left rounded-lg border px-2 py-1.5 transition-colors hover:border-[#F4D35E]/50"
+      className="text-left rounded-xl border px-2.5 py-2 transition-all hover:scale-[1.02]"
       style={{
-        background: a.isPick ? 'rgba(244,211,94,0.06)' : '#12161c',
-        borderColor: a.isPick ? 'rgba(244,211,94,0.35)' : '#2b3139',
+        background: a.isPick
+          ? 'linear-gradient(145deg,rgba(244,211,94,0.12),#12161c 60%)'
+          : 'linear-gradient(145deg,#141a22,#0d1117)',
+        borderColor: a.isPick ? 'rgba(244,211,94,0.45)' : '#1e2329',
+        boxShadow: a.isPick ? '0 0 12px rgba(244,211,94,0.12)' : 'none',
       }}
     >
       <div className="flex items-center gap-1">
-        <span className="text-[12px] font-bold text-[#eaecef]">{a.base}</span>
+        <span className="text-[12px] font-bold tracking-wide text-[#eaecef]">{a.base}</span>
         {a.isPick && (
-          <span className="text-[8px] font-bold px-1 rounded bg-[#F4D35E] text-[#1a1a1a]">
+          <span
+            className="text-[8px] font-extrabold px-1.5 py-0.5 rounded"
+            style={{ background: '#F4D35E', color: '#1a1a1a' }}
+          >
             PICK
           </span>
         )}
-        <span className="ml-auto text-[9px] text-[#5e6673]">#{a.rank}</span>
+        <span className="ml-auto text-[9px] text-[#5e6673] font-mono">#{a.rank}</span>
       </div>
-      <div className="flex items-baseline gap-1.5 mt-0.5">
+      <div className="flex items-baseline gap-1.5 mt-1">
         <span
-          className={`text-[12px] font-mono font-semibold ${
-            bull ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-          }`}
+          className="text-[13px] font-mono font-bold"
+          style={{ color: bull ? '#0ecb81' : '#f6465d' }}
         >
           {fmtPct(a.changePct)}
         </span>
         <span className="text-[10px] text-[#848e9c] font-mono">{fmtPx(a.lastPrice)}</span>
+      </div>
+      <div className="mt-1.5 h-1 rounded-full bg-[#1e2329] overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${Math.min(100, a.absStrength * 100)}%`,
+            background: bull
+              ? 'linear-gradient(90deg,#0a5c40,#0ecb81)'
+              : 'linear-gradient(90deg,#7a1a28,#f6465d)',
+          }}
+        />
       </div>
       <div className="flex items-center gap-1.5 mt-1 text-[9px] text-[#5e6673]">
         <span>{a.sector}</span>
@@ -243,58 +359,74 @@ function DetailCard({
   const a = detail.asset
   const bull = a.side === 'bullish'
   return (
-    <div className="absolute inset-1.5 z-30 flex flex-col rounded-lg border border-[#2b3139] bg-[#0d1117] shadow-2xl overflow-hidden">
+    <div
+      className="absolute inset-1 z-30 flex flex-col rounded-xl overflow-hidden"
+      style={{
+        background: '#0b0e11',
+        border: '1px solid #2a3140',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.65)',
+      }}
+    >
       <div
-        className="flex items-center gap-2 px-3 py-2 border-b border-[#2b3139]"
-        style={{ background: 'linear-gradient(90deg,#1a1208 0%,#12161c 55%)' }}
+        className="flex items-center gap-2 px-3 py-2.5 shrink-0"
+        style={{
+          background: 'linear-gradient(90deg,#1a1408 0%,#0f1319 55%)',
+          borderBottom: '1px solid #2a3140',
+        }}
       >
-        <span className="text-[14px] font-bold text-[#eaecef]">{a.base}</span>
-        <span className="text-[10px] text-[#5e6673]">{a.symbol}</span>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-[15px] font-extrabold text-[#eaecef]">{a.base}</span>
+            <span className="text-[10px] text-[#5e6673]">{a.symbol}</span>
+            {a.isPick && (
+              <span
+                className="text-[9px] font-extrabold px-1.5 py-0.5 rounded"
+                style={{ background: '#F4D35E', color: '#1a1a1a' }}
+              >
+                PICK
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] text-[#848e9c]">
+            {a.sector} · p{a.percentile.toFixed(0)} · #{a.rank} · {detail.interval}
+          </div>
+        </div>
         <span
-          className={`text-[12px] font-mono font-bold ${
-            bull ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-          }`}
+          className="ml-auto text-[14px] font-mono font-bold"
+          style={{ color: bull ? '#0ecb81' : '#f6465d' }}
         >
           {fmtPct(a.changePct)}
         </span>
-        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#1e2329] text-[#848e9c]">
-          {a.sector}
-        </span>
-        {a.isPick && (
-          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#F4D35E] text-[#1a1a1a]">
-            PICK
-          </span>
-        )}
         <button
           type="button"
           onClick={onClose}
-          className="ml-auto text-[12px] text-[#848e9c] hover:text-[#eaecef] w-7 h-7"
+          className="text-[#848e9c] hover:text-white w-8 h-8 rounded-lg border border-white/10"
         >
           ×
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 px-3 py-2 border-b border-[#1e2329] text-[10px] font-mono">
+      <div className="grid grid-cols-2 gap-2 px-3 py-2 border-b border-[#1e2329] text-[10px] font-mono shrink-0">
         <div>
-          <div className="text-[#5e6673] tracking-wide">RANK</div>
-          <div className="text-[#eaecef]">
-            p{a.percentile.toFixed(1)} · #{a.rank}
-          </div>
+          <div className="text-[#5e6673]">RULE</div>
+          <div className={a.isPick ? 'text-[#F4D35E]' : 'text-[#848e9c]'}>{ruleLabel(a)}</div>
         </div>
         <div>
-          <div className="text-[#5e6673] tracking-wide">RULE</div>
-          <div className={a.isPick ? 'text-[#F4D35E]' : 'text-[#848e9c]'}>
-            {ruleLabel(a)}
+          <div className="text-[#5e6673]">ZONE STATE</div>
+          <div style={{ color: detail.zone ? mitColor(detail.zone.mitigation) : '#848e9c' }}>
+            {detail.zone
+              ? `${detail.zone.mitigation.toUpperCase()} · Q${(detail.zone.quality * 100).toFixed(0)}`
+              : '—'}
           </div>
         </div>
       </div>
 
-      <div className="px-3 pt-2">
+      <div className="px-3 pt-2 shrink-0">
         <ZoneChart detail={detail} />
       </div>
 
       {detail.zone && (
-        <div className="grid grid-cols-4 gap-1.5 px-3 py-2 text-[10px] font-mono">
+        <div className="grid grid-cols-4 gap-1.5 px-3 py-2 text-[10px] font-mono shrink-0">
           {[
             { k: 'Z', v: detail.zone.z, c: '#F4D35E' },
             { k: 'S1', v: detail.zone.s1, c: '#f6465d' },
@@ -303,51 +435,89 @@ function DetailCard({
           ].map((x) => (
             <div
               key={x.k}
-              className="rounded border border-[#1e2329] bg-[#12161c] px-1.5 py-1"
+              className="rounded-lg border border-[#1e2329] px-1.5 py-1.5"
+              style={{ background: '#12161c' }}
             >
-              <div className="text-[#5e6673]">{x.k}</div>
-              <div style={{ color: x.c }}>{fmtPx(x.v)}</div>
+              <div className="text-[#5e6673] text-[8px] tracking-wider">{x.k}</div>
+              <div style={{ color: x.c, fontWeight: 700 }}>{fmtPx(x.v)}</div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-1.5 px-3 pb-2 text-[10px] font-mono">
-        <div className="rounded border border-[#1e2329] bg-[#12161c] px-1.5 py-1">
-          <div className="text-[#5e6673]">LIQ</div>
-          <div className="text-[#eaecef]">{a.liquidityScore}</div>
-        </div>
-        <div className="rounded border border-[#1e2329] bg-[#12161c] px-1.5 py-1">
-          <div className="text-[#5e6673]">R:R</div>
-          <div className="text-[#F4D35E]">
-            {detail.rr != null ? `${detail.rr.toFixed(1)}:1` : '—'}
+      <div className="grid grid-cols-4 gap-1.5 px-3 pb-2 text-[10px] font-mono shrink-0">
+        {[
+          { k: 'LIQ', v: String(a.liquidityScore), c: '#eaecef' },
+          {
+            k: 'R:R',
+            v: detail.rr != null ? `${detail.rr.toFixed(2)}:1` : '—',
+            c: '#F4D35E',
+          },
+          {
+            k: 'VWAP',
+            v: detail.vwap != null ? fmtPx(detail.vwap) : '—',
+            c: '#60a5fa',
+          },
+          {
+            k: 'ATR',
+            v: detail.atr != null ? fmtPx(detail.atr) : '—',
+            c: '#848e9c',
+          },
+        ].map((x) => (
+          <div
+            key={x.k}
+            className="rounded-lg border border-[#1e2329] px-1.5 py-1.5"
+            style={{ background: '#12161c' }}
+          >
+            <div className="text-[#5e6673] text-[8px]">{x.k}</div>
+            <div style={{ color: x.c, fontWeight: 600 }}>{x.v}</div>
           </div>
+        ))}
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-2">
+        <div className="text-[9px] text-[#5e6673] mb-1 tracking-wide">
+          ORDER BLOCKS ({detail.orderBlocks.length}) · body zone · BOS confirmed
         </div>
-        <div className="rounded border border-[#1e2329] bg-[#12161c] px-1.5 py-1">
-          <div className="text-[#5e6673]">VWAP</div>
-          <div className="text-[#60a5fa]">
-            {detail.vwap != null ? fmtPx(detail.vwap) : '—'}
-          </div>
-        </div>
-        <div className="rounded border border-[#1e2329] bg-[#12161c] px-1.5 py-1">
-          <div className="text-[#5e6673]">TF</div>
-          <div className="text-[#eaecef]">{detail.interval}</div>
+        <div className="space-y-1">
+          {detail.orderBlocks
+            .slice()
+            .reverse()
+            .slice(0, 5)
+            .map((ob, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 text-[10px] font-mono px-2 py-1.5 rounded-lg border border-[#1e2329]"
+                style={{ background: '#0d1117' }}
+              >
+                <span style={{ color: ob.kind === 'bullish' ? '#0ecb81' : '#f6465d', fontWeight: 700 }}>
+                  {ob.kind === 'bullish' ? 'OB▲' : 'OB▼'}
+                </span>
+                <span className="text-[#c8d0dc]">
+                  {fmtPx(ob.bodyBottom)}–{fmtPx(ob.bodyTop)}
+                </span>
+                <span style={{ color: mitColor(ob.mitigation) }} className="ml-auto text-[9px]">
+                  {ob.mitigation}
+                </span>
+                <span className="text-[#5e6673]">Q{(ob.quality * 100).toFixed(0)}</span>
+              </div>
+            ))}
         </div>
       </div>
 
-      <div className="mt-auto px-3 py-2 border-t border-[#1e2329] flex gap-2">
+      <div className="shrink-0 px-3 py-2.5 flex gap-2 border-t border-[#1e2329]">
         <button
           type="button"
           onClick={onTrade}
-          className="flex-1 text-[11px] font-bold py-2 rounded"
-          style={{ background: '#F4D35E', color: '#1a1a1a' }}
+          className="flex-1 text-[12px] font-extrabold py-2.5 rounded-lg"
+          style={{ background: 'linear-gradient(90deg,#F4D35E,#e0a800)', color: '#1a1a1a' }}
         >
-          Apri sul chart
+          Apri sul chart · 5m
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="text-[11px] px-3 py-2 rounded border border-[#2b3139] text-[#848e9c]"
+          className="text-[11px] px-4 py-2.5 rounded-lg border border-[#2b3139] text-[#848e9c]"
         >
           Chiudi
         </button>
@@ -372,8 +542,7 @@ export function OrderBlockPanel() {
     setLoading(true)
     setErr(null)
     try {
-      const m = await fetchMarketBreadth()
-      setData(m)
+      setData(await fetchMarketBreadth())
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Scan failed')
     } finally {
@@ -398,8 +567,7 @@ export function OrderBlockPanel() {
   const openDetail = async (a: RankedAsset) => {
     setDetailLoading(true)
     try {
-      const d = await fetchAssetDetail(a, '5m')
-      setDetail(d)
+      setDetail(await fetchAssetDetail(a, '5m'))
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Detail failed')
     } finally {
@@ -409,11 +577,10 @@ export function OrderBlockPanel() {
 
   const openOnChart = () => {
     if (!detail) return
-    const sym = detail.asset.symbol
-    setSymbol(sym)
+    setSymbol(detail.asset.symbol)
     if (primaryPanelId) {
       updatePanel(primaryPanelId, {
-        symbol: sym,
+        symbol: detail.asset.symbol,
         interval: '5m',
         exchange: 'binance',
       })
@@ -428,17 +595,20 @@ export function OrderBlockPanel() {
   ]
 
   return (
-    <div className="h-full min-h-0 flex flex-col relative bg-[#0b0e11] text-[#eaecef]">
+    <div className="h-full min-h-0 flex flex-col relative text-[#eaecef]" style={{ background: '#080b0f' }}>
       <div
-        className="shrink-0 flex items-center justify-between gap-2 px-3 py-2 border-b border-[#2b3139]"
-        style={{ background: 'linear-gradient(90deg,#1a1208 0%,#12161c 60%)' }}
+        className="shrink-0 flex items-center justify-between gap-2 px-3 py-2.5"
+        style={{
+          background: 'linear-gradient(90deg,#1a1408 0%,#0f1319 55%)',
+          borderBottom: '1px solid #2a3140',
+        }}
       >
         <div>
-          <div className="text-[12px] font-extrabold tracking-widest text-[#F4D35E]">
+          <div className="text-[12px] font-extrabold tracking-[0.12em] text-[#F4D35E]">
             ORDER BLOCK
           </div>
           <div className="text-[10px] text-[#848e9c]">
-            Market X-Ray · {data ? `${data.assets.length} assets` : '…'} · 5m OB
+            Precise OB · body zone · BOS · {data ? `${data.assets.length} assets` : '…'}
             {data ? ` · ${new Date(data.updatedAt).toLocaleTimeString()}` : ''}
           </div>
         </div>
@@ -446,9 +616,9 @@ export function OrderBlockPanel() {
           type="button"
           onClick={load}
           disabled={loading}
-          className="text-[10px] font-bold px-2.5 py-1 rounded"
+          className="text-[10px] font-extrabold px-3 py-1.5 rounded-lg"
           style={{
-            background: '#F4D35E',
+            background: 'linear-gradient(90deg,#F4D35E,#e0a800)',
             color: '#1a1a1a',
             opacity: loading ? 0.6 : 1,
           }}
@@ -458,22 +628,19 @@ export function OrderBlockPanel() {
       </div>
 
       {data && (
-        <div className="shrink-0 grid grid-cols-4 gap-1.5 px-2 py-2 border-b border-[#1e2329] bg-[#0d1117]">
+        <div className="shrink-0 grid grid-cols-4 gap-1.5 px-2 py-2 border-b border-[#1e2329]">
           {[
             { l: 'BULL', v: data.bullish, c: '#0ecb81' },
             { l: 'BEAR', v: data.bearish, c: '#f6465d' },
             { l: 'AVG', v: fmtPct(data.avgChangePct), c: '#eaecef' },
-            {
-              l: 'LEAD',
-              v: data.leadingSector?.sector ?? '—',
-              c: '#F4D35E',
-            },
+            { l: 'LEAD', v: data.leadingSector?.sector ?? '—', c: '#F4D35E' },
           ].map((s) => (
             <div
               key={s.l}
-              className="rounded border border-[#1e2329] bg-[#12161c] px-1.5 py-1"
+              className="rounded-lg px-1.5 py-1.5 border border-[#1e2329]"
+              style={{ background: '#12161c' }}
             >
-              <div className="text-[8px] text-[#5e6673] tracking-wide">{s.l}</div>
+              <div className="text-[8px] text-[#5e6673] tracking-wider">{s.l}</div>
               <div className="text-[12px] font-bold font-mono" style={{ color: s.c }}>
                 {s.v}
               </div>
@@ -488,9 +655,9 @@ export function OrderBlockPanel() {
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className="text-[10px] font-bold px-2.5 py-1 rounded"
+            className="text-[10px] font-extrabold px-2.5 py-1.5 rounded-lg"
             style={{
-              background: tab === t.id ? '#F4D35E' : '#1e2329',
+              background: tab === t.id ? '#F4D35E' : '#1a1f27',
               color: tab === t.id ? '#1a1a1a' : '#848e9c',
             }}
           >
@@ -500,9 +667,7 @@ export function OrderBlockPanel() {
       </div>
 
       {err && (
-        <div className="shrink-0 px-3 py-1.5 text-[11px] text-[#f6465d] bg-[#2e0a12]">
-          {err}
-        </div>
+        <div className="shrink-0 px-3 py-1.5 text-[11px] text-[#f6465d] bg-[#2e0a12]">{err}</div>
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
@@ -512,51 +677,41 @@ export function OrderBlockPanel() {
 
         {data && tab === 'breadth' && (
           <>
-            <div className="text-[9px] text-[#5e6673] px-0.5">
-              Ogni punto = asset · oro = PICK · sopra = bullish · sotto = bearish
+            <div className="text-[9px] text-[#5e6673]">
+              Punti = asset · alone oro = PICK · sopra zero = bullish
             </div>
             <BreadthCanvas assets={data.assets} />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               {data.sectors.map((s) => (
                 <div
                   key={s.sector}
-                  className="rounded border border-[#2b3139] bg-[#12161c] px-2 py-1.5"
+                  className="rounded-lg border border-[#1e2329] px-2 py-1.5"
+                  style={{ background: '#12161c' }}
                 >
                   <div className="text-[10px] text-[#848e9c]">{s.sector}</div>
                   <div
-                    className={`text-[12px] font-mono ${
-                      s.changePct >= 0 ? 'text-[#0ecb81]' : 'text-[#f6465d]'
-                    }`}
+                    className="text-[12px] font-mono font-bold"
+                    style={{ color: s.changePct >= 0 ? '#0ecb81' : '#f6465d' }}
                   >
                     {fmtPct(s.changePct)}
                   </div>
-                  <div className="text-[9px] text-[#848e9c]">
-                    {s.bullish}↑ {s.bearish}↓ · n={s.count}
+                  <div className="text-[9px] text-[#5e6673]">
+                    {s.bullish}↑ {s.bearish}↓
                   </div>
                 </div>
               ))}
             </div>
-            {data.leadingSector && (
-              <div className="text-[10px] text-[#848e9c]">
-                Leading:{' '}
-                <span className="text-[#0ecb81]">{data.leadingSector.sector}</span>
-                {' · '}
-                Lagging:{' '}
-                <span className="text-[#f6465d]">{data.laggingSector?.sector}</span>
-              </div>
-            )}
           </>
         )}
 
         {data && tab !== 'breadth' && (
           <>
             {tab === 'picks' && board.length === 0 && (
-              <div className="text-[11px] text-[#848e9c] p-3 text-center">
-                Nessun PICK pulito in questo momento — apri BULLISH/BEARISH o attendi il
-                prossimo refresh.
+              <div className="text-[11px] text-[#848e9c] p-4 text-center">
+                Nessun PICK pulito — apri BULLISH/BEARISH o attendi refresh.
               </div>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {board.map((a) => (
                 <AssetTile key={a.symbol} a={a} onPick={openDetail} />
               ))}
@@ -565,20 +720,16 @@ export function OrderBlockPanel() {
         )}
 
         {detailLoading && (
-          <div className="text-[11px] text-[#848e9c] px-1">Carico chart + order blocks…</div>
+          <div className="text-[11px] text-[#848e9c]">Calcolo OB precisi (BOS + body)…</div>
         )}
       </div>
 
       {detail && (
-        <DetailCard
-          detail={detail}
-          onClose={() => setDetail(null)}
-          onTrade={openOnChart}
-        />
+        <DetailCard detail={detail} onClose={() => setDetail(null)} onTrade={openOnChart} />
       )}
 
-      <div className="shrink-0 px-2 py-1 border-t border-[#2b3139] text-[9px] text-[#5e6673] font-mono">
-        Playbook: X-Ray → lato → shortlist → zona (first retest) · refresh 60s · Binance public
+      <div className="shrink-0 px-2 py-1.5 border-t border-[#1e2329] text-[9px] text-[#5e6673] font-mono">
+        Body zone · break of structure · mitigation fresh/tested · ATR R:R · refresh 60s
       </div>
     </div>
   )
