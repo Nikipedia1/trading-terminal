@@ -122,9 +122,10 @@ export interface DeskAnalysisBundle {
 }
 
 export function buildAnalysis(candles: Candle[], ctx: DeskMarketContext): DeskAnalysisBundle {
-  const ta = candles.length >= 5 ? analyzeCandles(candles) : null
-  const smc = candles.length >= 10 ? analyzeSmc(candles) : null
-  const liq = candles.length >= 10 ? analyzeLiquidity(candles) : null
+  const safe = Array.isArray(candles) ? candles : []
+  const ta = safe.length >= 5 ? analyzeCandles(safe) : null
+  const smc = safe.length >= 10 ? analyzeSmc(safe) : null
+  const liq = safe.length >= 10 ? analyzeLiquidity(safe) : null
   return { ta, smc, liq, ctx }
 }
 
@@ -147,11 +148,11 @@ export function runTechnical(bundle: DeskAnalysisBundle): AgentReport {
     }
   }
   const bullets = [
-    `Bias: **${ta.bias}** · range pos ${fmt(ta.rangePos, 0)}%`,
-    ...ta.summary.slice(0, 6),
+    `Bias: **${ta.bias ?? 'neutral'}** · range pos ${fmt(ta.rangePos, 0)}%`,
+    ...(ta.summary ?? []).slice(0, 6),
   ]
-  if (ta.supports[0] != null) bullets.push(`Nearest support ~ ${fmt(ta.supports[0])}`)
-  if (ta.resistances[0] != null) bullets.push(`Nearest resistance ~ ${fmt(ta.resistances[0])}`)
+  if (ta.supports?.[0] != null) bullets.push(`Nearest support ~ ${fmt(ta.supports[0])}`)
+  if (ta.resistances?.[0] != null) bullets.push(`Nearest resistance ~ ${fmt(ta.resistances[0])}`)
   if (smc?.breaks?.length) {
     const last = smc.breaks[smc.breaks.length - 1]!
     bullets.push(`Structure: last ${String(last.kind).toUpperCase()} ${last.direction} @ ${fmt(last.price)}`)
@@ -160,7 +161,7 @@ export function runTechnical(bundle: DeskAnalysisBundle): AgentReport {
     agentId: 'technical',
     title: `Technical · ${ctx.symbol} ${ctx.interval}`,
     bullets,
-    bias: ta.bias,
+    bias: (ta.bias as AgentReport['bias']) ?? 'neutral',
     confidence: 0.55,
   }
 }
@@ -205,8 +206,8 @@ export function runRisk(bundle: DeskAnalysisBundle): AgentReport {
   const atrProxy = Math.abs((ta.last.high - ta.last.low) || close * 0.005)
   const bullets = [
     `Spot ${fmt(close)} · bar range ~ ${fmt(atrProxy)}`,
-    ta.supports[0] != null ? `Structural stop region under ~ ${fmt(ta.supports[0])}` : 'Define stop under last swing low',
-    ta.resistances[0] != null ? `Take-profit region toward ~ ${fmt(ta.resistances[0])}` : 'Target prior swing high',
+    ta.supports?.[0] != null ? `Structural stop region under ~ ${fmt(ta.supports[0])}` : 'Define stop under last swing low',
+    ta.resistances?.[0] != null ? `Take-profit region toward ~ ${fmt(ta.resistances[0])}` : 'Target prior swing high',
     `Bias ${ta.bias}: size down if mid-range (pos ${fmt(ta.rangePos, 0)}%).`,
     'Hard rule: plan risk first; never move stop against you.',
   ]
@@ -214,7 +215,7 @@ export function runRisk(bundle: DeskAnalysisBundle): AgentReport {
     agentId: 'risk',
     title: `Risk · ${ctx.symbol}`,
     bullets,
-    bias: ta.bias,
+    bias: (ta.bias as AgentReport['bias']) ?? 'neutral',
     confidence: 0.5,
   }
 }
@@ -247,16 +248,16 @@ export function runTrader(bundle: DeskAnalysisBundle, prior: AgentReport[]): Age
       confidence: 0,
     }
   }
-  const votes = prior.map((p) => p.bias).filter(Boolean)
+  const votes = (prior ?? []).map((p) => p.bias).filter(Boolean)
   const bull = votes.filter((v) => v === 'bullish').length
   const bear = votes.filter((v) => v === 'bearish').length
   const bias: AgentReport['bias'] =
-    bull > bear ? 'bullish' : bear > bull ? 'bearish' : ta.bias
+    bull > bear ? 'bullish' : bear > bull ? 'bearish' : ((ta.bias as AgentReport['bias']) ?? 'neutral')
   const bullets = [
     `Setup lean: **${bias}** (desk votes B${bull}/S${bear})`,
     `Entry idea near ${fmt(ta.last.close)} with structure stops`,
-    ta.supports[0] != null ? `Invalidation under ${fmt(ta.supports[0])}` : 'Invalidation: swing low',
-    ta.resistances[0] != null ? `Primary target ${fmt(ta.resistances[0])}` : 'Target: range high',
+    ta.supports?.[0] != null ? `Invalidation under ${fmt(ta.supports[0])}` : 'Invalidation: swing low',
+    ta.resistances?.[0] != null ? `Primary target ${fmt(ta.resistances[0])}` : 'Target: range high',
     'Execute only if RR ≥ 1.5 after fees.',
   ]
   return {
@@ -273,7 +274,7 @@ export function synthesizeOrchestrator(bundle: DeskAnalysisBundle, reports: Agen
   const bias = ta?.bias ?? 'neutral'
   const bullets = [
     `Floor brief ${ctx.symbol} ${ctx.interval}: composite **${bias}**`,
-    ...reports.slice(0, 5).map((r) => `${r.agentId}: ${r.bullets[0] ?? r.title}`),
+    ...(reports ?? []).slice(0, 5).map((r) => `${r.agentId}: ${(r.bullets && r.bullets[0]) || r.title}`),
     'Next: confirm levels on chart, then size from risk desk.',
   ]
   return {
@@ -319,7 +320,7 @@ export function runAnalyst(bundle: DeskAnalysisBundle): AgentReport {
   }
   const bullets = [
     `Composite: TA **${ta.bias}** · liq **${liq?.bias ?? 'n/a'}**`,
-    ...ta.summary.slice(0, 4),
+    ...(ta.summary ?? []).slice(0, 4),
     smc?.breaks?.length
       ? `Last structure: ${String(smc.breaks[smc.breaks.length - 1]!.kind)} ${smc.breaks[smc.breaks.length - 1]!.direction}`
       : 'No fresh BOS/CHOCH in window.',
@@ -329,7 +330,7 @@ export function runAnalyst(bundle: DeskAnalysisBundle): AgentReport {
     agentId: 'analyst',
     title: `Market Analyst · ${ctx.symbol} ${ctx.interval}`,
     bullets,
-    bias: ta.bias,
+    bias: (ta.bias as AgentReport['bias']) ?? 'neutral',
     confidence: 0.58,
   }
 }
@@ -346,8 +347,8 @@ export function runStrategist(bundle: DeskAnalysisBundle): AgentReport {
     }
   }
   const close = ta.last.close
-  const sup = ta.supports[0]
-  const res = ta.resistances[0]
+  const sup = ta.supports?.[0]
+  const res = ta.resistances?.[0]
   const bullets = [
     `Base case: bias **${ta.bias}** on ${ctx.interval}.`,
     res != null ? `Bull scenario: accept above ${fmt(res)} → trail.` : 'Bull scenario: break range high → trail.',
@@ -359,7 +360,7 @@ export function runStrategist(bundle: DeskAnalysisBundle): AgentReport {
     agentId: 'strategist',
     title: `Strategist · ${ctx.symbol}`,
     bullets,
-    bias: ta.bias,
+    bias: (ta.bias as AgentReport['bias']) ?? 'neutral',
     confidence: 0.52,
   }
 }
@@ -387,7 +388,7 @@ export function runQuant(bundle: DeskAnalysisBundle): AgentReport {
     agentId: 'quant',
     title: `Quant · ${ctx.symbol}`,
     bullets,
-    bias: ta.bias,
+    bias: (ta.bias as AgentReport['bias']) ?? 'neutral',
     confidence: 0.5,
   }
 }
@@ -404,16 +405,16 @@ export function runMasterChief(bundle: DeskAnalysisBundle): AgentReport {
     }
   }
   const close = ta.last.close
-  const sup = ta.supports[0]
-  const res = ta.resistances[0]
-  const bias = ta.bias
+  const sup = ta.supports?.[0]
+  const res = ta.resistances?.[0]
+  const bias = (ta.bias as AgentReport['bias']) ?? 'neutral'
   const liqBias = liq?.bias ?? 'neutral'
   const aligned =
     (bias === 'bullish' && String(liqBias).toLowerCase().includes('buy')) ||
     (bias === 'bearish' && String(liqBias).toLowerCase().includes('sell')) ||
     bias !== 'neutral'
   const bullets: string[] = [
-    `CALL: **${bias.toUpperCase()}** on ${ctx.symbol} ${ctx.interval} @ ${fmt(close)}`,
+    `CALL: **${String(bias).toUpperCase()}** on ${ctx.symbol} ${ctx.interval} @ ${fmt(close)}`,
   ]
   if (bias === 'bullish') {
     bullets.push(sup != null ? `ENTRY zone: pullback toward ${fmt(sup)}–${fmt(close)}` : `ENTRY: on hold above structure`)
@@ -443,20 +444,25 @@ export function runMasterChief(bundle: DeskAnalysisBundle): AgentReport {
 
 export function reportToText(r: AgentReport): string {
   const head = `**${r.title}**${r.bias ? ` · ${r.bias}` : ''}`
-  return [head, ...r.bullets.map((b) => `• ${b}`)].join('\n')
+  return [head, ...(r.bullets ?? []).map((b) => `• ${b}`)].join('\n')
 }
 
 export function buildFullAssetReport(candles: Candle[], ctx: DeskMarketContext): string {
-  const bundle = buildAnalysis(candles, ctx)
-  const tech = runTechnical(bundle)
-  const flow = runOrderflow(bundle)
-  const risk = runRisk(bundle)
-  const chief = runMasterChief(bundle)
-  return [
-    `# Full report · ${ctx.symbol} ${ctx.interval} · ${ctx.exchange}`,
-    reportToText(tech),
-    reportToText(flow),
-    reportToText(risk),
-    reportToText(chief),
-  ].join('\n\n')
+  try {
+    const bundle = buildAnalysis(candles || [], ctx)
+    const parts = [`# Full report · ${ctx.symbol} ${ctx.interval} · ${ctx.exchange}`]
+    for (const runner of [runTechnical, runOrderflow, runRisk, runMasterChief]) {
+      try {
+        parts.push(reportToText(runner(bundle)))
+      } catch (e) {
+        parts.push(`• ${runner.name}: ${e instanceof Error ? e.message : 'failed'}`)
+      }
+    }
+    if (!candles?.length) {
+      parts.push('• No candle data yet — link a chart or wait for market feed.')
+    }
+    return parts.join('\n\n')
+  } catch (e) {
+    return `Full report unavailable: ${e instanceof Error ? e.message : 'unknown error'}`
+  }
 }
