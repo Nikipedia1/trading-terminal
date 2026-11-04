@@ -1,12 +1,11 @@
 /**
  * Order Block market engine — Binance public data.
- * Aligns with OrderBlock playbook: scan universe → rank strength →
- * filter choppy → sector-capped picks → OB zones + liquidity levels.
+ * Precise OB detection + liquidity-ranked boards + sector-capped PICKS.
  */
 
-import { detectOrderBlocks } from '@/analysis/aiDesk/smcEngine'
 import type { Candle } from '@/types'
 import { CRYPTO_UNIVERSE, SECTOR_ORDER } from './universe'
+import { detectPreciseOrderBlocks, sessionAtr } from './obDetect'
 import type {
   AssetDetail,
   MarketBreadth,
@@ -123,22 +122,13 @@ export async function fetchMarketBreadth(): Promise<MarketBreadth> {
     })
   }
 
+  const score = (a: RankedAsset) => a.absStrength * (0.55 + a.liquidityScore / 220)
   const bull = assets
     .filter((a) => a.changePct >= 0)
-    .sort(
-      (a, b) =>
-        b.absStrength * (0.6 + b.liquidityScore / 250) -
-          a.absStrength * (0.6 + a.liquidityScore / 250) ||
-        b.changePct - a.changePct
-    )
+    .sort((a, b) => score(b) - score(a) || b.changePct - a.changePct)
   const bear = assets
     .filter((a) => a.changePct < 0)
-    .sort(
-      (a, b) =>
-        b.absStrength * (0.6 + b.liquidityScore / 250) -
-          a.absStrength * (0.6 + a.liquidityScore / 250) ||
-        a.changePct - b.changePct
-    )
+    .sort((a, b) => score(b) - score(a) || a.changePct - b.changePct)
 
   bull.forEach((a, i) => {
     a.rank = i + 1
@@ -151,10 +141,8 @@ export async function fetchMarketBreadth(): Promise<MarketBreadth> {
     a.side = 'bearish'
   })
 
-  const bullBoardRaw = bull.slice(0, BOARD_SIZE)
-  const bearBoardRaw = bear.slice(0, BOARD_SIZE)
-  const bullBoard = assignPicks(bullBoardRaw)
-  const bearBoard = assignPicks(bearBoardRaw)
+  const bullBoard = assignPicks(bull.slice(0, BOARD_SIZE))
+  const bearBoard = assignPicks(bear.slice(0, BOARD_SIZE))
   const picksBull = bullBoard.filter((a) => a.isPick)
   const picksBear = bearBoard.filter((a) => a.isPick)
 
@@ -186,16 +174,12 @@ export async function fetchMarketBreadth(): Promise<MarketBreadth> {
   })
   sectors.sort((a, b) => b.changePct - a.changePct)
 
-  const bullish = assets.filter((a) => a.changePct >= 0).length
-  const bearish = assets.filter((a) => a.changePct < 0).length
-  const avg =
-    assets.length > 0 ? assets.reduce((s, a) => s + a.changePct, 0) / assets.length : 0
-
   return {
-    bullish,
-    bearish,
+    bullish: assets.filter((a) => a.changePct >= 0).length,
+    bearish: assets.filter((a) => a.changePct < 0).length,
     neutral: 0,
-    avgChangePct: avg,
+    avgChangePct:
+      assets.length > 0 ? assets.reduce((s, a) => s + a.changePct, 0) / assets.length : 0,
     leadingSector: sectors[0] ?? null,
     laggingSector: sectors[sectors.length - 1] ?? null,
     sectors,
@@ -211,7 +195,7 @@ export async function fetchMarketBreadth(): Promise<MarketBreadth> {
 export async function fetchKlines(
   symbol: string,
   interval = '5m',
-  limit = 120
+  limit = 144
 ): Promise<Candle[]> {
   const url = `${BINANCE}/api/v3/klines?symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`
   const res = await fetch(url)
@@ -228,8 +212,13 @@ export async function fetchKlines(
 }
 
 function levelsFromOb(asset: RankedAsset, obs: ObZoneView[]): ZoneLevels | null {
-  const sideObs = obs.filter((o) => o.kind === asset.side)
-  const primary = sideObs.slice(-1)[0]
+  const sideObs = obs
+    .filter((o) => o.kind === asset.side && o.mitigation !== 'broken')
+    .sort((a, b) => {
+      const order = { fresh: 0, tested: 1, mitigated: 2, broken: 3 }
+      return order[a.mitigation] - order[b.mitigation] || b.quality - a.quality || b.index - a.index
+    })
+  const primary = sideObs[0]
   if (!primary) {
     const z = (asset.high + asset.low) / 2
     if (asset.side === 'bullish') {
@@ -240,6 +229,10 @@ function levelsFromOb(asset: RankedAsset, obs: ObZoneView[]): ZoneLevels | null 
         r2: asset.high,
         obTop: z * 1.002,
         obBottom: asset.low,
+        bodyTop: z * 1.001,
+        bodyBottom: asset.low,
+        quality: 0.3,
+        mitigation: 'fresh',
       }
     }
     return {
@@ -249,31 +242,43 @@ function levelsFromOb(asset: RankedAsset, obs: ObZoneView[]): ZoneLevels | null 
       r2: asset.low,
       obTop: asset.high,
       obBottom: z * 0.998,
+      bodyTop: asset.high,
+      bodyBottom: z * 0.999,
+      quality: 0.3,
+      mitigation: 'fresh',
     }
   }
+
+  const z = (primary.bodyTop + primary.bodyBottom) / 2
   if (asset.side === 'bullish') {
-    const z = (primary.top + primary.bottom) / 2
-    const s1 = primary.bottom
-    const risk = Math.max(asset.lastPrice - s1, asset.lastPrice * 0.002)
+    const s1 = primary.bodyBottom
+    const risk = Math.max(asset.lastPrice - s1, asset.lastPrice * 0.0015)
     return {
       z,
       s1,
-      r1: asset.lastPrice + risk * 1.5,
-      r2: asset.lastPrice + risk * 3,
+      r1: asset.lastPrice + risk * 1.6,
+      r2: asset.lastPrice + risk * 3.2,
       obTop: primary.top,
       obBottom: primary.bottom,
+      bodyTop: primary.bodyTop,
+      bodyBottom: primary.bodyBottom,
+      quality: primary.quality,
+      mitigation: primary.mitigation,
     }
   }
-  const z = (primary.top + primary.bottom) / 2
-  const s1 = primary.top
-  const risk = Math.max(s1 - asset.lastPrice, asset.lastPrice * 0.002)
+  const s1 = primary.bodyTop
+  const risk = Math.max(s1 - asset.lastPrice, asset.lastPrice * 0.0015)
   return {
     z,
     s1,
-    r1: asset.lastPrice - risk * 1.5,
-    r2: asset.lastPrice - risk * 3,
+    r1: asset.lastPrice - risk * 1.6,
+    r2: asset.lastPrice - risk * 3.2,
     obTop: primary.top,
     obBottom: primary.bottom,
+    bodyTop: primary.bodyTop,
+    bodyBottom: primary.bodyBottom,
+    quality: primary.quality,
+    mitigation: primary.mitigation,
   }
 }
 
@@ -281,16 +286,8 @@ export async function fetchAssetDetail(
   asset: RankedAsset,
   interval: '5m' | '15m' = '5m'
 ): Promise<AssetDetail> {
-  const candles = await fetchKlines(asset.symbol, interval, 144)
-  const obs = detectOrderBlocks(candles, 100).map(
-    (o): ObZoneView => ({
-      kind: o.kind,
-      top: o.top,
-      bottom: o.bottom,
-      time: o.time,
-      endTime: o.endTime,
-    })
-  )
+  const candles = await fetchKlines(asset.symbol, interval, 160)
+  const obs = detectPreciseOrderBlocks(candles, 130)
   let vwap: number | null = null
   if (candles.length) {
     let pv = 0
@@ -309,5 +306,15 @@ export async function fetchAssetDetail(
     const reward = Math.abs(zone.r1 - asset.lastPrice)
     if (risk > 0) rr = reward / risk
   }
-  return { asset, candles, orderBlocks: obs, zone, vwap, rr, interval }
+  const atr = sessionAtr(candles)
+  return {
+    asset,
+    candles,
+    orderBlocks: obs,
+    zone,
+    vwap,
+    rr,
+    interval,
+    atr: atr > 0 ? atr : null,
+  }
 }
