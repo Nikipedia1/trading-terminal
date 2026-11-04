@@ -1,5 +1,5 @@
 /**
- * 3D trading office — reference-style ambient: city windows, seated agents, pro desks.
+ * 3D trading office — reference-style ambient + human-like seated traders.
  */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { AutonomyAgent, DeskSlot } from './autonomy'
@@ -43,6 +43,7 @@ function project(x: number, y: number, z: number, w: number, h: number, cam: Cam
 }
 
 function shade(hex: string, m: number) {
+  if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex
   const n = (hex || '#888').replace('#', '')
   const full = n.length === 3 ? n.split('').map((c) => c + c).join('') : n.padEnd(6, '0').slice(0, 6)
   const v = parseInt(full, 16)
@@ -61,11 +62,11 @@ function box(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, sx:
     ctx.closePath()
     ctx.fillStyle = shade(color, mul)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(0,0,0,0.22)'
-    ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)'
+    ctx.lineWidth = 0.8
     ctx.stroke()
   }
-  face([3,2,6,7], 0.55); face([0,3,7,4], 0.72); face([1,2,6,5], 0.88); face([4,5,6,7], 1.08)
+  face([3,2,6,7], 0.55); face([0,3,7,4], 0.72); face([1,2,6,5], 0.88); face([4,5,6,7], 1.05)
 }
 
 function drawFloor(ctx: CanvasRenderingContext2D, w: number, h: number, cam: Cam) {
@@ -372,7 +373,6 @@ function paint(
   ctx.fillStyle = '#0c1014'
   ctx.fillRect(0, 0, w, h)
 
-  // back wall + city windows
   const wall = [
     project(FMIN, 0, FMIN, w, h, cam),
     project(FMAX, 0, FMIN, w, h, cam),
@@ -449,21 +449,15 @@ function paint(
       box(ctx, x + 1.0, 0, z - 1.0, 0.1, 1.7, 1.8, '#6E1423', w, h, cam)
     }
 
-    // desk surface (light grey)
     box(ctx, x - 0.85, 0.02, z - 0.5, 1.7, 0.48, 1.05, '#4a5560', w, h, cam)
     box(ctx, x - 0.85, 0.5, z - 0.5, 1.7, 0.04, 1.05, '#6a7580', w, h, cam)
-    // dual monitor arms
     box(ctx, x - 0.4, 0.54, z - 0.2, 0.12, 0.18, 0.1, '#2a2a2e', w, h, cam)
     box(ctx, x + 0.25, 0.54, z - 0.2, 0.12, 0.18, 0.1, '#2a2a2e', w, h, cam)
-    // monitor chassis
     box(ctx, x - 0.82, 0.7, z - 0.38, 0.78, 0.62, 0.1, '#0a0a0c', w, h, cam)
     box(ctx, x + 0.05, 0.7, z - 0.38, 0.78, 0.62, 0.1, '#0a0a0c', w, h, cam)
-    // keyboard
     box(ctx, x - 0.25, 0.54, z + 0.15, 0.55, 0.03, 0.22, '#1a1a1e', w, h, cam)
-    // desk lamp
     box(ctx, x + 0.55, 0.54, z + 0.2, 0.08, 0.35, 0.08, '#c8b090', w, h, cam)
     box(ctx, x + 0.48, 0.88, z + 0.12, 0.22, 0.08, 0.2, '#e8d8b0', w, h, cam)
-    // bust decor
     box(ctx, x - 0.7, 0.54, z + 0.25, 0.14, 0.22, 0.14, '#d0d0d0', w, h, cam)
     box(ctx, x - 0.68, 0.76, z + 0.27, 0.1, 0.12, 0.1, '#e8e8e8', w, h, cam)
 
@@ -527,51 +521,82 @@ function paint(
     const seated =
       !!ag.seated &&
       ['sitting', 'researching', 'strategizing', 'reporting', 'idle'].includes(ag.activity)
-    const bob = ag.activity === 'walking' ? Math.sin(Date.now() / 140) * 0.04 : 0
-    const suit = ag.color || '#3a4555'
-    const skin = '#d4b896'
+    const bob = ag.activity === 'walking' ? Math.sin(Date.now() / 140) * 0.03 : 0
+    const skin = '#c9a882'
+    const skinDark = '#b08a68'
+    const hair = '#6b4a2a'
+    const shirt = '#f2f2f0'
+    const coat = '#ebe8e0'
+    const pants = '#2a2e38'
+    const tie = '#1a1a1a'
+    const accent = ag.color || '#3a4555'
 
     if (seated) {
-      box(ctx, ax - 0.12, 0.02, az + 0.15, 0.1, 0.28, 0.12, '#1a2030', w, h, cam)
-      box(ctx, ax + 0.02, 0.02, az + 0.15, 0.1, 0.28, 0.12, '#1a2030', w, h, cam)
-      box(ctx, ax - 0.16, 0.28 + bob * 0.15, az + 0.05, 0.32, 0.42, 0.2, suit, w, h, cam)
-      box(ctx, ax - 0.06, 0.55 + bob * 0.15, az + 0.06, 0.12, 0.08, 0.04, '#f0f0f0', w, h, cam)
-      box(ctx, ax - 0.22, 0.48, az - 0.05, 0.1, 0.08, 0.28, suit, w, h, cam)
-      box(ctx, ax + 0.12, 0.48, az - 0.05, 0.1, 0.08, 0.28, suit, w, h, cam)
-      box(ctx, ax - 0.2, 0.52, az - 0.12, 0.08, 0.05, 0.08, skin, w, h, cam)
-      box(ctx, ax + 0.14, 0.52, az - 0.12, 0.08, 0.05, 0.08, skin, w, h, cam)
-      box(ctx, ax - 0.1, 0.72 + bob * 0.15, az + 0.08, 0.2, 0.22, 0.18, skin, w, h, cam)
-      box(ctx, ax - 0.1, 0.9 + bob * 0.15, az + 0.08, 0.2, 0.06, 0.18, '#2a1a10', w, h, cam)
-      box(ctx, ax - 0.12, 0.82 + bob * 0.15, az + 0.05, 0.24, 0.04, 0.04, '#1a1a1a', w, h, cam)
+      const yb = bob * 0.12
+      box(ctx, ax - 0.14, 0.02, az + 0.18, 0.11, 0.26, 0.14, pants, w, h, cam)
+      box(ctx, ax + 0.03, 0.02, az + 0.18, 0.11, 0.26, 0.14, pants, w, h, cam)
+      box(ctx, ax - 0.15, 0.0, az + 0.28, 0.12, 0.05, 0.1, '#1a1a1a', w, h, cam)
+      box(ctx, ax + 0.03, 0.0, az + 0.28, 0.12, 0.05, 0.1, '#1a1a1a', w, h, cam)
+      box(ctx, ax - 0.18, 0.26 + yb, az + 0.06, 0.36, 0.44, 0.22, coat, w, h, cam)
+      box(ctx, ax - 0.1, 0.3 + yb, az + 0.04, 0.2, 0.36, 0.06, shirt, w, h, cam)
+      box(ctx, ax - 0.03, 0.42 + yb, az + 0.03, 0.06, 0.22, 0.04, tie, w, h, cam)
+      box(ctx, ax - 0.1, 0.64 + yb, az + 0.05, 0.2, 0.05, 0.06, shirt, w, h, cam)
+      box(ctx, ax - 0.2, 0.58 + yb, az + 0.08, 0.1, 0.12, 0.14, coat, w, h, cam)
+      box(ctx, ax + 0.1, 0.58 + yb, az + 0.08, 0.1, 0.12, 0.14, coat, w, h, cam)
+      box(ctx, ax - 0.26, 0.42 + yb, az + 0.0, 0.1, 0.14, 0.18, coat, w, h, cam)
+      box(ctx, ax + 0.16, 0.42 + yb, az + 0.0, 0.1, 0.14, 0.18, coat, w, h, cam)
+      box(ctx, ax - 0.24, 0.48 + yb, az - 0.12, 0.1, 0.07, 0.26, coat, w, h, cam)
+      box(ctx, ax + 0.14, 0.48 + yb, az - 0.12, 0.1, 0.07, 0.26, coat, w, h, cam)
+      box(ctx, ax - 0.22, 0.52 + yb, az - 0.18, 0.09, 0.05, 0.1, skin, w, h, cam)
+      box(ctx, ax + 0.13, 0.52 + yb, az - 0.18, 0.09, 0.05, 0.1, skin, w, h, cam)
+      box(ctx, ax - 0.06, 0.68 + yb, az + 0.1, 0.12, 0.08, 0.1, skinDark, w, h, cam)
+      box(ctx, ax - 0.11, 0.74 + yb, az + 0.08, 0.22, 0.24, 0.2, skin, w, h, cam)
+      box(ctx, ax - 0.09, 0.74 + yb, az + 0.06, 0.18, 0.08, 0.04, skinDark, w, h, cam)
+      box(ctx, ax - 0.12, 0.94 + yb, az + 0.07, 0.24, 0.08, 0.22, hair, w, h, cam)
+      box(ctx, ax - 0.13, 0.8 + yb, az + 0.16, 0.06, 0.16, 0.1, hair, w, h, cam)
+      box(ctx, ax + 0.07, 0.8 + yb, az + 0.16, 0.06, 0.16, 0.1, hair, w, h, cam)
+      box(ctx, ax - 0.13, 0.86 + yb, az + 0.04, 0.26, 0.035, 0.05, '#1a1a1a', w, h, cam)
+      box(ctx, ax - 0.11, 0.855 + yb, az + 0.03, 0.1, 0.04, 0.03, 'rgba(180,200,220,0.35)', w, h, cam)
+      box(ctx, ax + 0.01, 0.855 + yb, az + 0.03, 0.1, 0.04, 0.03, 'rgba(180,200,220,0.35)', w, h, cam)
+      box(ctx, ax - 0.14, 0.84 + yb, az + 0.12, 0.04, 0.08, 0.04, skinDark, w, h, cam)
+      box(ctx, ax + 0.1, 0.84 + yb, az + 0.12, 0.04, 0.08, 0.04, skinDark, w, h, cam)
     } else {
-      box(ctx, ax - 0.1, 0.02 + bob, az - 0.06, 0.09, 0.32, 0.1, '#1a2030', w, h, cam)
-      box(ctx, ax + 0.02, 0.02 - bob, az - 0.06, 0.09, 0.32, 0.1, '#1a2030', w, h, cam)
-      box(ctx, ax - 0.15, 0.32, az - 0.1, 0.3, 0.4, 0.2, suit, w, h, cam)
-      box(ctx, ax - 0.06, 0.58, az - 0.08, 0.12, 0.08, 0.04, '#f0f0f0', w, h, cam)
-      box(ctx, ax - 0.1, 0.72, az - 0.08, 0.2, 0.22, 0.18, skin, w, h, cam)
-      box(ctx, ax - 0.1, 0.9, az - 0.08, 0.2, 0.06, 0.18, '#2a1a10', w, h, cam)
+      box(ctx, ax - 0.11, 0.02 + bob, az - 0.05, 0.1, 0.34, 0.12, pants, w, h, cam)
+      box(ctx, ax + 0.01, 0.02 - bob, az - 0.05, 0.1, 0.34, 0.12, pants, w, h, cam)
+      box(ctx, ax - 0.12, 0.0, az + 0.05, 0.11, 0.05, 0.1, '#1a1a1a', w, h, cam)
+      box(ctx, ax + 0.01, 0.0, az + 0.05, 0.11, 0.05, 0.1, '#1a1a1a', w, h, cam)
+      box(ctx, ax - 0.17, 0.34, az - 0.1, 0.34, 0.42, 0.2, coat, w, h, cam)
+      box(ctx, ax - 0.09, 0.38, az - 0.12, 0.18, 0.34, 0.06, shirt, w, h, cam)
+      box(ctx, ax - 0.03, 0.48, az - 0.13, 0.06, 0.2, 0.04, tie, w, h, cam)
+      box(ctx, ax - 0.22, 0.4, az - 0.08, 0.08, 0.28, 0.1, coat, w, h, cam)
+      box(ctx, ax + 0.14, 0.4, az - 0.08, 0.08, 0.28, 0.1, coat, w, h, cam)
+      box(ctx, ax - 0.06, 0.74, az - 0.08, 0.12, 0.08, 0.1, skinDark, w, h, cam)
+      box(ctx, ax - 0.11, 0.8, az - 0.1, 0.22, 0.24, 0.2, skin, w, h, cam)
+      box(ctx, ax - 0.12, 1.0, az - 0.1, 0.24, 0.08, 0.22, hair, w, h, cam)
+      box(ctx, ax - 0.13, 0.92, az - 0.14, 0.26, 0.035, 0.05, '#1a1a1a', w, h, cam)
     }
 
-    const headY = seated ? 1.05 + bob * 0.15 : 1.05
-    const p = project(ax, headY, az + (seated ? 0.1 : 0), w, h, cam)
+    const headY = seated ? 1.12 + bob * 0.12 : 1.12
+    const p = project(ax, headY, az + (seated ? 0.12 : -0.05), w, h, cam)
     if (ag.activity === 'coffee' || ag.activity === 'water') {
       ctx.font = '14px sans-serif'
-      ctx.fillText(ag.activity === 'coffee' ? '☕' : '💧', p.sx - 6, p.sy - 28)
+      ctx.fillText(ag.activity === 'coffee' ? '☕' : '💧', p.sx - 6, p.sy - 30)
     }
     {
       const tag = (ag.asset || '—').toUpperCase()
       ctx.font = 'bold 11px monospace'
       const tw = ctx.measureText(tag).width + 14
-      ctx.fillStyle = 'rgba(0,0,0,0.85)'
-      ctx.fillRect(p.sx - tw / 2, p.sy - 28, tw, 16)
-      ctx.strokeStyle = 'rgba(244,211,94,0.55)'
-      ctx.strokeRect(p.sx - tw / 2, p.sy - 28, tw, 16)
+      ctx.fillStyle = 'rgba(0,0,0,0.88)'
+      ctx.fillRect(p.sx - tw / 2, p.sy - 30, tw, 16)
+      ctx.strokeStyle = accent
+      ctx.lineWidth = 1.5
+      ctx.strokeRect(p.sx - tw / 2, p.sy - 30, tw, 16)
       ctx.fillStyle = '#F4D35E'
       ctx.textAlign = 'center'
-      ctx.fillText(tag, p.sx, p.sy - 16)
+      ctx.fillText(tag, p.sx, p.sy - 18)
       ctx.textAlign = 'left'
     }
-    if (ag.chatLine) drawBubble(ctx, p.sx, p.sy - 32, ag.chatLine)
+    if (ag.chatLine) drawBubble(ctx, p.sx, p.sy - 34, ag.chatLine)
   }
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)'
