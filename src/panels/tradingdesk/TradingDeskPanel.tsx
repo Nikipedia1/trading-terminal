@@ -116,7 +116,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: '3D Desk — ogni monitor = grafico reale dell\'asset del pupazzo.',
+      text: '3D Desk — dual monitor pro: asset, prezzo, TF e exchange.',
       ts: Date.now(),
     },
   ])
@@ -321,7 +321,7 @@ export function TradingDeskPanel() {
         <div className="min-w-0">
           <div style={{ fontSize: 12, fontWeight: 800, color: '#F4D35E', letterSpacing: '0.06em' }}>MUNDER · 3D TRADING DESK</div>
           <div style={{ fontSize: 10, color: '#f0c9c9' }}>
-            {symbol} · {interval} · {agents3d.length} agents · {autonomous ? 'AUTO ON' : 'AUTO OFF'}
+            {symbol} · {interval} · {String(exchange).toUpperCase()} · {agents3d.length} agents · {autonomous ? 'AUTO ON' : 'AUTO OFF'}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -364,6 +364,8 @@ export function TradingDeskPanel() {
           selectedSlotId={selectedSlotId}
           onSelectSlot={onSelectSlot}
           candleMap={monitorCandleMap}
+          interval={String(interval)}
+          exchange={String(exchange)}
         />
       </div>
 
