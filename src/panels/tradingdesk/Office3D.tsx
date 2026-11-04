@@ -1,5 +1,5 @@
 /**
- * 3D trading office — professional dual-monitor desks with realistic charts.
+ * 3D trading office — reference-style ambient: city windows, seated agents, pro desks.
  */
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { AutonomyAgent, DeskSlot } from './autonomy'
@@ -61,7 +61,7 @@ function box(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, sx:
     ctx.closePath()
     ctx.fillStyle = shade(color, mul)
     ctx.fill()
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)'
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'
     ctx.lineWidth = 1
     ctx.stroke()
   }
@@ -71,15 +71,15 @@ function box(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, sx:
 function drawFloor(ctx: CanvasRenderingContext2D, w: number, h: number, cam: Cam) {
   const corners = [project(FMIN,0,FMIN,w,h,cam), project(FMAX,0,FMIN,w,h,cam), project(FMAX,0,FMAX,w,h,cam), project(FMIN,0,FMAX,w,h,cam)]
   ctx.beginPath(); corners.forEach((c,i) => (i ? ctx.lineTo(c.sx,c.sy) : ctx.moveTo(c.sx,c.sy))); ctx.closePath()
-  ctx.fillStyle = '#2a3330'; ctx.fill()
+  ctx.fillStyle = '#3a4248'; ctx.fill()
   for (let i = -5; i <= 5; i++) {
     const a = project(i, 0.01, FMIN, w, h, cam); const b = project(i, 0.01, FMAX, w, h, cam)
-    ctx.strokeStyle = i % 2 === 0 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.04)'
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.03)'
     ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke()
   }
   const rug = [project(-2.4,0.02,-1.6,w,h,cam), project(2.4,0.02,-1.6,w,h,cam), project(2.4,0.02,2.4,w,h,cam), project(-2.4,0.02,2.4,w,h,cam)]
   ctx.beginPath(); rug.forEach((c,i) => (i ? ctx.lineTo(c.sx,c.sy) : ctx.moveTo(c.sx,c.sy))); ctx.closePath()
-  ctx.fillStyle = '#5c1a22'; ctx.globalAlpha = 0.45; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = '#8b2a35'; ctx.stroke()
+  ctx.fillStyle = '#2a3238'; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = '#3a4550'; ctx.stroke()
 }
 
 function drawDoor(ctx: CanvasRenderingContext2D, w: number, h: number, cam: Cam) {
@@ -104,8 +104,11 @@ function drawWaterCooler(ctx: CanvasRenderingContext2D, w: number, h: number, ca
 }
 
 function drawChair(ctx: CanvasRenderingContext2D, x: number, z: number, w: number, h: number, cam: Cam, occupied: boolean) {
-  box(ctx, x - 0.2, 0.02, z + 0.55, 0.4, 0.28, 0.4, occupied ? '#3a4550' : '#2a3238', w, h, cam)
-  box(ctx, x - 0.2, 0.3, z + 0.83, 0.4, 0.45, 0.08, '#2a3238', w, h, cam)
+  const col = occupied ? '#3d4a58' : '#2a343e'
+  box(ctx, x - 0.22, 0.22, z + 0.45, 0.44, 0.1, 0.4, col, w, h, cam)
+  box(ctx, x - 0.22, 0.32, z + 0.75, 0.44, 0.5, 0.08, col, w, h, cam)
+  box(ctx, x - 0.04, 0.02, z + 0.58, 0.08, 0.22, 0.08, '#1a1a1e', w, h, cam)
+  box(ctx, x - 0.18, 0.0, z + 0.5, 0.36, 0.04, 0.3, '#1a1a1e', w, h, cam)
 }
 
 function drawProMonitor(
@@ -317,11 +320,6 @@ function drawProMonitor(
       ctx.fillStyle = bull ? 'rgba(14,203,129,0.35)' : 'rgba(246,70,93,0.35)'
       ctx.fillRect(cx - bodyW / 2, volTop + volH - vh, bodyW, vh)
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-    ctx.beginPath()
-    ctx.moveTo(chartLeft, chartBot + 1)
-    ctx.lineTo(chartLeft + chartW, chartBot + 1)
-    ctx.stroke()
   }
 
   ctx.fillStyle = '#0a0e14'
@@ -374,17 +372,52 @@ function paint(
   ctx.fillStyle = '#0c1014'
   ctx.fillRect(0, 0, w, h)
 
+  // back wall + city windows
   const wall = [
     project(FMIN, 0, FMIN, w, h, cam),
     project(FMAX, 0, FMIN, w, h, cam),
-    project(FMAX, 3.2, FMIN, w, h, cam),
-    project(FMIN, 3.2, FMIN, w, h, cam),
+    project(FMAX, 3.4, FMIN, w, h, cam),
+    project(FMIN, 3.4, FMIN, w, h, cam),
   ]
   ctx.beginPath()
   wall.forEach((c, i) => (i ? ctx.lineTo(c.sx, c.sy) : ctx.moveTo(c.sx, c.sy)))
   ctx.closePath()
-  ctx.fillStyle = '#1a2228'
+  ctx.fillStyle = '#1c242c'
   ctx.fill()
+  for (let wi = 0; wi < 4; wi++) {
+    const wx0 = FMIN + 0.4 + wi * 2.6
+    const wx1 = wx0 + 2.2
+    const panes = [
+      project(wx0, 0.6, FMIN + 0.05, w, h, cam),
+      project(wx1, 0.6, FMIN + 0.05, w, h, cam),
+      project(wx1, 3.1, FMIN + 0.05, w, h, cam),
+      project(wx0, 3.1, FMIN + 0.05, w, h, cam),
+    ]
+    ctx.beginPath()
+    panes.forEach((c, i) => (i ? ctx.lineTo(c.sx, c.sy) : ctx.moveTo(c.sx, c.sy)))
+    ctx.closePath()
+    const g = ctx.createLinearGradient(panes[0]!.sx, panes[0]!.sy, panes[0]!.sx, panes[2]!.sy)
+    g.addColorStop(0, '#3a5070')
+    g.addColorStop(0.5, '#2a3a50')
+    g.addColorStop(1, '#1a2838')
+    ctx.fillStyle = g
+    ctx.fill()
+    for (let b = 0; b < 5; b++) {
+      const bx = wx0 + 0.15 + b * 0.4
+      const bh = 0.8 + (b % 3) * 0.5
+      const bp = [
+        project(bx, 0.7, FMIN + 0.08, w, h, cam),
+        project(bx + 0.28, 0.7, FMIN + 0.08, w, h, cam),
+        project(bx + 0.28, 0.7 + bh, FMIN + 0.08, w, h, cam),
+        project(bx, 0.7 + bh, FMIN + 0.08, w, h, cam),
+      ]
+      ctx.beginPath()
+      bp.forEach((c, i) => (i ? ctx.lineTo(c.sx, c.sy) : ctx.moveTo(c.sx, c.sy)))
+      ctx.closePath()
+      ctx.fillStyle = b % 2 ? 'rgba(20,30,45,0.55)' : 'rgba(30,45,65,0.45)'
+      ctx.fill()
+    }
+  }
 
   drawFloor(ctx, w, h, cam)
   drawDoor(ctx, w, h, cam)
@@ -416,11 +449,23 @@ function paint(
       box(ctx, x + 1.0, 0, z - 1.0, 0.1, 1.7, 1.8, '#6E1423', w, h, cam)
     }
 
-    box(ctx, x - 0.7, 0.05, z - 0.42, 1.4, 0.5, 0.9, '#5a4530', w, h, cam)
-    box(ctx, x - 0.35, 0.55, z - 0.18, 0.14, 0.14, 0.12, '#1a1a1a', w, h, cam)
-    box(ctx, x + 0.2, 0.55, z - 0.18, 0.14, 0.14, 0.12, '#1a1a1a', w, h, cam)
-    box(ctx, x - 0.72, 0.68, z - 0.35, 0.7, 0.58, 0.08, '#111', w, h, cam)
-    box(ctx, x + 0.02, 0.68, z - 0.35, 0.7, 0.58, 0.08, '#111', w, h, cam)
+    // desk surface (light grey)
+    box(ctx, x - 0.85, 0.02, z - 0.5, 1.7, 0.48, 1.05, '#4a5560', w, h, cam)
+    box(ctx, x - 0.85, 0.5, z - 0.5, 1.7, 0.04, 1.05, '#6a7580', w, h, cam)
+    // dual monitor arms
+    box(ctx, x - 0.4, 0.54, z - 0.2, 0.12, 0.18, 0.1, '#2a2a2e', w, h, cam)
+    box(ctx, x + 0.25, 0.54, z - 0.2, 0.12, 0.18, 0.1, '#2a2a2e', w, h, cam)
+    // monitor chassis
+    box(ctx, x - 0.82, 0.7, z - 0.38, 0.78, 0.62, 0.1, '#0a0a0c', w, h, cam)
+    box(ctx, x + 0.05, 0.7, z - 0.38, 0.78, 0.62, 0.1, '#0a0a0c', w, h, cam)
+    // keyboard
+    box(ctx, x - 0.25, 0.54, z + 0.15, 0.55, 0.03, 0.22, '#1a1a1e', w, h, cam)
+    // desk lamp
+    box(ctx, x + 0.55, 0.54, z + 0.2, 0.08, 0.35, 0.08, '#c8b090', w, h, cam)
+    box(ctx, x + 0.48, 0.88, z + 0.12, 0.22, 0.08, 0.2, '#e8d8b0', w, h, cam)
+    // bust decor
+    box(ctx, x - 0.7, 0.54, z + 0.25, 0.14, 0.22, 0.14, '#d0d0d0', w, h, cam)
+    box(ctx, x - 0.68, 0.76, z + 0.27, 0.1, 0.12, 0.1, '#e8e8e8', w, h, cam)
 
     const assetKey = (ag?.asset || 'BTCUSDT').toUpperCase()
     const bars =
@@ -448,7 +493,7 @@ function paint(
 
     drawChair(ctx, x, z, w, h, cam, occupied)
 
-    const plate = project(x, 0.08, z + 1.1, w, h, cam)
+    const plate = project(x, 0.08, z + 1.15, w, h, cam)
     const nameFs = Math.max(13, Math.round(cam.scale * 0.55))
     const roleFs = Math.max(10, Math.round(cam.scale * 0.42))
     ctx.font = `bold ${nameFs}px monospace`
@@ -483,34 +528,50 @@ function paint(
       !!ag.seated &&
       ['sitting', 'researching', 'strategizing', 'reporting', 'idle'].includes(ag.activity)
     const bob = ag.activity === 'walking' ? Math.sin(Date.now() / 140) * 0.04 : 0
-    const bodyH = seated ? 0.38 : 0.58
-    const y = seated ? 0.28 + bob * 0.2 : 0.06 + bob
-    if (!seated) {
-      box(ctx, ax - 0.1, 0.02, az - 0.06, 0.08, 0.28, 0.1, '#2a2a40', w, h, cam)
-      box(ctx, ax + 0.02, 0.02, az - 0.06, 0.08, 0.28, 0.1, '#2a2a40', w, h, cam)
+    const suit = ag.color || '#3a4555'
+    const skin = '#d4b896'
+
+    if (seated) {
+      box(ctx, ax - 0.12, 0.02, az + 0.15, 0.1, 0.28, 0.12, '#1a2030', w, h, cam)
+      box(ctx, ax + 0.02, 0.02, az + 0.15, 0.1, 0.28, 0.12, '#1a2030', w, h, cam)
+      box(ctx, ax - 0.16, 0.28 + bob * 0.15, az + 0.05, 0.32, 0.42, 0.2, suit, w, h, cam)
+      box(ctx, ax - 0.06, 0.55 + bob * 0.15, az + 0.06, 0.12, 0.08, 0.04, '#f0f0f0', w, h, cam)
+      box(ctx, ax - 0.22, 0.48, az - 0.05, 0.1, 0.08, 0.28, suit, w, h, cam)
+      box(ctx, ax + 0.12, 0.48, az - 0.05, 0.1, 0.08, 0.28, suit, w, h, cam)
+      box(ctx, ax - 0.2, 0.52, az - 0.12, 0.08, 0.05, 0.08, skin, w, h, cam)
+      box(ctx, ax + 0.14, 0.52, az - 0.12, 0.08, 0.05, 0.08, skin, w, h, cam)
+      box(ctx, ax - 0.1, 0.72 + bob * 0.15, az + 0.08, 0.2, 0.22, 0.18, skin, w, h, cam)
+      box(ctx, ax - 0.1, 0.9 + bob * 0.15, az + 0.08, 0.2, 0.06, 0.18, '#2a1a10', w, h, cam)
+      box(ctx, ax - 0.12, 0.82 + bob * 0.15, az + 0.05, 0.24, 0.04, 0.04, '#1a1a1a', w, h, cam)
+    } else {
+      box(ctx, ax - 0.1, 0.02 + bob, az - 0.06, 0.09, 0.32, 0.1, '#1a2030', w, h, cam)
+      box(ctx, ax + 0.02, 0.02 - bob, az - 0.06, 0.09, 0.32, 0.1, '#1a2030', w, h, cam)
+      box(ctx, ax - 0.15, 0.32, az - 0.1, 0.3, 0.4, 0.2, suit, w, h, cam)
+      box(ctx, ax - 0.06, 0.58, az - 0.08, 0.12, 0.08, 0.04, '#f0f0f0', w, h, cam)
+      box(ctx, ax - 0.1, 0.72, az - 0.08, 0.2, 0.22, 0.18, skin, w, h, cam)
+      box(ctx, ax - 0.1, 0.9, az - 0.08, 0.2, 0.06, 0.18, '#2a1a10', w, h, cam)
     }
-    box(ctx, ax - 0.14, y, az - 0.11, 0.28, bodyH, 0.22, ag.color || '#888', w, h, cam)
-    box(ctx, ax - 0.11, y + bodyH, az - 0.09, 0.22, 0.22, 0.18, '#e8c4a0', w, h, cam)
+
+    const headY = seated ? 1.05 + bob * 0.15 : 1.05
+    const p = project(ax, headY, az + (seated ? 0.1 : 0), w, h, cam)
     if (ag.activity === 'coffee' || ag.activity === 'water') {
-      const p = project(ax, y + bodyH + 0.35, az, w, h, cam)
       ctx.font = '14px sans-serif'
-      ctx.fillText(ag.activity === 'coffee' ? '☕' : '💧', p.sx - 6, p.sy)
+      ctx.fillText(ag.activity === 'coffee' ? '☕' : '💧', p.sx - 6, p.sy - 28)
     }
-    const p = project(ax, y + bodyH + 0.35, az, w, h, cam)
     {
       const tag = (ag.asset || '—').toUpperCase()
       ctx.font = 'bold 11px monospace'
       const tw = ctx.measureText(tag).width + 14
       ctx.fillStyle = 'rgba(0,0,0,0.85)'
-      ctx.fillRect(p.sx - tw / 2, p.sy - 18, tw, 16)
+      ctx.fillRect(p.sx - tw / 2, p.sy - 28, tw, 16)
       ctx.strokeStyle = 'rgba(244,211,94,0.55)'
-      ctx.strokeRect(p.sx - tw / 2, p.sy - 18, tw, 16)
+      ctx.strokeRect(p.sx - tw / 2, p.sy - 28, tw, 16)
       ctx.fillStyle = '#F4D35E'
       ctx.textAlign = 'center'
-      ctx.fillText(tag, p.sx, p.sy - 6)
+      ctx.fillText(tag, p.sx, p.sy - 16)
       ctx.textAlign = 'left'
     }
-    if (ag.chatLine) drawBubble(ctx, p.sx, p.sy - 22, ag.chatLine)
+    if (ag.chatLine) drawBubble(ctx, p.sx, p.sy - 32, ag.chatLine)
   }
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)'
@@ -518,7 +579,7 @@ function paint(
   ctx.fillStyle = '#9aa3ad'
   ctx.font = '11px monospace'
   ctx.fillText(
-    `drag=pan · Shift=gira · zoom · monitor: ${interval} · ${(exchange || 'binance').toUpperCase()}`,
+    `drag=pan · Shift=gira · zoom · ${interval} · ${(exchange || 'binance').toUpperCase()}`,
     12,
     h - 14
   )
