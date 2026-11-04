@@ -1,11 +1,14 @@
 /**
- * Trading Desk — 3D autonomous office with live monitor charts.
+ * Trading Desk — each monitor shows real OHLC for that agent's asset.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMarketStore } from '@/stores/marketStore'
 import { useLayoutStore } from '@/stores/layoutStore'
 import { useResolvedChartLink } from '@/hooks/ChartLinkContext'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
+import { getExchangeClient } from '@/data/exchanges/registry'
+import { fetchKlinesPage } from '@/data/klines/history'
+import type { Interval, ExchangeId } from '@/types'
 import {
   AI_PROVIDERS,
   loadAiSettings,
@@ -113,7 +116,7 @@ export function TradingDeskPanel() {
     {
       id: 'welcome',
       role: 'sys',
-      text: '3D Desk — i monitor mostrano candele reali. Premi Report completo per analisi dettagliata.',
+      text: '3D Desk — ogni monitor = grafico reale dell\'asset del pupazzo.',
       ts: Date.now(),
     },
   ])
@@ -135,15 +138,69 @@ export function TradingDeskPanel() {
     return map
   }, [symbol, candles])
 
-  const monitorCandleMap = useMemo(() => {
-    const out: Record<string, { o: number; h: number; l: number; c: number }[]> = {}
-    const toMini = (arr: typeof candles) =>
-      arr.slice(-40).map((c) => ({ o: c.open, h: c.high, l: c.low, c: c.close }))
-    const mini = toMini(candles)
-    out[symbol] = mini
-    for (const s of RESEARCH_UNIVERSE) out[s] = mini
-    return out
+  const [monitorCandleMap, setMonitorCandleMap] = useState<
+    Record<string, { o: number; h: number; l: number; c: number }[]>
+  >({})
+
+  useEffect(() => {
+    if (!candles.length) return
+    const mini = candles.slice(-40).map((c) => ({ o: c.open, h: c.high, l: c.low, c: c.close }))
+    setMonitorCandleMap((prev) => ({ ...prev, [symbol]: mini }))
   }, [symbol, candles])
+
+  const agentAssetKey = agents3d.map((a) => a.asset).sort().join('|')
+
+  useEffect(() => {
+    let cancelled = false
+    const assets = new Set<string>()
+    assets.add(symbol.toUpperCase())
+    for (const a of agents3d) {
+      if (a.asset) assets.add(a.asset.toUpperCase())
+    }
+    for (const s of RESEARCH_UNIVERSE) assets.add(s)
+
+    const run = async () => {
+      const client = getExchangeClient((exchange as ExchangeId) || 'binance')
+      const iv = (interval || '15m') as Interval
+      const next: Record<string, { o: number; h: number; l: number; c: number }[]> = {}
+      await Promise.all(
+        [...assets].map(async (sym) => {
+          try {
+            if (sym === symbol.toUpperCase() && candles.length >= 8) {
+              next[sym] = candles.slice(-40).map((c) => ({
+                o: c.open,
+                h: c.high,
+                l: c.low,
+                c: c.close,
+              }))
+              return
+            }
+            const bars = await fetchKlinesPage(client, sym, iv, { limit: 40 })
+            if (cancelled) return
+            if (bars?.length) {
+              next[sym] = bars.slice(-40).map((c) => ({
+                o: c.open,
+                h: c.high,
+                l: c.low,
+                c: c.close,
+              }))
+            }
+          } catch {
+            /* keep previous */
+          }
+        })
+      )
+      if (cancelled) return
+      setMonitorCandleMap((prev) => ({ ...prev, ...next }))
+    }
+    void run()
+    const id = window.setInterval(() => void run(), 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, interval, exchange, candles, agentAssetKey])
 
   useEffect(() => {
     let raf = 0
