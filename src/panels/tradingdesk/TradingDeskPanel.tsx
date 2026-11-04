@@ -73,15 +73,15 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
   const layoutPanel = useLayoutStore((s) => s.panels.find((p) => p.id === panelId))
   const { symbol: linkedSymbol, interval: linkedInterval, exchange: linkedExchange } = useResolvedChartLink(panelId)
   const market = usePanelMarket(panelId)
-  const symbol = (linkedSymbol || market.symbol || 'BTCUSDT').toUpperCase()
-  const interval = (linkedInterval || market.interval || '15m') as Interval
-  const exchange = (linkedExchange || market.exchange || 'binance') as ExchangeId
+  const symbol = String(linkedSymbol || market?.symbol || 'BTCUSDT').toUpperCase()
+  const interval = (linkedInterval || market?.interval || '15m') as Interval
+  const exchange = (linkedExchange || market?.exchange || 'binance') as ExchangeId
 
   const marketCandles = useMarketStore((s) => s.candles)
   const marketSymbol = useMarketStore((s) => s.symbol)
   const [linkedCandles, setLinkedCandles] = useState(marketCandles)
   const candles =
-    marketSymbol?.toUpperCase() === symbol
+    String(marketSymbol || '').toUpperCase() === symbol
       ? marketCandles
       : linkedCandles
 
@@ -111,11 +111,11 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
   // multi-symbol klines for monitors
   useEffect(() => {
     let cancelled = false
-    const assets = Array.from(new Set([
-      symbol,
-      ...agentsRef.current.map((a) => a.asset),
-      ...RESEARCH_UNIVERSE.slice(0, 6),
-    ].map((s) => s.toUpperCase())))
+    const assets = Array.from(new Set(
+      [symbol, ...agentsRef.current.map((a) => a.asset), ...RESEARCH_UNIVERSE.slice(0, 6)]
+        .filter((s): s is string => typeof s === 'string' && s.length > 0)
+        .map((s) => s.toUpperCase())
+    ))
     ;(async () => {
       const client = getExchangeClient(exchange)
       const map: Record<string, { o: number; h: number; l: number; c: number }[]> = {}
@@ -123,7 +123,12 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
         assets.map(async (sym) => {
           try {
             const page = await fetchKlinesPage(client, sym, interval, { limit: 48 })
-            map[sym] = page.map((k) => ({ o: k.open, h: k.high, l: k.low, c: k.close }))
+            map[sym] = page.map((k: any) => ({
+              o: Number(k.open ?? k.o),
+              h: Number(k.high ?? k.h),
+              l: Number(k.low ?? k.l),
+              c: Number(k.close ?? k.c),
+            })).filter((b) => Number.isFinite(b.c))
           } catch { /* */ }
         })
       )
@@ -133,7 +138,7 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
   }, [symbol, interval, exchange, agents3d.length])
 
   useEffect(() => {
-    if (marketSymbol?.toUpperCase() === symbol) return
+    if (String(marketSymbol || '').toUpperCase() === symbol) return
     let cancelled = false
     ;(async () => {
       try {
@@ -150,7 +155,7 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
     const id = window.setInterval(() => {
       const candleMap: Record<string, typeof candles> = {}
       for (const a of agentsRef.current) {
-        const key = a.asset.toUpperCase()
+        const key = String(a.asset || 'BTCUSDT').toUpperCase()
         if (monitorCandleMap[key]?.length) {
           candleMap[key] = monitorCandleMap[key]!.map((b, i) => ({
             time: i as never,
@@ -337,7 +342,7 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
           <div style={{ fontSize: 10, color: '#848e9c', marginBottom: 4 }}>
             CAPO · LIVE ·{' '}
             <span style={{ color: autoReports[0].bias === 'bullish' ? '#0ecb81' : autoReports[0].bias === 'bearish' ? '#f6465d' : '#848e9c' }}>
-              {autoReports[0].bias.toUpperCase()}
+              {String(autoReports[0].bias || 'neutral').toUpperCase()}
             </span>
           </div>
           <div style={{ color: '#eaecef', fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160, overflowY: 'auto' }}>
