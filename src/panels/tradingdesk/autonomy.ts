@@ -151,20 +151,28 @@ function probeStrategy(asset: string, candles: Candle[] | undefined): {
       body: `${sym}: waiting for enough bars to frame a plan.`,
     }
   }
-  const ta = analyzeCandles(candles)
-  const smc = analyzeSmc(candles)
-  const liq = analyzeLiquidity(candles)
-  const last = candles[candles.length - 1]!
-  const strategy = STRATEGY_LABELS[Math.floor(Math.random() * STRATEGY_LABELS.length)]!
-  const bias = (ta?.bias ?? 'neutral') as 'bullish' | 'bearish' | 'neutral'
-  const body = [
-    `${sym} @ ${last.close.toFixed(last.close >= 100 ? 1 : 4)} · bias ${bias}`,
-    ta?.summary?.[0] ?? 'Structure scan complete',
-    liq ? `Liq ${liq.bias}` : '',
-    smc?.breaks?.length ? `Last break ${smc.breaks[smc.breaks.length - 1]!.direction}` : '',
-    `Plan: ${strategy}`,
-  ].filter(Boolean).join(' · ')
-  return { bias, strategy, body }
+  try {
+    const ta = analyzeCandles(candles, sym, '15m')
+    const smc = analyzeSmc(candles)
+    const liq = analyzeLiquidity(candles, null, [])
+    const last = candles[candles.length - 1]!
+    const strategy = STRATEGY_LABELS[Math.floor(Math.random() * STRATEGY_LABELS.length)]!
+    const bias = (ta?.bias ?? 'neutral') as 'bullish' | 'bearish' | 'neutral'
+    const body = [
+      `${sym} @ ${last.close.toFixed(last.close >= 100 ? 1 : 4)} · bias ${bias}`,
+      ta?.summary?.[0] ?? 'Structure scan complete',
+      liq ? `Liq ${liq.bias}` : '',
+      smc?.breaks?.length ? `Last break ${smc.breaks[smc.breaks.length - 1]!.direction}` : '',
+      `Plan: ${strategy}`,
+    ].filter(Boolean).join(' · ')
+    return { bias, strategy, body }
+  } catch (e) {
+    return {
+      bias: 'neutral',
+      strategy: 'probe error',
+      body: `${sym}: analysis skipped (${e instanceof Error ? e.message : 'error'})`,
+    }
+  }
 }
 
 export function tickAutonomy(
@@ -250,7 +258,7 @@ export function tickAutonomy(
           a.bias = probe.bias
           a.strategy = probe.strategy
           a.activity = 'strategizing'
-          a.chatLine = probe.body.slice(0, 48)
+          a.chatLine = String(probe.body || '').slice(0, 48)
           reports.push({
             agentId: a.agentId,
             slotId: a.slotId,
