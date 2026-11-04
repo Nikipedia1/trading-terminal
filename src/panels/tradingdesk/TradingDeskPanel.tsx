@@ -2,8 +2,6 @@
  * Trading Desk — each monitor shows real OHLC for that agent's asset.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useMarketStore } from '@/stores/marketStore'
-import { useLayoutStore } from '@/stores/layoutStore'
 import { useResolvedChartLink } from '@/hooks/ChartLinkContext'
 import { usePanelMarket } from '@/hooks/usePanelMarket'
 import { getExchangeClient } from '@/data/exchanges/registry'
@@ -70,20 +68,15 @@ function MsgBubble({ m }: { m: DeskMessage }) {
 }
 
 export function TradingDeskPanel({ panelId }: { panelId: string }) {
-  const layoutPanel = useLayoutStore((s) => s.panels.find((p) => p.id === panelId))
-  const { symbol: linkedSymbol, interval: linkedInterval, exchange: linkedExchange } = useResolvedChartLink(panelId)
-  const market = usePanelMarket(panelId)
-  const symbol = String(linkedSymbol || market?.symbol || 'BTCUSDT').toUpperCase()
-  const interval = (linkedInterval || market?.interval || '15m') as Interval
-  const exchange = (linkedExchange || market?.exchange || 'binance') as ExchangeId
+  // Chart link provides symbol/interval/exchange — never pass panelId into usePanelMarket
+  const link = useResolvedChartLink('follow')
+  const symbol = String(link.symbol || 'BTCUSDT').toUpperCase()
+  const interval = (link.interval || '15m') as Interval
+  const exchange = (link.exchange || 'binance') as ExchangeId
 
-  const marketCandles = useMarketStore((s) => s.candles)
-  const marketSymbol = useMarketStore((s) => s.symbol)
-  const [linkedCandles, setLinkedCandles] = useState(marketCandles)
-  const candles =
-    String(marketSymbol || '').toUpperCase() === symbol
-      ? marketCandles
-      : linkedCandles
+  // Real market data for the linked instrument
+  const market = usePanelMarket(symbol, interval, exchange)
+  const candles = market.candles
 
   const [slots, setSlots] = useState<DeskSlot[]>(() => defaultSlots())
   const [agents3d, setAgents3d] = useState<AutonomyAgent[]>(() => agentsFromSlots(defaultSlots()))
@@ -117,57 +110,48 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
         .map((s) => s.toUpperCase())
     ))
     ;(async () => {
-      const client = getExchangeClient(exchange)
-      const map: Record<string, { o: number; h: number; l: number; c: number }[]> = {}
-      await Promise.all(
-        assets.map(async (sym) => {
-          try {
-            const page = await fetchKlinesPage(client, sym, interval, { limit: 48 })
-            map[sym] = page.map((k: any) => ({
-              o: Number(k.open ?? k.o),
-              h: Number(k.high ?? k.h),
-              l: Number(k.low ?? k.l),
-              c: Number(k.close ?? k.c),
-            })).filter((b) => Number.isFinite(b.c))
-          } catch { /* */ }
-        })
-      )
-      if (!cancelled) setMonitorCandleMap(map)
+      try {
+        const client = getExchangeClient(exchange)
+        const map: Record<string, { o: number; h: number; l: number; c: number }[]> = {}
+        await Promise.all(
+          assets.map(async (sym) => {
+            try {
+              const page = await fetchKlinesPage(client, sym, interval, { limit: 48 })
+              map[sym] = page.map((k: any) => ({
+                o: Number(k.open ?? k.o),
+                h: Number(k.high ?? k.h),
+                l: Number(k.low ?? k.l),
+                c: Number(k.close ?? k.c),
+              })).filter((b) => Number.isFinite(b.c))
+            } catch { /* */ }
+          })
+        )
+        if (!cancelled) setMonitorCandleMap(map)
+      } catch { /* */ }
     })()
     return () => { cancelled = true }
   }, [symbol, interval, exchange, agents3d.length])
 
   useEffect(() => {
-    if (String(marketSymbol || '').toUpperCase() === symbol) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const client = getExchangeClient(exchange)
-        const page = await fetchKlinesPage(client, symbol, interval, { limit: 200 })
-        if (!cancelled) setLinkedCandles(page as typeof marketCandles)
-      } catch { /* */ }
-    })()
-    return () => { cancelled = true }
-  }, [symbol, interval, exchange, marketSymbol])
-
-  useEffect(() => {
     if (!autonomous) return
     const id = window.setInterval(() => {
-      const candleMap: Record<string, typeof candles> = {}
-      for (const a of agentsRef.current) {
-        const key = String(a.asset || 'BTCUSDT').toUpperCase()
-        if (monitorCandleMap[key]?.length) {
-          candleMap[key] = monitorCandleMap[key]!.map((b, i) => ({
-            time: i as never,
-            open: b.o, high: b.h, low: b.l, close: b.c, volume: 0,
-          })) as typeof candles
+      try {
+        const candleMap: Record<string, typeof candles> = {}
+        for (const a of agentsRef.current) {
+          const key = String(a.asset || 'BTCUSDT').toUpperCase()
+          if (monitorCandleMap[key]?.length) {
+            candleMap[key] = monitorCandleMap[key]!.map((b, i) => ({
+              time: i as never,
+              open: b.o, high: b.h, low: b.l, close: b.c, volume: 0,
+            })) as typeof candles
+          }
         }
-      }
-      if (candles?.length) candleMap[symbol] = candles
-      const { agents, reports } = tickAutonomy(agentsRef.current, slots, candleMap)
-      agentsRef.current = agents
-      setAgents3d(agents)
-      if (reports.length) setAutoReports((prev) => [...reports, ...prev].slice(0, 8))
+        if (candles?.length) candleMap[symbol] = candles
+        const { agents, reports } = tickAutonomy(agentsRef.current, slots, candleMap)
+        agentsRef.current = agents
+        setAgents3d(agents)
+        if (reports.length) setAutoReports((prev) => [...reports, ...prev].slice(0, 8))
+      } catch { /* keep desk alive */ }
     }, 900)
     return () => clearInterval(id)
   }, [autonomous, slots, candles, symbol, monitorCandleMap])
@@ -178,8 +162,8 @@ export function TradingDeskPanel({ panelId }: { panelId: string }) {
 
   const ctx = useMemo(() => ({
     symbol,
-    interval: String(interval),
-    exchange: String(exchange),
+    interval: String(interval || '15m'),
+    exchange: String(exchange || 'binance'),
     lastPrice: candles?.length ? candles[candles.length - 1]!.close : null,
     candleCount: candles?.length ?? 0,
   }), [symbol, interval, exchange, candles])
