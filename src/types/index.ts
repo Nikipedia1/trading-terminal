@@ -125,6 +125,7 @@ export type WidgetKind =
   | 'ofi'
   | 'iceberg'
   | 'tradingdesk'
+  | 'opscanner'
 
 export interface WidgetPanelConfig {
   id: string
