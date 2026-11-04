@@ -121,7 +121,7 @@ export function agentsFromSlots(slots: DeskSlot[]): AutonomyAgent[] {
     targetZ: s.homeZ,
     activity: 'idle' as AutonomyActivity,
     seated: true,
-    asset: RESEARCH_UNIVERSE[idx % RESEARCH_UNIVERSE.length]!,
+    asset: String(RESEARCH_UNIVERSE[idx % RESEARCH_UNIVERSE.length] || 'BTCUSDT'),
     bias: 'neutral' as const,
     strategy: STRATEGY_LABELS[idx % STRATEGY_LABELS.length]!,
     chatLine: '',
@@ -135,7 +135,7 @@ function dist(ax: number, az: number, bx: number, bz: number) {
 
 function pickAsset(prev: string) {
   const pool = RESEARCH_UNIVERSE.filter((s) => s !== prev)
-  return pool[Math.floor(Math.random() * pool.length)] || prev
+  return pool[Math.floor(Math.random() * pool.length)] || prev || 'BTCUSDT'
 }
 
 function probeStrategy(asset: string, candles: Candle[] | undefined): {
@@ -143,11 +143,12 @@ function probeStrategy(asset: string, candles: Candle[] | undefined): {
   strategy: string
   body: string
 } {
+  const sym = asset || 'BTCUSDT'
   if (!candles || candles.length < 8) {
     return {
       bias: 'neutral',
       strategy: 'data warmup',
-      body: `${asset}: waiting for enough bars to frame a plan.`,
+      body: `${sym}: waiting for enough bars to frame a plan.`,
     }
   }
   const ta = analyzeCandles(candles)
@@ -157,7 +158,7 @@ function probeStrategy(asset: string, candles: Candle[] | undefined): {
   const strategy = STRATEGY_LABELS[Math.floor(Math.random() * STRATEGY_LABELS.length)]!
   const bias = (ta?.bias ?? 'neutral') as 'bullish' | 'bearish' | 'neutral'
   const body = [
-    `${asset} @ ${last.close.toFixed(last.close >= 100 ? 1 : 4)} · bias ${bias}`,
+    `${sym} @ ${last.close.toFixed(last.close >= 100 ? 1 : 4)} · bias ${bias}`,
     ta?.summary?.[0] ?? 'Structure scan complete',
     liq ? `Liq ${liq.bias}` : '',
     smc?.breaks?.length ? `Last break ${smc.breaks[smc.breaks.length - 1]!.direction}` : '',
@@ -173,7 +174,7 @@ export function tickAutonomy(
   now = Date.now()
 ): { agents: AutonomyAgent[]; reports: AutonomyReport[] } {
   const reports: AutonomyReport[] = []
-  const next = agents.map((a) => ({ ...a }))
+  const next = agents.map((a) => ({ ...a, asset: a.asset || 'BTCUSDT' }))
   const slotById = new Map(slots.map((s) => [s.id, s]))
 
   for (const a of next) {
@@ -244,7 +245,8 @@ export function tickAutonomy(
           a.activity = 'researching'
           a.chatLine = `Research su ${a.asset}`
         } else if (roll < 0.55) {
-          const probe = probeStrategy(a.asset, candleMap[a.asset] || candleMap[a.asset.toUpperCase()])
+          const assetKey = String(a.asset || 'BTCUSDT')
+          const probe = probeStrategy(assetKey, candleMap[assetKey] || candleMap[assetKey.toUpperCase()])
           a.bias = probe.bias
           a.strategy = probe.strategy
           a.activity = 'strategizing'
@@ -252,8 +254,8 @@ export function tickAutonomy(
           reports.push({
             agentId: a.agentId,
             slotId: a.slotId,
-            asset: a.asset,
-            title: `${a.name} · ${a.asset}`,
+            asset: assetKey,
+            title: `${a.name} · ${assetKey}`,
             body: probe.body,
             bias: probe.bias,
             ts: now,
@@ -301,7 +303,7 @@ export function addSeat(slots: DeskSlot[], agents: AutonomyAgent[], agentId: Des
     targetZ: slot.homeZ,
     activity: 'idle',
     seated: true,
-    asset: RESEARCH_UNIVERSE[n % RESEARCH_UNIVERSE.length]!,
+    asset: String(RESEARCH_UNIVERSE[n % RESEARCH_UNIVERSE.length] || 'BTCUSDT'),
     bias: 'neutral',
     strategy: STRATEGY_LABELS[n % STRATEGY_LABELS.length]!,
     chatLine: isChief ? 'Master Chief online. Position desk ready.' : '',
