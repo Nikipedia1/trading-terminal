@@ -123,9 +123,27 @@ export interface DeskAnalysisBundle {
 
 export function buildAnalysis(candles: Candle[], ctx: DeskMarketContext): DeskAnalysisBundle {
   const safe = Array.isArray(candles) ? candles : []
-  const ta = safe.length >= 5 ? analyzeCandles(safe) : null
-  const smc = safe.length >= 10 ? analyzeSmc(safe) : null
-  const liq = safe.length >= 10 ? analyzeLiquidity(safe) : null
+  const sym = String(ctx?.symbol || 'BTCUSDT')
+  const tf = String(ctx?.interval || '15m')
+  let ta: TaReport | null = null
+  let smc: SmcReport | null = null
+  let liq: LiquidityReport | null = null
+  try {
+    ta = safe.length >= 5 ? analyzeCandles(safe, sym, tf) : null
+  } catch {
+    ta = null
+  }
+  try {
+    smc = safe.length >= 10 ? analyzeSmc(safe) : null
+  } catch {
+    smc = null
+  }
+  try {
+    // signature: (candles, book, trades)
+    liq = safe.length >= 10 ? analyzeLiquidity(safe, null, []) : null
+  } catch {
+    liq = null
+  }
   return { ta, smc, liq, ctx }
 }
 
