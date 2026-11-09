@@ -7,4 +7,5 @@ export {
   type GammaConfig,
   type GammaLevel,
   type GammaModel,
+  type GammaStrikeRow,
 } from './types'

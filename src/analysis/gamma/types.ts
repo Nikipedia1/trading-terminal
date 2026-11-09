@@ -1,11 +1,22 @@
-/** Gamma / options positioning levels (public Deribit data). */
+/** Gamma / GEX – public Deribit options positioning (Classic-style views). */
 
 export interface GammaLevel {
   price: number
   /** net gex proxy or signed OI weight */
   value: number
-  kind: 'call_wall' | 'put_wall' | 'flip' | 'max_pain' | 'hvl'
+  kind: 'call_wall' | 'put_wall' | 'flip' | 'max_pain' | 'hvl' | 'dominant_pos' | 'dominant_neg'
   label: string
+}
+
+/** Per-strike OI + GEX proxy for profile / heatmap bars */
+export interface GammaStrikeRow {
+  strike: number
+  callOi: number
+  putOi: number
+  /** callOi - putOi (simple net) */
+  net: number
+  /** dealer-style proxy: +call above spot, -put below */
+  gex: number
 }
 
 export interface GammaModel {
@@ -13,7 +24,14 @@ export interface GammaModel {
   spot: number
   asOf: number
   levels: GammaLevel[]
-  /** human note (limits of public feed) */
+  /** Full strike profile for left/right bars (sorted by strike asc) */
+  profile: GammaStrikeRow[]
+  /** Aggregate net GEX proxy */
+  netGex: number
+  callWall: number | null
+  putWall: number | null
+  flip: number | null
+  maxPain: number | null
   note: string
   source: 'deribit'
 }
@@ -22,6 +40,10 @@ export interface GammaConfig {
   walls: boolean
   flip: boolean
   maxPain: boolean
+  /** Draw OI/GEX profile bars on chart sides */
+  profile: boolean
+  /** Thick zone lines at walls */
+  zones: boolean
   pollSec: number
 }
 
@@ -29,7 +51,9 @@ export const DEFAULT_GAMMA_CONFIG: GammaConfig = {
   walls: true,
   flip: true,
   maxPain: true,
-  pollSec: 45,
+  profile: true,
+  zones: true,
+  pollSec: 30,
 }
 
 /** Map chart symbol → Deribit currency (spot/futures names). */
