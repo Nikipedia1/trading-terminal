@@ -1,20 +1,19 @@
 /**
- * Gamma-style levels from Deribit option OI (public).
- * Call/put walls, flip proxy, max pain, HVL — not full dealer GEX.
+ * Build GEX-style model from Deribit public option book summaries.
+ * Not full dealer GEX (no published gamma); OI-weighted proxy used by retail tools.
  */
 
 import type { DeribitBookRow } from './deribit'
 import { parseInstrument } from './deribit'
-import type { GammaConfig, GammaLevel, GammaModel } from './types'
+import type { GammaConfig, GammaLevel, GammaModel, GammaStrikeRow } from './types'
 
-interface StrikeAgg {
-  strike: number
-  callOi: number
-  putOi: number
+interface Agg {
+  byStrike: GammaStrikeRow[]
+  spot: number
 }
 
-function aggregate(rows: DeribitBookRow[]): { byStrike: StrikeAgg[]; spot: number } {
-  const map = new Map<number, StrikeAgg>()
+function aggregate(rows: DeribitBookRow[]): Agg {
+  const map = new Map<number, { callOi: number; putOi: number; spot: number }>()
   let spot = 0
   for (const r of rows) {
     const p = parseInstrument(r.instrument_name)
@@ -22,31 +21,44 @@ function aggregate(rows: DeribitBookRow[]): { byStrike: StrikeAgg[]; spot: numbe
     const oi = Number(r.open_interest) || 0
     if (oi <= 0) continue
     if (r.underlying_price > 0) spot = r.underlying_price
-    let a = map.get(p.strike)
-    if (!a) {
-      a = { strike: p.strike, callOi: 0, putOi: 0 }
-      map.set(p.strike, a)
+    let e = map.get(p.strike)
+    if (!e) {
+      e = { callOi: 0, putOi: 0, spot }
+      map.set(p.strike, e)
     }
-    if (p.isCall) a.callOi += oi
-    else a.putOi += oi
+    if (p.isCall) e.callOi += oi
+    else e.putOi += oi
   }
-  const byStrike = [...map.values()].sort((a, b) => a.strike - b.strike)
+  const byStrike: GammaStrikeRow[] = []
+  for (const [strike, v] of map) {
+    const net = v.callOi - v.putOi
+    const gex =
+      strike >= spot ? v.callOi - v.putOi * 0.35 : -(v.putOi - v.callOi * 0.35)
+    byStrike.push({
+      strike,
+      callOi: v.callOi,
+      putOi: v.putOi,
+      net,
+      gex,
+    })
+  }
+  byStrike.sort((a, b) => a.strike - b.strike)
   return { byStrike, spot }
 }
 
-function maxPainStrike(byStrike: StrikeAgg[]): number | null {
-  if (!byStrike.length) return null
-  let best = byStrike[0].strike
-  let bestCost = Infinity
-  for (const pivot of byStrike) {
-    let cost = 0
-    for (const s of byStrike) {
-      if (s.strike < pivot.strike) cost += (pivot.strike - s.strike) * s.putOi
-      else if (s.strike > pivot.strike) cost += (s.strike - pivot.strike) * s.callOi
+function maxPainStrike(rows: GammaStrikeRow[]): number | null {
+  if (!rows.length) return null
+  let best = rows[0]!.strike
+  let bestPain = Infinity
+  for (const cand of rows) {
+    let pain = 0
+    for (const s of rows) {
+      if (cand.strike > s.strike) pain += s.callOi * (cand.strike - s.strike)
+      if (cand.strike < s.strike) pain += s.putOi * (s.strike - cand.strike)
     }
-    if (cost < bestCost) {
-      bestCost = cost
-      best = pivot.strike
+    if (pain < bestPain) {
+      bestPain = pain
+      best = cand.strike
     }
   }
   return best
@@ -61,12 +73,16 @@ export function buildGammaModel(
   if (!byStrike.length || !(spot > 0)) return null
 
   const levels: GammaLevel[] = []
+  let callWall = byStrike[0]!
+  let putWall = byStrike[0]!
+  let maxPos = byStrike[0]!
+  let maxNeg = byStrike[0]!
 
-  let callWall = byStrike[0]
-  let putWall = byStrike[0]
   for (const s of byStrike) {
     if (s.callOi > callWall.callOi) callWall = s
     if (s.putOi > putWall.putOi) putWall = s
+    if (s.gex > maxPos.gex) maxPos = s
+    if (s.gex < maxNeg.gex) maxNeg = s
   }
 
   if (cfg.walls) {
@@ -88,12 +104,30 @@ export function buildGammaModel(
     }
   }
 
+  if (maxPos.gex > 0) {
+    levels.push({
+      price: maxPos.strike,
+      value: maxPos.gex,
+      kind: 'dominant_pos',
+      label: `Max +GEX ${fmt(maxPos.strike)}`,
+    })
+  }
+  if (maxNeg.gex < 0) {
+    levels.push({
+      price: maxNeg.strike,
+      value: maxNeg.gex,
+      kind: 'dominant_neg',
+      label: `Max −GEX ${fmt(maxNeg.strike)}`,
+    })
+  }
+
+  let flipStrike: number | null = null
   if (cfg.flip) {
     const near = byStrike.filter(
       (s) => s.strike >= spot * 0.85 && s.strike <= spot * 1.15
     )
     const pool = near.length ? near : byStrike
-    let flip = pool[0]
+    let flip = pool[0]!
     let best = Math.abs(flip.callOi - flip.putOi)
     for (const s of pool) {
       const d = Math.abs(s.callOi - s.putOi)
@@ -102,16 +136,18 @@ export function buildGammaModel(
         flip = s
       }
     }
+    flipStrike = flip.strike
     levels.push({
       price: flip.strike,
       value: flip.callOi - flip.putOi,
       kind: 'flip',
-      label: `Flip ~ ${fmt(flip.strike)}`,
+      label: `Zero / Flip ~ ${fmt(flip.strike)}`,
     })
   }
 
+  let mp: number | null = null
   if (cfg.maxPain) {
-    const mp = maxPainStrike(byStrike)
+    mp = maxPainStrike(byStrike)
     if (mp != null) {
       levels.push({
         price: mp,
@@ -126,7 +162,7 @@ export function buildGammaModel(
     (s) => s.strike >= spot * 0.9 && s.strike <= spot * 1.1
   )
   if (nearSpot.length) {
-    let hvl = nearSpot[0]
+    let hvl = nearSpot[0]!
     for (const s of nearSpot) {
       if (s.callOi + s.putOi > hvl.callOi + hvl.putOi) hvl = s
     }
@@ -138,13 +174,21 @@ export function buildGammaModel(
     })
   }
 
+  const netGex = byStrike.reduce((a, s) => a + s.gex, 0)
+
   return {
     currency,
     spot,
     asOf: Date.now(),
     levels,
+    profile: byStrike,
+    netGex,
+    callWall: callWall.callOi > 0 ? callWall.strike : null,
+    putWall: putWall.putOi > 0 ? putWall.strike : null,
+    flip: flipStrike,
+    maxPain: mp,
     note:
-      'Deribit public OI walls / max-pain / flip proxy — not full dealer GEX.',
+      'Deribit public OI → GEX proxy (not full dealer gamma). Classic-style walls + profile.',
     source: 'deribit',
   }
 }
