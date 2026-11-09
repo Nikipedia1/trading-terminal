@@ -101,7 +101,7 @@ function Controls() {
       <datalist id="top-symbol-presets">
         {SYMBOL_PRESETS.map((p) => (
           <option key={p.symbol} value={p.symbol}>
-            {formatSymbolOption(p.symbol)} · {p.group}
+            {formatSymbolOption(p.symbol)} - {p.group}
           </option>
         ))}
       </datalist>
@@ -210,7 +210,7 @@ function TerminalApp() {
           <WorkspaceMenu />
           <AuthControls />
           <span className="hidden sm:inline text-xxs text-terminal-muted">
-            Desk · {BRAND.versionLabel}
+            Desk - {BRAND.versionLabel}
           </span>
         </div>
       </header>
@@ -321,11 +321,11 @@ function AuthControls() {
         try {
           sessionStorage.removeItem('nacs-boot-done')
         } catch {
-          /* */
+          /* ignore */
         }
         window.location.reload()
       }}
-      title="Apri schermata login"
+      title="Open login screen"
     >
       Login
     </button>
@@ -361,14 +361,14 @@ export default function App() {
           try {
             sessionStorage.setItem('nacs-boot-done', '1')
           } catch {
-            /* */
+            /* ignore */
           }
           setBootDone(true)
         }}
       />
     )
   }
-  if (status === 'unknown') return <SplashLoader label="Checking secure session…" />
+  if (status === 'unknown') return <SplashLoader label="Checking secure session..." />
   if (status !== 'authenticated') {
     return (
       <ErrorBoundary name="landing">
