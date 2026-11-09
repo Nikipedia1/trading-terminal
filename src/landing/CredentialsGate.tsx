@@ -20,7 +20,7 @@ export function CredentialsGate({
   onClose,
   onSuccess,
   LoginScreen,
-  brandName = 'APEX TERMINAL',
+  brandName = 'NACS Lab Terminal',
 }: CredentialsGateProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -54,7 +54,6 @@ export function CredentialsGate({
       return
     }
     setBusy(true)
-    // Demo / local gate — replace with real auth when LoginScreen is provided
     await new Promise((r) => setTimeout(r, 650))
     if (password.length < 4) {
       setBusy(false)
@@ -77,7 +76,6 @@ export function CredentialsGate({
       aria-modal="true"
       aria-labelledby="cred-gate-title"
     >
-      {/* Backdrop */}
       <button
         type="button"
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -89,7 +87,6 @@ export function CredentialsGate({
         className="relative w-full max-w-[420px] overflow-hidden rounded-2xl border border-[#2b3139] shadow-[0_24px_64px_rgba(0,0,0,0.6)]"
         style={{ background: 'linear-gradient(180deg,#0f1319 0%,#0b0e11 100%)' }}
       >
-        {/* Top gold line */}
         <div
           className="h-[2px] w-full"
           style={{ background: 'linear-gradient(90deg,transparent,#F4D35E,transparent)' }}
@@ -103,7 +100,7 @@ export function CredentialsGate({
                   className="grid h-7 w-7 place-items-center rounded-md text-[12px] font-black text-[#1a1a1a]"
                   style={{ background: 'linear-gradient(135deg,#F4D35E,#e0a800)' }}
                 >
-                  A
+                  N
                 </span>
                 <span className="text-[12px] font-bold tracking-[0.1em] text-[#F4D35E]">{brandName}</span>
               </div>
@@ -125,8 +122,6 @@ export function CredentialsGate({
 
           {LoginScreen ? (
             <div className="nacs-cred-login">
-              {/* Real @/auth LoginScreen updates useAuthStore on success;
-                  parent App then mounts TerminalApp automatically. */}
               <LoginScreen embedded hideLogo />
             </div>
           ) : (
