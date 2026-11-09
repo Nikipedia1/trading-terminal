@@ -17,7 +17,7 @@ function fmtPct(n: number) {
 export function LandingPage({
   onRequestAccess,
   onGuest,
-  brandName = 'APEX TERMINAL',
+  brandName = 'NACS Lab Terminal',
 }: LandingPageProps) {
   const heroChartRef = useRef<HTMLCanvasElement>(null)
   const xrayRef = useRef<HTMLCanvasElement>(null)
@@ -53,7 +53,7 @@ export function LandingPage({
                 boxShadow: '0 0 18px rgba(244,211,94,0.35)',
               }}
             >
-              A
+              N
             </span>
             {brandName}
           </div>
@@ -355,7 +355,7 @@ export function LandingPage({
                 <button
                   type="button"
                   onClick={onGuest}
-                  className="rounded-[10px] border border-[#2a3140] bg-white/[0.03] px-7 py-3.5 text-[15px] font-bold text-[#eaecef]"
+                  className="rounded-[10px] border border-[#2a3140] bg-white/[0.03] px-7 py-3.5 text-[#eaecef]"
                 >
                   Solo lettura (guest)
                 </button>
@@ -372,7 +372,7 @@ export function LandingPage({
               className="grid h-7 w-7 place-items-center rounded-md text-[13px] font-black text-[#1a1a1a]"
               style={{ background: 'linear-gradient(135deg,#F4D35E,#e0a800)' }}
             >
-              A
+              N
             </span>
             {brandName}
           </div>
