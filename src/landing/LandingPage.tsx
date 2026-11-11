@@ -2,7 +2,7 @@
  * NACS Lab Terminal — professional marketing landing (pre-auth).
  */
 import { useEffect, useRef, useState } from 'react'
-import { FEATURES, STEPS, DATA_POINTS, FAQ } from './LandingCopy'
+import { FEATURES, STEPS, DATA_POINTS, FAQ, PLANS } from './LandingCopy'
 import { drawHeroChart, drawXrayStrip } from './LandingCharts'
 
 type LandingPageProps = {
@@ -57,6 +57,7 @@ export function LandingPage({
             <a href="#features" className="hover:text-[#eaecef] transition-colors">Features</a>
             <a href="#how" className="hover:text-[#eaecef] transition-colors">Come funziona</a>
             <a href="#data" className="hover:text-[#eaecef] transition-colors">Dati</a>
+            <a href="#pricing" className="hover:text-[#eaecef] transition-colors">Prezzi</a>
             <a href="#faq" className="hover:text-[#eaecef] transition-colors">FAQ</a>
             <button type="button" onClick={onRequestAccess} className="rounded-lg px-4 py-2 text-[13px] font-bold text-[#1a1a1a]" style={{ background: 'linear-gradient(90deg,#F4D35E,#e0a800)' }}>
               Accedi
@@ -133,7 +134,7 @@ export function LandingPage({
                   </div>
                 ))}
                 <div className="mt-2 text-[10px] uppercase tracking-[0.1em] text-[#5e6673]">Leading sector</div>
-                {[['L1', '+1.84%', true], ['AI', '+1.22%', true], ['DeFi', '−0.41%', false]].map(([sym, pct, up]) => (
+                {[['L1', '+1.84%', true], ['AI', '+1.22%', true], ['DeFi', '-0.41%', false]].map(([sym, pct, up]) => (
                   <div key={String(sym)} className="flex items-center justify-between rounded-lg border border-[#1a2230] bg-[#0e1319] px-2.5 py-2 font-mono text-[12px]">
                     <span>{sym}</span>
                     <span style={{ color: up ? '#0ecb81' : '#f6465d' }}>{pct as string}</span>
@@ -149,7 +150,7 @@ export function LandingPage({
         <div className="mx-auto max-w-[1120px] px-[4%]">
           <div className="grid gap-10 md:grid-cols-2 md:items-center">
             <div>
-              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">Perché NACS Lab</div>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">Perche NACS Lab</div>
               <h2 className="mb-4 text-[clamp(1.5rem,3vw,2rem)] font-extrabold tracking-[-0.02em]">Un terminal, non un altro chart isolato</h2>
               <p className="mb-4 text-[14px] leading-relaxed text-[#848e9c]">
                 NACS Lab Terminal unisce analisi di struttura (order block, BOS, zone), microstructure
@@ -157,7 +158,7 @@ export function LandingPage({
                 dati reali, moduli separati, overlay ancorati alle coordinate del chart.
               </p>
               <p className="text-[14px] leading-relaxed text-[#848e9c]">
-                Non vendiamo segnali e non custodiamo fondi. È software di visualizzazione e, se vuoi,
+                Non vendiamo segnali e non custodiamo fondi. E software di visualizzazione e, se vuoi,
                 esecuzione self-directed con le tue chiavi exchange.
               </p>
             </div>
@@ -183,7 +184,7 @@ export function LandingPage({
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">Capabilities</div>
           <h2 className="mb-3 text-[clamp(1.6rem,3vw,2.1rem)] font-extrabold tracking-[-0.02em]">Moduli del desk</h2>
           <p className="mb-10 max-w-[540px] text-[#848e9c] text-[14px]">
-            Ogni pannello è indipendente ma condivide simbolo, interval e feed. Aggiungi Order Block,
+            Ogni pannello e indipendente ma condivide simbolo, interval e feed. Aggiungi Order Block,
             Scanner, depth o paper quando ti servono.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -207,11 +208,11 @@ export function LandingPage({
             <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">Order Block</div>
             <h3 className="mb-3 text-[22px] font-extrabold">X-Ray di mercato</h3>
             <p className="mb-4 text-[14px] leading-relaxed text-[#848e9c]">
-              Sector strip lagging→leading, rank list e flow multi-linea. I PICK rispettano sector cap,
-              liquidità minima e purezza del movimento (no chop).
+              Sector strip lagging to leading, rank list e flow multi-linea. I PICK rispettano sector cap,
+              liquidita minima e purezza del movimento (no chop).
             </p>
             <ul className="space-y-2 text-[13px] text-[#848e9c]">
-              {['Body zone + break of structure', 'Mitigation: fresh / tested / mitigated / broken', 'Quality score e R:R basato su ATR', 'Board BULLISH · BEARISH · PICKS', 'Refresh periodico su universo Binance'].map((t) => (
+              {['Body zone + break of structure', 'Mitigation: fresh / tested / mitigated / broken', 'Quality score e R:R basato su ATR', 'Board BULLISH / BEARISH / PICKS', 'Refresh periodico su universo Binance'].map((t) => (
                 <li key={t} className="flex gap-2"><span className="font-bold text-[#0ecb81]">✓</span>{t}</li>
               ))}
             </ul>
@@ -240,7 +241,7 @@ export function LandingPage({
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">Dati & sicurezza</div>
           <h2 className="mb-3 text-[clamp(1.6rem,3vw,2.1rem)] font-extrabold">Solo feed reali</h2>
           <p className="mb-8 max-w-[520px] text-[14px] text-[#848e9c]">
-            Architettura pensata per non “inventare” il mercato: se Binance o KuCoin non rispondono, il desk lo dice chiaramente.
+            Architettura pensata per non inventare il mercato: se Binance o KuCoin non rispondono, il desk lo dice chiaramente.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {DATA_POINTS.map((x) => (
@@ -257,6 +258,66 @@ export function LandingPage({
         </div>
       </section>
 
+      <section id="pricing" className="py-16 border-t border-[#1a2230]">
+        <div className="mx-auto max-w-[1120px] px-[4%]">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">Pricing</div>
+          <h2 className="mb-3 text-[clamp(1.6rem,3vw,2.1rem)] font-extrabold tracking-[-0.02em]">Piani e prezzi</h2>
+          <p className="mb-10 max-w-[540px] text-[#848e9c] text-[14px]">
+            Free per paper e lettura dati pubblici. Pro e Team sbloccano live trading, cloud workspace e quote AI.
+            Checkout opzionale - contattaci per attivare Pro/Team.
+          </p>
+          <div className="grid gap-4 md:grid-cols-3">
+            {PLANS.map((p) => (
+              <article
+                key={p.id}
+                className={
+                  'relative flex flex-col rounded-xl border p-6 ' +
+                  (p.highlight
+                    ? 'border-[#F4D35E]/55 bg-[#12100a] shadow-[0_0_40px_rgba(244,211,94,0.12)]'
+                    : 'border-[#1a2230] bg-[#0e1319]')
+                }
+              >
+                {p.highlight && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#F4D35E] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1a1a1a]">
+                    Consigliato
+                  </div>
+                )}
+                <div className="mb-1 text-[13px] font-semibold text-[#848e9c]">{p.name}</div>
+                <div className="mb-1 flex items-baseline gap-1.5">
+                  <span className="text-[32px] font-extrabold text-[#eaecef]">{p.price}</span>
+                  <span className="text-[12px] text-[#5e6673]">/ {p.period}</span>
+                </div>
+                <p className="mb-5 text-[13px] leading-relaxed text-[#848e9c]">{p.blurb}</p>
+                <ul className="mb-6 flex-1 space-y-2 text-[13px] text-[#c8cdd3]">
+                  {p.features.map((f) => (
+                    <li key={f} className="flex gap-2">
+                      <span className="font-bold text-[#0ecb81]">✓</span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={onRequestAccess}
+                  className={
+                    'w-full rounded-lg py-3 text-[14px] font-bold transition ' +
+                    (p.highlight
+                      ? 'text-[#1a1a1a]'
+                      : 'border border-[#2a3140] bg-white/[0.03] text-[#eaecef] hover:border-[#F4D35E]/40')
+                  }
+                  style={p.highlight ? { background: 'linear-gradient(90deg,#F4D35E,#e0a800)' } : undefined}
+                >
+                  {p.cta}
+                </button>
+              </article>
+            ))}
+          </div>
+          <p className="mt-6 text-center text-[12px] text-[#5e6673]">
+            NACS Lab non e un broker. Trading live solo con le tue chiavi exchange (self-directed).
+          </p>
+        </div>
+      </section>
+
       <section id="faq" className="py-16 border-t border-[#1a2230]">
         <div className="mx-auto max-w-[720px] px-[4%]">
           <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#F4D35E]">FAQ</div>
@@ -268,7 +329,7 @@ export function LandingPage({
                 <div key={item.q} className="rounded-xl border border-[#1a2230] bg-[#0e1319] overflow-hidden">
                   <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left text-[14px] font-semibold" onClick={() => setOpenFaq(open ? null : i)}>
                     {item.q}
-                    <span className="text-[#F4D35E] font-mono text-[16px]">{open ? '−' : '+'}</span>
+                    <span className="text-[#F4D35E] font-mono text-[16px]">{open ? '-' : '+'}</span>
                   </button>
                   {open && <div className="border-t border-[#1a2230] px-4 py-3 text-[13px] leading-relaxed text-[#848e9c]">{item.a}</div>}
                 </div>
@@ -309,11 +370,12 @@ export function LandingPage({
             <a href="#features" className="hover:text-[#848e9c]">Features</a>
             <a href="#how" className="hover:text-[#848e9c]">Come funziona</a>
             <a href="#data" className="hover:text-[#848e9c]">Dati</a>
+            <a href="#pricing" className="hover:text-[#848e9c]">Prezzi</a>
             <a href="#faq" className="hover:text-[#848e9c]">FAQ</a>
           </div>
         </div>
         <p className="mt-6 text-center text-[11px] text-[#5e6673] max-w-[640px] mx-auto px-[4%] leading-relaxed">
-          © {new Date().getFullYear()} NACS Lab · {brandName} · Non è un broker né un advisor. Dati di mercato da exchange pubblici.
+          © {new Date().getFullYear()} NACS Lab · {brandName} · Non e un broker ne un advisor. Dati di mercato da exchange pubblici.
         </p>
       </footer>
     </div>
