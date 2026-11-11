@@ -1,7 +1,7 @@
 /**
  * Cyclic analysis from real OHLCV only.
  * Dominant + secondary period (autocorrelation), bandpass, phase, amplitude,
- * STC, weekday seasonality, projected turning points.
+ * STC, weekday seasonality, projected turning points, FLD, spectrum peaks.
  * Never invents bars – empty input → empty model.
  */
 
@@ -14,8 +14,8 @@ function sma(arr: number[], period: number): (number | null)[] {
   if (period < 1) return out
   let sum = 0
   for (let i = 0; i < arr.length; i++) {
-    sum += arr[i]
-    if (i >= period) sum -= arr[i - period]
+    sum += arr[i]!
+    if (i >= period) sum -= arr[i - period]!
     if (i >= period - 1) out[i] = sum / period
   }
   return out
@@ -30,12 +30,12 @@ function ema(arr: number[], period: number): (number | null)[] {
     if (prev == null) {
       if (i >= period - 1) {
         let s = 0
-        for (let j = i - period + 1; j <= i; j++) s += arr[j]
+        for (let j = i - period + 1; j <= i; j++) s += arr[j]!
         prev = s / period
         out[i] = prev
       }
     } else {
-      prev = arr[i] * k + prev * (1 - k)
+      prev = arr[i]! * k + prev * (1 - k)
       out[i] = prev
     }
   }
@@ -47,19 +47,58 @@ function detrend(closes: number[], smooth: number): number[] {
   return closes.map((c, i) => (trend[i] != null ? c - (trend[i] as number) : 0))
 }
 
-export function dominantPeriod(
+/** Median price (hl2) shifted forward by half-period — Hurst FLD. */
+export function computeFld(
+  highs: number[],
+  lows: number[],
+  times: number[],
+  period: number,
+  barDurationSec: number
+): { points: { time: number; value: number }[]; lastValue: number | null } {
+  const n = highs.length
+  if (n < 3 || period < 2) return { points: [], lastValue: null }
+  const shift = Math.max(1, Math.floor(period / 2))
+  const med = highs.map((h, i) => (h + lows[i]!) / 2)
+  const points: { time: number; value: number }[] = []
+  for (let i = 0; i < n; i++) {
+    const ti = i + shift
+    if (ti < n) points.push({ time: times[ti]!, value: med[i]! })
+  }
+  const lastT = times[n - 1]!
+  for (let k = 0; k < shift; k++) {
+    points.push({
+      time: lastT + (k + 1) * barDurationSec,
+      value: med[Math.max(0, n - shift + k)] ?? med[n - 1]!,
+    })
+  }
+  const lastValue =
+    points.length > 0
+      ? points.reduce((a, p) => (p.time <= lastT ? p : a), points[0]!).value
+      : null
+  return { points, lastValue }
+}
+
+/** Autocorrelation strength curve → top peaks for spectrum view. */
+export function spectrumPeaks(
   closes: number[],
   minP: number,
   maxP: number,
-  excludeAround?: number
-): { period: number; strength: number } {
+  topN = 8
+): { period: number; strength: number }[] {
   const n = closes.length
   const minPeriod = Math.max(3, Math.floor(minP))
   const maxPeriod = Math.min(Math.floor(maxP), Math.floor(n / 3))
-  if (n < minPeriod * 3 || maxPeriod <= minPeriod) {
-    return { period: minPeriod, strength: 0 }
+  if (n < minPeriod * 3 || maxPeriod <= minPeriod) return []
+
+  const smooth = Math.max(5, Math.floor(maxPeriod / 2))
+  const trend: number[] = new Array(n).fill(0)
+  let sum = 0
+  for (let i = 0; i < n; i++) {
+    sum += closes[i]!
+    if (i >= smooth) sum -= closes[i - smooth]!
+    trend[i] = i >= smooth - 1 ? sum / smooth : closes[i]!
   }
-  const det = detrend(closes, Math.max(5, Math.floor(maxPeriod / 2)))
+  const det = closes.map((c, i) => c - trend[i]!)
   let mean = 0
   for (const v of det) mean += v
   mean /= n
@@ -68,138 +107,114 @@ export function dominantPeriod(
     const d = v - mean
     varSum += d * d
   }
-  if (varSum < 1e-18) return { period: minPeriod, strength: 0 }
+  if (varSum < 1e-12) return []
 
-  const excludeHalf = excludeAround != null ? Math.max(2, Math.floor(excludeAround * 0.25)) : 0
-
-  let bestLag = minPeriod
-  let bestCorr = -Infinity
-  for (let lag = minPeriod; lag <= maxPeriod; lag++) {
-    if (excludeAround != null && Math.abs(lag - excludeAround) <= excludeHalf) continue
+  const scores: { period: number; strength: number }[] = []
+  for (let p = minPeriod; p <= maxPeriod; p++) {
     let num = 0
-    let c = 0
-    for (let i = lag; i < n; i++) {
-      num += (det[i] - mean) * (det[i - lag] - mean)
-      c++
+    let count = 0
+    for (let i = 0; i + p < n; i++) {
+      num += (det[i]! - mean) * (det[i + p]! - mean)
+      count++
     }
-    if (c < lag) continue
-    const corr = num / varSum
-    if (corr > bestCorr) {
-      bestCorr = corr
-      bestLag = lag
-    }
+    if (count < 3) continue
+    const ac = num / (count * (varSum / n))
+    scores.push({ period: p, strength: Math.max(0, Math.min(1, ac)) })
   }
-  const strength = Math.max(0, Math.min(1, bestCorr))
-  return { period: bestLag, strength }
+  scores.sort((a, b) => b.strength - a.strength)
+  const picked: { period: number; strength: number }[] = []
+  for (const s of scores) {
+    if (picked.some((q) => Math.abs(q.period - s.period) / s.period < 0.15)) continue
+    picked.push(s)
+    if (picked.length >= topN) break
+  }
+  return picked
+}
+
+export function dominantPeriod(
+  closes: number[],
+  minP: number,
+  maxP: number,
+  excludeAround?: number
+): { period: number; strength: number } {
+  const peaks = spectrumPeaks(closes, minP, maxP, 12)
+  if (!peaks.length) return { period: Math.max(3, Math.floor(minP)), strength: 0 }
+  if (excludeAround == null || excludeAround <= 0) return peaks[0]!
+  for (const p of peaks) {
+    if (Math.abs(p.period - excludeAround) / Math.max(1, excludeAround) > 0.2) return p
+  }
+  return peaks[0]!
 }
 
 export function bandpassCycle(closes: number[], period: number): number[] {
-  const out = new Array(closes.length).fill(0)
-  if (period < 2 || closes.length < 4) return out
-  const bandwidth = 0.35
-  const beta = Math.cos((2 * Math.PI) / period)
-  const gamma = 1 / Math.cos((2 * Math.PI * bandwidth) / period)
-  const alpha = gamma - Math.sqrt(gamma * gamma - 1)
-  const hp: number[] = new Array(closes.length).fill(0)
-  for (let i = 2; i < closes.length; i++) {
-    hp[i] =
-      0.5 * (1 + alpha) * (closes[i] - closes[i - 1]) + alpha * hp[i - 1]
-  }
-  for (let i = 2; i < closes.length; i++) {
-    out[i] =
-      0.5 * (1 - alpha) * (hp[i] - hp[i - 1]) +
-      beta * (1 + alpha) * out[i - 1] -
-      alpha * out[i - 2]
+  const n = closes.length
+  const out = new Array(n).fill(0)
+  if (period < 2) return out
+  const hp = Math.max(2, Math.floor(period / 2))
+  const lp = Math.max(hp + 1, period)
+  const fast = ema(closes, hp)
+  const slow = ema(closes, lp)
+  for (let i = 0; i < n; i++) {
+    if (fast[i] != null && slow[i] != null) out[i] = (fast[i] as number) - (slow[i] as number)
   }
   return out
 }
 
 export function cyclePhase(cycle: number[]): number[] {
-  const phase = new Array(cycle.length).fill(0)
-  for (let i = 1; i < cycle.length; i++) {
-    const re = cycle[i]
-    const im = cycle[i] - cycle[i - 1]
-    let deg = (Math.atan2(im, re) * 180) / Math.PI
+  const n = cycle.length
+  const out = new Array(n).fill(0)
+  for (let i = 1; i < n; i++) {
+    const y = cycle[i]!
+    const x = cycle[i]! - cycle[i - 1]!
+    let deg = (Math.atan2(y, x) * 180) / Math.PI
     if (deg < 0) deg += 360
-    phase[i] = deg
+    out[i] = deg
   }
-  return phase
+  return out
 }
 
 export function cycleAmplitude(cycle: number[], period: number): number[] {
-  const out = new Array(cycle.length).fill(0)
-  const win = Math.max(3, Math.floor(period / 2))
-  for (let i = 0; i < cycle.length; i++) {
-    let sumSq = 0
+  const n = cycle.length
+  const out = new Array(n).fill(0)
+  const win = Math.max(3, Math.floor(period))
+  for (let i = 0; i < n; i++) {
+    let s = 0
     let c = 0
-    const from = Math.max(0, i - win + 1)
-    for (let j = from; j <= i; j++) {
-      sumSq += cycle[j] * cycle[j]
+    for (let j = Math.max(0, i - win + 1); j <= i; j++) {
+      s += cycle[j]! * cycle[j]!
       c++
     }
-    out[i] = c > 0 ? Math.sqrt(sumSq / c) : 0
+    out[i] = c > 0 ? Math.sqrt(s / c) : 0
   }
   return out
 }
 
 export function schaffTrendCycle(
   closes: number[],
-  fast = 23,
-  slow = 50,
-  cycleLen = 10
-): (number | null)[] {
-  const out: (number | null)[] = new Array(closes.length).fill(null)
-  const ef = ema(closes, fast)
-  const es = ema(closes, slow)
-  const macd: (number | null)[] = closes.map((_, i) =>
-    ef[i] != null && es[i] != null ? (ef[i] as number) - (es[i] as number) : null
+  cycleLen = 23,
+  ma1 = 50,
+  ma2 = 10
+): number[] {
+  const n = closes.length
+  const out = new Array(n).fill(50)
+  if (n < cycleLen + ma1) return out
+  const macd = bandpassCycle(closes, cycleLen)
+  const stoch: number[] = new Array(n).fill(50)
+  for (let i = 0; i < n; i++) {
+    let lo = macd[i]!
+    let hi = macd[i]!
+    for (let j = Math.max(0, i - cycleLen + 1); j <= i; j++) {
+      lo = Math.min(lo, macd[j]!)
+      hi = Math.max(hi, macd[j]!)
+    }
+    stoch[i] = hi !== lo ? ((macd[i]! - lo) / (hi - lo)) * 100 : 50
+  }
+  const f1 = ema(stoch, ma1)
+  const f2 = ema(
+    f1.map((v) => v ?? 50),
+    ma2
   )
-  const st1: (number | null)[] = new Array(closes.length).fill(null)
-  for (let i = 0; i < closes.length; i++) {
-    if (macd[i] == null) continue
-    let hi = -Infinity
-    let lo = Infinity
-    let ok = true
-    for (let j = Math.max(0, i - cycleLen + 1); j <= i; j++) {
-      if (macd[j] == null) {
-        ok = false
-        break
-      }
-      hi = Math.max(hi, macd[j] as number)
-      lo = Math.min(lo, macd[j] as number)
-    }
-    if (!ok || hi === lo) continue
-    st1[i] = 100 * (((macd[i] as number) - lo) / (hi - lo))
-  }
-  const pf: (number | null)[] = new Array(closes.length).fill(null)
-  let prevPf: number | null = null
-  for (let i = 0; i < closes.length; i++) {
-    if (st1[i] == null) continue
-    prevPf = prevPf == null ? (st1[i] as number) : prevPf + 0.5 * ((st1[i] as number) - prevPf)
-    pf[i] = prevPf
-  }
-  for (let i = 0; i < closes.length; i++) {
-    if (pf[i] == null) continue
-    let hi = -Infinity
-    let lo = Infinity
-    let ok = true
-    for (let j = Math.max(0, i - cycleLen + 1); j <= i; j++) {
-      if (pf[j] == null) {
-        ok = false
-        break
-      }
-      hi = Math.max(hi, pf[j] as number)
-      lo = Math.min(lo, pf[j] as number)
-    }
-    if (!ok || hi === lo) continue
-    out[i] = 100 * (((pf[i] as number) - lo) / (hi - lo))
-  }
-  let prev: number | null = null
-  for (let i = 0; i < out.length; i++) {
-    if (out[i] == null) continue
-    prev = prev == null ? (out[i] as number) : prev + 0.5 * ((out[i] as number) - prev)
-    out[i] = prev
-  }
+  for (let i = 0; i < n; i++) out[i] = f2[i] ?? 50
   return out
 }
 
@@ -211,69 +226,62 @@ export function weekdaySeasonality(
     n: 0,
   }))
   for (let i = 1; i < candles.length; i++) {
-    const prev = candles[i - 1].close
-    if (prev === 0) continue
-    const ret = ((candles[i].close - prev) / prev) * 100
-    const dow = new Date(candles[i].time * 1000).getUTCDay()
-    buckets[dow].sum += ret
-    buckets[dow].n += 1
+    const a = candles[i - 1]!
+    const b = candles[i]!
+    if (!(a.close > 0)) continue
+    const pct = ((b.close - a.close) / a.close) * 100
+    const dow = new Date(b.time * 1000).getUTCDay()
+    buckets[dow]!.sum += pct
+    buckets[dow]!.n += 1
   }
   return buckets.map((b, dow) => ({
     dow,
-    avgPct: b.n > 0 ? b.sum / b.n : 0,
+    avgPct: b.n ? b.sum / b.n : 0,
     samples: b.n,
   }))
 }
 
-function toPts(times: number[], values: (number | null)[] | number[]): CyclePoint[] {
-  const pts: CyclePoint[] = []
-  for (let i = 0; i < values.length; i++) {
-    const v = values[i]
-    if (v == null || !Number.isFinite(v as number)) continue
-    pts.push({ time: times[i], value: v as number })
-  }
-  return pts
-}
-
 function inferBarDuration(times: number[]): number {
   if (times.length < 2) return 3600
-  const n = times.length
-  return Math.max(1, times[n - 1] - times[n - 2])
+  const gaps: number[] = []
+  for (let i = 1; i < Math.min(times.length, 50); i++) {
+    const d = times[i]! - times[i - 1]!
+    if (d > 0) gaps.push(d)
+  }
+  if (!gaps.length) return 3600
+  gaps.sort((a, b) => a - b)
+  return gaps[Math.floor(gaps.length / 2)]!
+}
+
+function toPts(times: number[], values: (number | null)[] | number[]): CyclePoint[] {
+  const out: CyclePoint[] = []
+  for (let i = 0; i < times.length; i++) {
+    const v = values[i]
+    if (v == null || !Number.isFinite(v as number)) continue
+    out.push({ time: times[i]!, value: v as number })
+  }
+  return out
 }
 
 function projectTurns(
   lastTime: number,
-  phaseDeg: number,
+  lastPhase: number,
   period: number,
-  barDur: number
-): {
-  nextHighTime: number | null
-  nextLowTime: number | null
-  barsToNextTurn: number | null
-  nextTurnKind: 'high' | 'low' | null
-} {
-  if (period < 2 || barDur <= 0) {
-    return { nextHighTime: null, nextLowTime: null, barsToNextTurn: null, nextTurnKind: null }
-  }
-  const toHigh = phaseDeg <= 0 ? 0 : (360 - phaseDeg) / 360
-  const toLow = phaseDeg <= 180 ? (180 - phaseDeg) / 360 : (540 - phaseDeg) / 360
-  const barsHigh = toHigh * period
-  const barsLow = toLow * period
-  const nextHighTime = lastTime + barsHigh * barDur
-  const nextLowTime = lastTime + barsLow * barDur
-  if (barsHigh <= barsLow) {
-    return {
-      nextHighTime,
-      nextLowTime,
-      barsToNextTurn: Math.max(0, barsHigh),
-      nextTurnKind: 'high',
-    }
-  }
+  barDurationSec: number
+) {
+  const phaseToHigh = (360 - (lastPhase % 360)) % 360
+  const phaseToLow = (180 - (lastPhase % 360) + 360) % 360
+  const barsHigh = (phaseToHigh / 360) * period
+  const barsLow = (phaseToLow / 360) * period
+  const nextHighTime = lastTime + barsHigh * barDurationSec
+  const nextLowTime = lastTime + barsLow * barDurationSec
+  const barsToNextTurn = Math.min(barsHigh, barsLow)
+  const nextTurnKind: 'high' | 'low' = barsHigh <= barsLow ? 'high' : 'low'
   return {
     nextHighTime,
     nextLowTime,
-    barsToNextTurn: Math.max(0, barsLow),
-    nextTurnKind: 'low',
+    barsToNextTurn: Math.round(barsToNextTurn),
+    nextTurnKind,
   }
 }
 
@@ -282,7 +290,7 @@ export function computeCycleModel(
   config: CycleConfig = DEFAULT_CYCLE_CONFIG
 ): CycleModel {
   const empty: CycleModel = {
-    period: config.minPeriod,
+    period: 0,
     periodSource: 'auto',
     strength: 0,
     secondaryPeriod: 0,
@@ -298,6 +306,10 @@ export function computeCycleModel(
     ampUpper: [],
     ampLower: [],
     stc: [],
+    fld: [],
+    fld2: [],
+    fldBias: null,
+    spectrum: [],
     cycleHighTimes: [],
     cycleLowTimes: [],
     nextHighTime: null,
@@ -339,16 +351,16 @@ export function computeCycleModel(
   const ampRaw = cycleAmplitude(cycleRaw, period)
   const trendArr = sma(closes, period)
   const waveArr: (number | null)[] = closes.map((_, i) =>
-    trendArr[i] != null ? (trendArr[i] as number) + cycleRaw[i] : null
+    trendArr[i] != null ? (trendArr[i] as number) + cycleRaw[i]! : null
   )
   const wave2Arr: (number | null)[] = closes.map((_, i) =>
-    trendArr[i] != null ? (trendArr[i] as number) + cycle2Raw[i] : null
+    trendArr[i] != null ? (trendArr[i] as number) + cycle2Raw[i]! : null
   )
   const ampUpperArr: (number | null)[] = closes.map((_, i) =>
-    trendArr[i] != null ? (trendArr[i] as number) + ampRaw[i] : null
+    trendArr[i] != null ? (trendArr[i] as number) + ampRaw[i]! : null
   )
   const ampLowerArr: (number | null)[] = closes.map((_, i) =>
-    trendArr[i] != null ? (trendArr[i] as number) - ampRaw[i] : null
+    trendArr[i] != null ? (trendArr[i] as number) - ampRaw[i]! : null
   )
   const phaseArr = cyclePhase(cycleRaw)
   const stcArr = schaffTrendCycle(closes, 23, 50, Math.max(5, Math.floor(period / 2)))
@@ -356,16 +368,34 @@ export function computeCycleModel(
   const cycleHighTimes: number[] = []
   const cycleLowTimes: number[] = []
   for (let i = 2; i < phaseArr.length; i++) {
-    const p0 = phaseArr[i - 1]
-    const p1 = phaseArr[i]
-    if (p0 > 300 && p1 < 60) cycleHighTimes.push(times[i])
-    if (p0 < 180 && p1 >= 180 && p0 > 90) cycleLowTimes.push(times[i])
+    const p0 = phaseArr[i - 1]!
+    const p1 = phaseArr[i]!
+    if (p0 > 300 && p1 < 60) cycleHighTimes.push(times[i]!)
+    if (p0 < 180 && p1 >= 180 && p0 > 90) cycleLowTimes.push(times[i]!)
   }
 
   const lastPhase = phaseArr[phaseArr.length - 1] ?? 0
   const lastAmp = ampRaw[ampRaw.length - 1] ?? 0
-  const lastTime = times[times.length - 1]
+  const lastTime = times[times.length - 1]!
   const proj = projectTurns(lastTime, lastPhase, period, barDurationSec)
+
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+  const fldPrimary = computeFld(highs, lows, times, period, barDurationSec)
+  const fldSecondary =
+    secondaryPeriod > 0
+      ? computeFld(highs, lows, times, secondaryPeriod, barDurationSec)
+      : { points: [] as { time: number; value: number }[], lastValue: null as number | null }
+
+  let fldBias: 'bull' | 'bear' | 'flat' | null = null
+  if (fldPrimary.lastValue != null) {
+    const lastClose = closes[closes.length - 1]!
+    const d = lastClose - fldPrimary.lastValue
+    const thr = Math.abs(fldPrimary.lastValue) * 0.0005
+    fldBias = d > thr ? 'bull' : d < -thr ? 'bear' : 'flat'
+  }
+
+  const spectrum = spectrumPeaks(closes, config.minPeriod, config.maxPeriod, 8)
 
   return {
     period,
@@ -384,6 +414,10 @@ export function computeCycleModel(
     ampUpper: toPts(times, ampUpperArr),
     ampLower: toPts(times, ampLowerArr),
     stc: toPts(times, stcArr),
+    fld: fldPrimary.points,
+    fld2: fldSecondary.points,
+    fldBias,
+    spectrum,
     cycleHighTimes,
     cycleLowTimes,
     nextHighTime: proj.nextHighTime,
