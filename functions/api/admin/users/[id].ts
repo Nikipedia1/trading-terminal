@@ -10,14 +10,21 @@ import {
   validatePassword,
   publicUser,
   listUsers,
+  VALID_ROLES,
+  VALID_PLANS,
+  VALID_LEVELS,
+  type UserRole,
+  type PlanId,
+  type UserLevel,
 } from '../../auth/_shared'
 
 export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
   new Response(null, { status: 204, headers: cors(ctx.request) })
 
 /**
- * PATCH: { role?, disabled?, newPassword? }
- * Admin sets a new password (hashed). Never returns passwords.
+ * PATCH: { role?, level?, planId?, planNote?, disabled?, newPassword? }
+ * Admin assigns desk role, course level, and commercial plan (e.g. after payment).
+ * Never returns passwords.
  */
 export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
   const r = await requireAdmin(ctx.env, ctx.request)
@@ -31,22 +38,55 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
   const user = await getUserById(ctx.env.WORKSPACE_KV, id)
   if (!user) return bad('user not found', 404, ctx.request)
 
-  let body: { role?: string; disabled?: boolean; newPassword?: string }
+  let body: {
+    role?: string
+    level?: string
+    planId?: string
+    planNote?: string
+    disabled?: boolean
+    newPassword?: string
+  }
   try {
     body = await ctx.request.json()
   } catch {
     return bad('invalid json', 400, ctx.request)
   }
 
-  if (body.role === 'user' || body.role === 'admin') {
-    if (user.role === 'admin' && body.role === 'user') {
+  if (typeof body.role === 'string') {
+    const role = body.role.toLowerCase() as UserRole
+    if (!VALID_ROLES.includes(role)) {
+      return bad(`role must be one of: ${VALID_ROLES.join(', ')}`, 400, ctx.request)
+    }
+    if (user.role === 'admin' && role !== 'admin') {
       const all = await listUsers(ctx.env.WORKSPACE_KV)
       const admins = all.filter((u) => u.role === 'admin' && !u.disabled)
       if (admins.length <= 1) {
         return bad('cannot demote last admin', 400, ctx.request)
       }
     }
-    user.role = body.role
+    user.role = role
+  }
+
+  if (typeof body.level === 'string') {
+    const level = body.level.toLowerCase() as UserLevel
+    if (!VALID_LEVELS.includes(level)) {
+      return bad(`level must be one of: ${VALID_LEVELS.join(', ')}`, 400, ctx.request)
+    }
+    user.level = level
+  }
+
+  if (typeof body.planId === 'string') {
+    const planId = body.planId.toLowerCase() as PlanId
+    if (!VALID_PLANS.includes(planId)) {
+      return bad(`planId must be one of: ${VALID_PLANS.join(', ')}`, 400, ctx.request)
+    }
+    user.planId = planId
+    user.planUpdatedAt = Date.now()
+    if (typeof body.planNote === 'string') {
+      user.planNote = body.planNote.slice(0, 200)
+    }
+  } else if (typeof body.planNote === 'string') {
+    user.planNote = body.planNote.slice(0, 200)
   }
 
   if (typeof body.disabled === 'boolean') {
