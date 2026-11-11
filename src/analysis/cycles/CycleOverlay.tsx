@@ -1,7 +1,6 @@
 /**
- * Cycle overlay – professional bandpass wave, amplitude envelope,
- * phase marks, secondary cycle, projected turns. Real OHLCV only.
- * STATIC-ish layer: rebuild on candles / range, not every tick.
+ * Cycle overlay – bandpass wave, envelope, phase marks, FLD (Hurst),
+ * secondary cycle, projected turns. Real OHLCV only.
  */
 
 import { useCallback, useEffect, useRef } from 'react'
@@ -61,17 +60,17 @@ function fillEnvelope(
   const coords: { x: number; yu: number; yl: number }[] = []
   const n = Math.min(upper.length, lower.length)
   for (let i = 0; i < n; i++) {
-    const x = bridge.timeToCoordinate(upper[i].time)
-    const yu = bridge.priceToCoordinate(upper[i].value)
-    const yl = bridge.priceToCoordinate(lower[i].value)
+    const x = bridge.timeToCoordinate(upper[i]!.time)
+    const yu = bridge.priceToCoordinate(upper[i]!.value)
+    const yl = bridge.priceToCoordinate(lower[i]!.value)
     if (x == null || yu == null || yl == null) continue
     coords.push({ x, yu, yl })
   }
   if (coords.length < 2) return
   ctx.beginPath()
-  ctx.moveTo(coords[0].x, coords[0].yu)
-  for (let i = 1; i < coords.length; i++) ctx.lineTo(coords[i].x, coords[i].yu)
-  for (let i = coords.length - 1; i >= 0; i--) ctx.lineTo(coords[i].x, coords[i].yl)
+  ctx.moveTo(coords[0]!.x, coords[0]!.yu)
+  for (let i = 1; i < coords.length; i++) ctx.lineTo(coords[i]!.x, coords[i]!.yu)
+  for (let i = coords.length - 1; i >= 0; i--) ctx.lineTo(coords[i]!.x, coords[i]!.yl)
   ctx.closePath()
   ctx.fillStyle = fill
   ctx.fill()
@@ -145,6 +144,13 @@ export function CycleOverlay({
       strokePath(ctx, bridge, model.wave, `rgba(96, 165, 250, ${op})`, 1.5)
     }
 
+    if (config.showFld && model.fld && model.fld.length > 1) {
+      strokePath(ctx, bridge, model.fld, 'rgba(56, 189, 248, 0.95)', 1.6, [5, 3])
+    }
+    if (config.showFldSecondary && model.fld2 && model.fld2.length > 1) {
+      strokePath(ctx, bridge, model.fld2, 'rgba(167, 139, 250, 0.85)', 1.2, [3, 4])
+    }
+
     if (config.showPhaseMarks) {
       for (const t of model.cycleHighTimes) {
         const x = bridge.timeToCoordinate(t)
@@ -195,20 +201,19 @@ export function CycleOverlay({
     }
 
     if (config.showHud) {
-      const stcLast = model.stc.length ? model.stc[model.stc.length - 1].value : null
+      const stcLast = model.stc.length ? model.stc[model.stc.length - 1]!.value : null
       const lines = [
         `P=${model.period}${model.secondaryPeriod ? `/${model.secondaryPeriod}` : ''} (${model.periodSource}) · str ${(model.strength * 100).toFixed(0)}%`,
         `Phase ${model.phaseDeg.toFixed(0)}° · Amp ${model.amplitude.toPrecision(4)}` +
-          (stcLast != null ? ` · STC ${stcLast.toFixed(1)}` : ''),
+          (stcLast != null ? ` · STC ${stcLast.toFixed(1)}` : '') +
+          (model.fldBias ? ` · FLD ${model.fldBias}` : ''),
       ]
       if (model.barsToNextTurn != null && model.nextTurnKind) {
-        lines.push(
-          `Next ${model.nextTurnKind} ~${model.barsToNextTurn.toFixed(1)} bars`
-        )
+        lines.push(`Next ${model.nextTurnKind} ~${model.barsToNextTurn.toFixed(1)} bars`)
       }
       const boxH = 12 + lines.length * 14
       ctx.fillStyle = 'rgba(11, 14, 17, 0.78)'
-      ctx.fillRect(6, 6, 268, boxH)
+      ctx.fillRect(6, 6, 280, boxH)
       ctx.font = MONO
       ctx.textAlign = 'left'
       lines.forEach((line, i) => {
@@ -226,6 +231,8 @@ export function CycleOverlay({
     config.showProjections,
     config.showSecondary,
     config.showHud,
+    config.showFld,
+    config.showFldSecondary,
     config.waveOpacity,
   ])
 
