@@ -184,7 +184,11 @@ function TerminalApp() {
       })
   }, [])
   return (
-    <div className={`nacs-desk h-full flex flex-col pb-7 ${mobile ? 'tt-mobile-shell' : ''`}>
+    <div
+      className={
+        mobile ? 'nacs-desk h-full flex flex-col pb-7 tt-mobile-shell' : 'nacs-desk h-full flex flex-col pb-7'
+      }
+    >
       <header className="nacs-app-header flex items-stretch justify-between gap-3 pr-3 density-compact min-h-[56px]">
         <div className="nacs-header-brand flex items-center pl-1 pr-2 self-stretch">
           <BrandLogo size="sm" showWordmark={false} fullLogo />
