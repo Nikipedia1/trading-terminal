@@ -1,6 +1,5 @@
 /**
- * Cycles menu – professional controls, live readouts, presets, seasonality.
- * Dropdown via fixed portal so toolbar overflow does not clip it.
+ * Cycles menu – professional controls, spectrum peaks, FLD, presets.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -138,6 +137,17 @@ export function CycleMenu({ config, candles, onChange }: CycleMenuProps) {
     Math.min(620, (typeof window !== 'undefined' ? window.innerHeight : 600) - (pos?.top ?? 80) - 16),
   )
 
+  const layerToggles: { key: keyof CycleConfig; label: string }[] = [
+    { key: 'showWave', label: 'Wave' },
+    { key: 'showAmplitude', label: 'Envelope' },
+    { key: 'showPhaseMarks', label: 'Phase marks' },
+    { key: 'showProjections', label: 'Projections' },
+    { key: 'showSecondary', label: 'Secondary' },
+    { key: 'showFld', label: 'FLD (Hurst)' },
+    { key: 'showFldSecondary', label: 'FLD secondary' },
+    { key: 'showHud', label: 'HUD' },
+  ]
+
   const dropdown =
     open && pos
       ? createPortal(
@@ -176,12 +186,59 @@ export function CycleMenu({ config, candles, onChange }: CycleMenuProps) {
             </div>
 
             <div className="flex items-center gap-2 py-1.5 border-b border-[#2b3139]/50">
-              <Toggle
-                on={!!cfg.enabled}
-                onChange={() => onChange({ enabled: !cfg.enabled })}
-              />
+              <Toggle on={!!cfg.enabled} onChange={() => onChange({ enabled: !cfg.enabled })} />
               <span className="text-[12px] font-medium text-[#eaecef]">Enabled</span>
             </div>
+
+            <div className="py-1.5 space-y-1 border-b border-[#2b3139]/50">
+              {layerToggles.map(({ key, label }) => (
+                <div key={key} className="flex items-center gap-2">
+                  <Toggle
+                    on={!!cfg[key]}
+                    onChange={() => onChange({ [key]: !cfg[key] } as Partial<CycleConfig>)}
+                  />
+                  <span className="text-[11px] text-[#848e9c]">{label}</span>
+                </div>
+              ))}
+            </div>
+
+            {model?.spectrum && model.spectrum.length > 0 && (
+              <div className="py-1.5 border-b border-[#2b3139]/50 space-y-1">
+                <div className="text-[10px] text-[#5e6673] uppercase tracking-wider">
+                  Spectrum peaks
+                </div>
+                {model.spectrum.slice(0, 6).map((s) => (
+                  <div key={s.period} className="flex items-center gap-2 text-[10px]">
+                    <span className="w-10 text-[#848e9c] font-mono">{s.period}b</span>
+                    <div className="flex-1 h-1.5 rounded bg-[#12161c] overflow-hidden">
+                      <div
+                        className="h-full rounded bg-[#60a5fa]"
+                        style={{ width: `${Math.max(4, s.strength * 100)}%` }}
+                      />
+                    </div>
+                    <span className="w-8 text-right text-[#eaecef] font-mono">
+                      {(s.strength * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
+                {model.fldBias && (
+                  <div className="text-[10px] text-[#848e9c] pt-0.5">
+                    FLD bias:{' '}
+                    <span
+                      className={
+                        model.fldBias === 'bull'
+                          ? 'text-[#0ecb81]'
+                          : model.fldBias === 'bear'
+                            ? 'text-[#f6465d]'
+                            : 'text-[#848e9c]'
+                      }
+                    >
+                      {model.fldBias}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {model && (
               <div className="py-2 space-y-1.5 border-b border-[#2b3139]/50">
@@ -274,8 +331,8 @@ export function CycleMenu({ config, candles, onChange }: CycleMenuProps) {
             )}
 
             <p className="text-[9px] text-[#5e6673] leading-snug px-0.5 pt-1.5">
-              Solo OHLCV reali · autocorrelazione (P1/P2) · bandpass · fase · ampiezza RMS ·
-              proiezione turn · STC · seasonality UTC. Nessun dato sintetico.
+              OHLCV reali · spettro (autocorr) · bandpass · FLD Hurst · fase · envelope ·
+              proiezioni · STC · seasonality. Non è il motore proprietario Emiciclo.
             </p>
           </div>,
           document.body,
