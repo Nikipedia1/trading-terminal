@@ -11,7 +11,14 @@ export interface Env {
   AUTH_ALLOW_BEARER?: string
 }
 
-export type UserRole = 'user' | 'admin'
+/** Desk RBAC role (server-side). */
+export type UserRole = 'viewer' | 'user' | 'risk' | 'admin'
+
+/** Commercial plan – admin can set after payment. */
+export type PlanId = 'free' | 'pro' | 'team'
+
+/** Learning / product tier label. */
+export type UserLevel = 'base' | 'corso' | 'premium'
 
 export interface UserRecord {
   id: string
@@ -19,9 +26,16 @@ export interface UserRecord {
   salt: string
   passwordHash: string
   role: UserRole
+  /** Billing plan – free until admin upgrades after payment */
+  planId?: PlanId
+  /** Product / course level */
+  level?: UserLevel
   createdAt: number
   updatedAt: number
   disabled?: boolean
+  /** Optional note when admin changes plan (e.g. payment ref) */
+  planNote?: string
+  planUpdatedAt?: number
 }
 
 export interface SessionRecord {
@@ -34,6 +48,10 @@ export interface SessionRecord {
 const PBKDF2_ITERATIONS = 100_000
 const SESSION_TTL_SEC = 60 * 60 * 24 * 7
 export const AUTH_BODY_MAX = 4_096
+
+export const VALID_ROLES: UserRole[] = ['viewer', 'user', 'risk', 'admin']
+export const VALID_PLANS: PlanId[] = ['free', 'pro', 'team']
+export const VALID_LEVELS: UserLevel[] = ['base', 'corso', 'premium']
 
 export function cors(request: Request, extra?: HeadersInit): HeadersInit {
   const origin = request.headers.get('Origin') || '*'
@@ -233,8 +251,12 @@ export function publicUser(u: UserRecord) {
     id: u.id,
     email: u.email,
     role: u.role,
+    planId: u.planId || 'free',
+    level: u.level || 'base',
     createdAt: u.createdAt,
     disabled: !!u.disabled,
+    planNote: u.planNote || null,
+    planUpdatedAt: u.planUpdatedAt || null,
   }
 }
 
