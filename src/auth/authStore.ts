@@ -14,9 +14,15 @@ export interface AuthUser {
   id: string
   email: string
   role: AuthRole
+  /** Commercial plan from server (admin-assignable) */
+  planId?: 'free' | 'pro' | 'team'
+  /** Course / product level: base | corso | premium */
+  level?: 'base' | 'corso' | 'premium'
   createdAt: number
   disabled?: boolean
   totpEnabled?: boolean
+  planNote?: string | null
+  planUpdatedAt?: number | null
 }
 
 interface AuthState {
@@ -88,10 +94,18 @@ function clearLegacyToken() {
 
 function onAuthed(user: AuthUser) {
   setStorageUserId(user.id)
+  try {
+    const plan = user.planId
+    if (plan === 'free' || plan === 'pro' || plan === 'team') {
+      localStorage.setItem('tt-plan:v1', plan)
+    }
+  } catch {
+    /* */
+  }
   auditAppend({
     mode: 'paper',
     action: 'arm_live',
-    detail: `login ${user.email} role=${user.role}`,
+    detail: `login ${user.email} role=${user.role} plan=${user.planId || 'free'} level=${user.level || 'base'}`,
     ok: true,
   })
 }
@@ -120,6 +134,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             id: 'dev-local',
             email: 'dev@localhost',
             role: 'admin',
+            planId: 'team',
+            level: 'premium',
             createdAt: Date.now(),
           },
           status: 'authenticated',
@@ -131,7 +147,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, status: 'guest' })
       return
     }
-    setStorageUserId(res.data.user.id)
+    onAuthed(res.data.user)
     set({ user: res.data.user, status: 'authenticated', error: null })
   },
 
@@ -178,8 +194,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ error: res.error, status: 'guest', user: null })
       return false
     }
-    // If user has totp, classic login shouldn't succeed without code –
-    // server login.ts may need update; client still stores pending if flagged
     clearLegacyToken()
     onAuthed(res.data.user)
     set({
