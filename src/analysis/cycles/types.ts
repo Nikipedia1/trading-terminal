@@ -1,4 +1,4 @@
-/** Cycle analysis config & models – real OHLCV only. */
+/** Cycle analysis config & models – real OHLCV only (Hurst-style tools). */
 
 export interface CycleConfig {
   /** Master enable for overlay */
@@ -17,6 +17,13 @@ export interface CycleConfig {
   showSecondary: boolean
   /** On-chart HUD readout */
   showHud: boolean
+  /**
+   * Future Line of Demarcation (Hurst):
+   * median price shifted forward by half the dominant period.
+   */
+  showFld: boolean
+  /** Secondary FLD for secondary period */
+  showFldSecondary: boolean
   /** Min/max period search window (bars) */
   minPeriod: number
   maxPeriod: number
@@ -35,6 +42,8 @@ export const DEFAULT_CYCLE_CONFIG: CycleConfig = {
   showProjections: true,
   showSecondary: false,
   showHud: true,
+  showFld: true,
+  showFldSecondary: false,
   minPeriod: 8,
   maxPeriod: 80,
   fixedPeriod: 0,
@@ -48,15 +57,29 @@ export const CYCLE_PRESETS: Record<
 > = {
   scalp: {
     label: 'Scalp',
-    patch: { minPeriod: 5, maxPeriod: 25, fixedPeriod: 0, showSecondary: false },
+    patch: { minPeriod: 5, maxPeriod: 25, fixedPeriod: 0, showSecondary: false, showFld: true },
   },
   intraday: {
     label: 'Intraday',
-    patch: { minPeriod: 8, maxPeriod: 50, fixedPeriod: 0, showSecondary: true },
+    patch: {
+      minPeriod: 8,
+      maxPeriod: 50,
+      fixedPeriod: 0,
+      showSecondary: true,
+      showFld: true,
+      showFldSecondary: true,
+    },
   },
   swing: {
     label: 'Swing',
-    patch: { minPeriod: 15, maxPeriod: 120, fixedPeriod: 0, showSecondary: true },
+    patch: {
+      minPeriod: 15,
+      maxPeriod: 120,
+      fixedPeriod: 0,
+      showSecondary: true,
+      showFld: true,
+      showFldSecondary: true,
+    },
   },
 }
 
@@ -65,52 +88,40 @@ export interface CyclePoint {
   value: number
 }
 
-export interface CycleModel {
-  /** Dominant cycle length in bars */
+/** Spectral peak from autocorrelation / periodogram proxy */
+export interface SpectrumPeak {
   period: number
-  /** How period was chosen */
-  periodSource: 'auto' | 'fixed'
-  /** Autocorrelation peak strength [0,1] */
   strength: number
-  /** Secondary period (bars), 0 if none */
+}
+
+export interface CycleModel {
+  period: number
+  periodSource: 'auto' | 'fixed'
+  strength: number
   secondaryPeriod: number
-  /** Secondary strength [0,1] */
   secondaryStrength: number
-  /** Instantaneous phase degrees [0, 360) at last bar */
   phaseDeg: number
-  /** Instantaneous amplitude (price units) at last bar */
   amplitude: number
-  /** Phase series 0–360 */
   phase: CyclePoint[]
-  /** Bandpass cycle component (price units, mean ~0) */
   cycle: CyclePoint[]
-  /** Secondary bandpass component */
   cycle2: CyclePoint[]
-  /** Trend (SMA of period) for wave anchoring */
   trend: CyclePoint[]
-  /** Reconstructed wave = trend + cycle */
   wave: CyclePoint[]
-  /** Secondary wave = trend + cycle2 */
   wave2: CyclePoint[]
-  /** Upper amplitude envelope = trend + amp */
   ampUpper: CyclePoint[]
-  /** Lower amplitude envelope = trend − amp */
   ampLower: CyclePoint[]
-  /** Schaff Trend Cycle 0–100 */
   stc: CyclePoint[]
-  /** Historical cycle high times (phase ~0 cross) */
+  /** FLD primary: hl2 shifted forward by floor(period/2) bars */
+  fld: CyclePoint[]
+  fld2: CyclePoint[]
+  fldBias: 'bull' | 'bear' | 'flat' | null
+  spectrum: SpectrumPeak[]
   cycleHighTimes: number[]
-  /** Historical cycle low times (phase ~180 cross) */
   cycleLowTimes: number[]
-  /** Projected next high time (unix sec), null if not ready */
   nextHighTime: number | null
-  /** Projected next low time (unix sec) */
   nextLowTime: number | null
-  /** Bars until next turning point (high or low, whichever sooner) */
   barsToNextTurn: number | null
-  /** Label of next turn */
   nextTurnKind: 'high' | 'low' | null
-  /** Weekday seasonality: 0=Sun..6=Sat average % return */
   weekdayReturns: { dow: number; avgPct: number; samples: number }[]
   barCount: number
   barDurationSec: number
