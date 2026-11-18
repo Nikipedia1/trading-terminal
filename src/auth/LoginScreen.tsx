@@ -1,5 +1,5 @@
 /**
- * Login / register / password-reset (OTP) / TOTP step.
+ * Login / register (full profile) / password-reset (OTP) / TOTP step.
  * embedded=true → compact form for CredentialsGate modal.
  */
 
@@ -27,6 +27,12 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [company, setCompany] = useState('')
+  const [phone, setPhone] = useState('')
+  const [telegramUsername, setTelegramUsername] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [acceptRisk, setAcceptRisk] = useState(false)
   const [totpCode, setTotpCode] = useState('')
   const [resetToken, setResetToken] = useState('')
   const [resetMsg, setResetMsg] = useState<string | null>(null)
@@ -73,11 +79,28 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
     }
 
     if (mode === 'register') {
+      if (!fullName.trim() || fullName.trim().length < 2) {
+        setResetMsg('Inserisci il nome completo')
+        return
+      }
       if (password !== password2) {
         setResetMsg('Le password non coincidono')
         return
       }
-      await register(email, password)
+      if (!acceptTerms || !acceptRisk) {
+        setResetMsg('Accetta Termini e avviso rischi per continuare')
+        return
+      }
+      await register({
+        email,
+        password,
+        fullName: fullName.trim(),
+        company: company.trim() || undefined,
+        phone: phone.trim() || undefined,
+        telegramUsername: telegramUsername.trim() || undefined,
+        acceptTerms,
+        acceptRisk,
+      })
     } else {
       await login(email, password)
     }
@@ -130,7 +153,7 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
         </div>
       )}
 
-      <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
+      <form onSubmit={(e) => void onSubmit(e)} className="space-y-3">
         {pendingTotp ? (
           <div className="space-y-3">
             <p className="text-[12px] text-[#848e9c]">
@@ -157,9 +180,27 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
           </div>
         ) : (
           <>
+            {mode === 'register' && (
+              <label className="block space-y-1.5">
+                <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
+                  Nome completo *
+                </span>
+                <input
+                  type="text"
+                  autoComplete="name"
+                  required
+                  minLength={2}
+                  className={fieldClass}
+                  placeholder="Mario Rossi"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
+              </label>
+            )}
+
             <label className="block space-y-1.5">
               <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
-                Email
+                Email *
               </span>
               <input
                 type="email"
@@ -171,27 +212,92 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </label>
+
+            {mode === 'register' && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block space-y-1.5">
+                    <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
+                      Azienda
+                    </span>
+                    <input
+                      type="text"
+                      autoComplete="organization"
+                      className={fieldClass}
+                      placeholder="opzionale"
+                      value={company}
+                      onChange={(e) => setCompany(e.target.value)}
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
+                      Telefono
+                    </span>
+                    <input
+                      type="tel"
+                      autoComplete="tel"
+                      className={fieldClass}
+                      placeholder="+39 …"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <label className="block space-y-1.5">
+                  <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
+                    Telegram @username
+                  </span>
+                  <input
+                    type="text"
+                    className={fieldClass}
+                    placeholder="@username (opzionale, poi colleghi il bot)"
+                    value={telegramUsername}
+                    onChange={(e) => setTelegramUsername(e.target.value)}
+                  />
+                </label>
+              </>
+            )}
+
             {(mode !== 'reset' || otpSent) && (
               <label className="block space-y-1.5">
                 <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
-                  {mode === 'reset' ? 'Nuova password' : 'Password'}
+                  {mode === 'reset' ? 'Nuova password *' : 'Password *'}
                 </span>
                 <input
                   type="password"
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   required={mode !== 'reset' || otpSent}
                   minLength={8}
-                  placeholder="Min. 8 characters, letter + digit"
+                  placeholder="Min. 8 caratteri, lettera + cifra"
                   className={fieldClass}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </label>
             )}
+
+            {mode === 'register' && (
+              <label className="block space-y-1.5">
+                <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
+                  Conferma password *
+                </span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  placeholder="Ripeti password"
+                  className={fieldClass}
+                  value={password2}
+                  onChange={(e) => setPassword2(e.target.value)}
+                />
+              </label>
+            )}
+
             {mode === 'reset' && otpSent && (
               <label className="block space-y-1.5">
                 <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
-                  Codice OTP (6 cifre)
+                  Codice OTP (6 cifre) *
                 </span>
                 <input
                   type="text"
@@ -206,26 +312,40 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
                   maxLength={64}
                 />
                 <span className="text-[9px] text-[#5e6673]">
-                  Inserisci il codice a 6 cifre ricevuto, poi la nuova password.
+                  Codice ricevuto su Telegram (o DEV OTP a schermo).
                 </span>
               </label>
             )}
+
             {mode === 'register' && (
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-medium text-[#848e9c] uppercase tracking-wider">
-                  Confirm password
-                </span>
-                <input
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  minLength={8}
-                  placeholder="Repeat password"
-                  className={fieldClass}
-                  value={password2}
-                  onChange={(e) => setPassword2(e.target.value)}
-                />
-              </label>
+              <div className="space-y-2 pt-1">
+                <label className="flex items-start gap-2 text-[10px] text-[#848e9c] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-[#f0b90b]"
+                    checked={acceptTerms}
+                    onChange={(e) => setAcceptTerms(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    Accetto i <strong className="text-[#eaecef]">Termini di servizio</strong> e la Privacy
+                    Policy *
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-[10px] text-[#848e9c] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 accent-[#f0b90b]"
+                    checked={acceptRisk}
+                    onChange={(e) => setAcceptRisk(e.target.checked)}
+                    required
+                  />
+                  <span>
+                    Dichiaro di comprendere i <strong className="text-[#eaecef]">rischi del trading</strong>{' '}
+                    (possibile perdita del capitale) *
+                  </span>
+                </label>
+              </div>
             )}
           </>
         )}
@@ -252,7 +372,7 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
               : mode === 'login'
                 ? 'Sign in'
                 : mode === 'register'
-                  ? 'Create account'
+                  ? 'Crea account'
                   : otpSent
                     ? 'Imposta nuova password'
                     : 'Invia codice OTP'}
@@ -260,7 +380,7 @@ export function LoginScreen({ embedded = false }: { embedded?: boolean }) {
         <DisclaimerBanner compact />
         <p className="text-[9px] text-[#5e6673] leading-snug text-center">
           First registered account becomes <strong className="text-[#848e9c]">admin</strong>. Rate-limited
-          login · optional TOTP 2FA · reset via OTP.
+          login · optional TOTP 2FA · reset via OTP Telegram.
         </p>
       </form>
     </div>
