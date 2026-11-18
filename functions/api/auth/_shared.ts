@@ -9,6 +9,8 @@ export interface Env {
   AUTH_SECRET?: string
   /** Set to "1" to allow Authorization: Bearer session tokens */
   AUTH_ALLOW_BEARER?: string
+  /** Telegram Bot API token – OTP delivery */
+  TELEGRAM_BOT_TOKEN?: string
 }
 
 /** Desk RBAC role (server-side). */
@@ -36,6 +38,8 @@ export interface UserRecord {
   /** Optional note when admin changes plan (e.g. payment ref) */
   planNote?: string
   planUpdatedAt?: number
+  /** Telegram chat id for OTP / alerts (numeric string) */
+  telegramChatId?: string
 }
 
 export interface SessionRecord {
@@ -257,6 +261,7 @@ export function publicUser(u: UserRecord) {
     disabled: !!u.disabled,
     planNote: u.planNote || null,
     planUpdatedAt: u.planUpdatedAt || null,
+    telegramChatId: u.telegramChatId || null,
   }
 }
 
@@ -462,4 +467,34 @@ export function clientIp(request: Request): string {
     request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
     'unknown'
   )
+}
+
+/** Send a text message via Telegram Bot API. Returns true if delivered. */
+export async function sendTelegramMessage(
+  env: Env,
+  chatId: string,
+  text: string
+): Promise<{ ok: boolean; error?: string }> {
+  const token = env.TELEGRAM_BOT_TOKEN?.trim()
+  if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN not configured' }
+  const id = String(chatId).trim()
+  if (!id || !/^-?\d+$/.test(id)) return { ok: false, error: 'invalid telegram chat id' }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: id,
+        text,
+        disable_web_page_preview: true,
+      }),
+    })
+    const data = (await res.json()) as { ok?: boolean; description?: string }
+    if (!res.ok || !data.ok) {
+      return { ok: false, error: data.description || res.statusText }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'telegram network error' }
+  }
 }
