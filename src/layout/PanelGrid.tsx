@@ -14,6 +14,7 @@ import { AiAnalysisPanel } from '@/ui/AiAnalysisPanel'
 import { WalletPanel } from '@/wallet/WalletPanel'
 import { BotsPanel } from '@/bots/BotsPanel'
 import { AdminPanel } from '@/auth/AdminPanel'
+import { PlansPanel } from '@/billing/PlansPanel'
 import { LiquidityPanel } from '@/ui/liquidity/LiquidityPanel'
 import { BacktestPanel } from '@/bots/backtest/BacktestPanel'
 import { LiveKeysPanel } from '@/live/LiveKeysPanel'
@@ -27,32 +28,30 @@ import { NewsPanel } from '@/panels/news'
 import { CalendarPanel } from '@/panels/calendar'
 import { LiveTvPanel } from '@/panels/livetv'
 import { LearnPanel } from '@/panels/learn'
-import { OpsHealthPanel } from '@/panels/ops'
+import { OpsHealthPanel } from '@/ops/OpsHealthPanel'
+import { OpsScannerPanel } from '@/panels/opscanner/OpsScannerPanel'
 import { OnchainPanel } from '@/panels/onchain'
-import { OpsScannerPanel } from '@/panels/opscanner'
-import { DrawToolsPanel } from '@/panels/tools'
-import {
-  DeepPrintPanel,
-  VolumeProfilePanel,
-  DomPanel,
-  FootprintPanel,
-  ClusterChartPanel,
-  TpoChartPanel,
-  GammaPanel,
-  CvdPanel,
-  AbsorptionPanel,
-  ImbalancePanel,
-  DeepTradesPanel,
-  OfiPanel,
-  CyclesViewPanel,
-  IcebergPanel,
-} from '@/panels/instruments'
+import { DrawToolsPanel } from '@/drawings/DrawToolsPanel'
+import { DeepPrintPanel } from '@/panels/instruments/DeepPrintPanel'
+import { VolumeProfilePanel } from '@/panels/instruments/VolumeProfilePanel'
+import { DomPanel } from '@/panels/instruments/DomPanel'
+import { FootprintPanel } from '@/panels/instruments/FootprintPanel'
+import { ClusterChartPanel } from '@/panels/instruments/ClusterChartPanel'
+import { TpoChartPanel } from '@/panels/instruments/TpoChartPanel'
+import { GammaPanel } from '@/panels/instruments/GammaPanel'
+import { CvdPanel } from '@/panels/instruments/CvdPanel'
+import { AbsorptionPanel } from '@/panels/instruments/AbsorptionPanel'
+import { ImbalancePanel } from '@/panels/instruments/ImbalancePanel'
+import { DeepTradesPanel } from '@/panels/instruments/DeepTradesPanel'
+import { OfiPanel } from '@/panels/instruments/OfiPanel'
+import { CyclesViewPanel } from '@/panels/instruments/CyclesViewPanel'
+import { IcebergPanel } from '@/panels/instruments/IcebergPanel'
 import { FuturesMetricsPanel } from '@/ui/FuturesMetricsPanel'
-import { LargeTradesWidget } from '@/ui/OrderBookWidget'
-import { getRegisteredPanel } from '@/panels'
-import type { WidgetKind } from '@/types'
-import { WidgetChartLinkShell } from '@/hooks/ChartLinkContext'
+import { LargeTradesWidget } from '@/ui/LargeTradesWidget'
+import { getRegisteredPanel } from '@/panels/registry'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { WidgetShell } from '@/layout/WidgetShell'
+import type { WidgetKind } from '@/types'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
@@ -82,6 +81,8 @@ function renderWidget(kind: WidgetKind) {
       return <BotsPanel />
     case 'admin':
       return <AdminPanel />
+    case 'plans':
+      return <PlansPanel />
     case 'liquidity':
       return <LiquidityPanel />
     case 'backtest':
@@ -161,68 +162,40 @@ function renderWidget(kind: WidgetKind) {
   }
 }
 
-export function PanelGrid({ width }: { width?: number }) {
-  const panels = useLayoutStore((s) => s.panels)
+export function PanelGrid() {
+  const charts = useLayoutStore((s) => s.charts)
   const widgets = useLayoutStore((s) => s.widgets)
   const layout = useLayoutStore((s) => s.layout)
-  const removeWidget = useLayoutStore((s) => s.removeWidget)
   const setLayout = useLayoutStore((s) => s.setLayout)
 
-  const layouts = useMemo(() => ({ lg: layout, md: layout, sm: layout, xs: layout, xxs: layout }), [layout])
+  const layouts = useMemo(() => ({ lg: layout }), [layout])
 
   return (
-    <div className="h-full w-full flex flex-col min-h-0">
-      <ResponsiveGrid
-        className="layout"
-        layouts={layouts}
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-        cols={{ lg: 12, md: 12, sm: 6, xs: 4, xxs: 2 }}
-        rowHeight={24}
-        width={width || 1200}
-        onLayoutChange={(l) => setLayout(l)}
-        draggableHandle=".panel-drag-handle"
-        isResizable
-        useCSSTransforms
-        compactType="vertical"
-        preventCollision={false}
-        resizeHandles={['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']}
-      >
-        {panels.map((p) => (
-          <div key={p.id} className="nacs-widget-shell overflow-visible">
-            <ChartPanel config={p} />
-          </div>
-        ))}
-        {widgets.map((w) => (
-          <div key={w.id} data-panel-id={w.id} className="nacs-widget-shell overflow-visible flex flex-col">
-            <div className="panel-drag-handle nacs-widget-title cursor-move select-none min-h-[34px]">
-              <span className="truncate font-semibold tracking-wide text-[#c8d0dc]">{w.title}</span>
-              <button
-                type="button"
-                className="ml-auto shrink-0 flex items-center justify-center w-7 h-7 rounded-lg border border-white/10 bg-white/[0.03] text-[#f2556d] text-sm font-bold leading-none hover:bg-[#f2556d]/15 hover:border-[#f2556d]/40 active:scale-95"
-                title="Chiudi pannello"
-                aria-label="Chiudi pannello"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeWidget(w.id)
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-              >
-                ×
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              <ErrorBoundary name={w.kind}>
-                <WidgetChartLinkShell>
-                  {renderWidget(w.kind)}
-                </WidgetChartLinkShell>
-              </ErrorBoundary>
-            </div>
-          </div>
-        ))}
-      </ResponsiveGrid>
-    </div>
+    <ResponsiveGrid
+      className="layout"
+      layouts={layouts}
+      breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+      cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
+      rowHeight={24}
+      onLayoutChange={(l) => setLayout(l)}
+      draggableHandle=".tt-panel-drag"
+      compactType="vertical"
+      margin={[6, 6]}
+    >
+      {charts.map((c) => (
+        <div key={c.id} className="min-h-0">
+          <ErrorBoundary name={`chart-${c.id}`}>
+            <ChartPanel id={c.id} />
+          </ErrorBoundary>
+        </div>
+      ))}
+      {widgets.map((w) => (
+        <div key={w.id} className="min-h-0">
+          <WidgetShell id={w.id} title={w.title || WIDGET_META[w.kind]?.title || w.kind}>
+            <ErrorBoundary name={w.kind}>{renderWidget(w.kind)}</ErrorBoundary>
+          </WidgetShell>
+        </div>
+      ))}
+    </ResponsiveGrid>
   )
 }
-
-void WIDGET_META
