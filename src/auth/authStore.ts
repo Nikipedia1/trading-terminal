@@ -37,8 +37,16 @@ interface AuthState {
   register: (email: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   revokeAllSessions: () => Promise<void>
-  requestPasswordReset: (email: string) => Promise<{ ok: boolean; message: string; resetToken?: string }>
-  confirmPasswordReset: (token: string, password: string) => Promise<boolean>
+  requestPasswordReset: (
+    email: string
+  ) => Promise<{ ok: boolean; message: string; resetToken?: string; otp?: string }>
+  /** Confirm with email + 6-digit OTP (preferred) or legacy long token */
+  confirmPasswordReset: (args: {
+    email?: string
+    otp?: string
+    token?: string
+    password: string
+  }) => Promise<{ ok: boolean; message?: string }>
   refreshMe: () => Promise<void>
   clearError: () => void
   cancelTotp: () => void
@@ -153,7 +161,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async (email, password) => {
     set({ busy: true, error: null, pendingTotp: null })
-    // Prefer TOTP-aware endpoint when 2FA may be on
     const totpRes = await api<{ user: AuthUser; requiresTotp?: boolean }>(
       '/api/auth/totp',
       {
@@ -173,17 +180,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       })
       return true
     }
-    // If server says invalid 2FA, prompt for code
     if (totpRes.error?.toLowerCase().includes('2fa')) {
       set({
         busy: false,
         pendingTotp: { email, password },
-        error: 'Enter authenticator code',
+        error: 'Inserisci il codice OTP dell authenticator',
       })
       return false
     }
 
-    // Fallback classic login (no totp endpoint / 2FA off)
     const res = await api<{ user: AuthUser }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -277,7 +282,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   requestPasswordReset: async (email) => {
-    const res = await api<{ ok: boolean; message: string; resetToken?: string }>(
+    const res = await api<{ ok: boolean; message: string; resetToken?: string; otp?: string }>(
       '/api/auth/password-reset',
       {
         method: 'POST',
@@ -288,11 +293,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return res.data
   },
 
-  confirmPasswordReset: async (token, password) => {
-    const res = await api('/api/auth/password-reset', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'confirm', token, password }),
-    })
-    return res.ok
+  confirmPasswordReset: async ({ email, otp, token, password }) => {
+    const body: Record<string, string> = { action: 'confirm', password }
+    if (email) body.email = email
+    if (otp) body.otp = otp
+    if (token) body.token = token
+    const res = await api<{ ok?: boolean; message?: string; error?: string }>(
+      '/api/auth/password-reset',
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }
+    )
+    if (!res.ok) return { ok: false, message: res.error }
+    return { ok: true, message: res.data.message || 'Password aggiornata' }
   },
 }))
