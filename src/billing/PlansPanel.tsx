@@ -1,6 +1,7 @@
 import { PLAN_ORDER, PLANS } from './plans'
 import { usePlanStore } from './planStore'
 import { BRAND } from '@/brand'
+import { TelegramLinkCard } from '@/auth'
 
 /**
  * Plan picker – commercial matrix. Checkout is external / contact until Stripe is configured.
@@ -17,6 +18,9 @@ export function PlansPanel() {
         Free = paper desk. Pro / Team unlock live execution paths when you attach exchange keys.
         Payment provider optional — use Contact or configure <code className="text-[#f0b90b]">VITE_STRIPE_CHECKOUT_URL</code>.
       </p>
+      <div className="mb-3">
+        <TelegramLinkCard />
+      </div>
       <div className="grid gap-2 sm:grid-cols-3">
         {PLAN_ORDER.map((id) => {
           const p = PLANS[id]
