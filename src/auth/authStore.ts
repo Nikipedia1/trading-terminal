@@ -23,6 +23,22 @@ export interface AuthUser {
   totpEnabled?: boolean
   planNote?: string | null
   planUpdatedAt?: number | null
+  fullName?: string | null
+  company?: string | null
+  phone?: string | null
+  telegramUsername?: string | null
+  telegramChatId?: string | null
+}
+
+export type RegisterInput = {
+  email: string
+  password: string
+  fullName: string
+  company?: string
+  phone?: string
+  telegramUsername?: string
+  acceptTerms: boolean
+  acceptRisk: boolean
 }
 
 interface AuthState {
@@ -34,7 +50,7 @@ interface AuthState {
   pendingTotp: { email: string; password: string } | null
   login: (email: string, password: string) => Promise<boolean>
   loginTotp: (code: string) => Promise<boolean>
-  register: (email: string, password: string) => Promise<boolean>
+  register: (input: RegisterInput) => Promise<boolean>
   logout: () => Promise<void>
   revokeAllSessions: () => Promise<void>
   requestPasswordReset: (
@@ -241,11 +257,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return true
   },
 
-  register: async (email, password) => {
+  register: async (input) => {
     set({ busy: true, error: null })
     const res = await api<{ user: AuthUser }>('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(input),
     })
     set({ busy: false })
     if (!res.ok) {
