@@ -40,6 +40,13 @@ export interface UserRecord {
   planUpdatedAt?: number
   /** Telegram chat id for OTP / alerts (numeric string) */
   telegramChatId?: string
+  /** Profile from registration */
+  fullName?: string
+  company?: string
+  phone?: string
+  telegramUsername?: string
+  acceptedTermsAt?: number
+  acceptedRiskAt?: number
 }
 
 export interface SessionRecord {
@@ -262,6 +269,10 @@ export function publicUser(u: UserRecord) {
     planNote: u.planNote || null,
     planUpdatedAt: u.planUpdatedAt || null,
     telegramChatId: u.telegramChatId || null,
+    fullName: u.fullName || null,
+    company: u.company || null,
+    phone: u.phone || null,
+    telegramUsername: u.telegramUsername || null,
   }
 }
 
