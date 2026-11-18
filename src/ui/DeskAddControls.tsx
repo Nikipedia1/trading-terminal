@@ -49,6 +49,7 @@ const PRIORITY: WidgetKind[] = [
   'plugins',
   'ops',
   'admin',
+  'plans',
 ]
 
 const LABELS: Partial<Record<WidgetKind, string>> = {
@@ -96,6 +97,7 @@ const LABELS: Partial<Record<WidgetKind, string>> = {
   plugins: 'Plugins',
   ops: 'Ops',
   admin: 'Admin',
+  plans: 'Plans · Telegram',
   tradingdesk: '🏢 Trading Desk',
   opscanner: '📡 Ops Scanner',
 }
@@ -195,125 +197,50 @@ export function DeskAddControls() {
               padding: 6,
             }}
           >
-            <div
-              style={{
-                padding: '6px 10px 8px',
-                fontSize: 10,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                color: '#848e9c',
-              }}
-            >
-              Add panel
-            </div>
+            <p className="px-2 py-1 text-[9px] text-[#5e6673] uppercase tracking-wider">Add panel</p>
             {allKinds.map((k) => {
-              const openCount = openCounts.get(k) ?? 0
+              const n = openCounts.get(k) ?? 0
               return (
                 <button
                   key={k}
                   type="button"
                   role="menuitem"
-                  className="nacs-panel-menu-item"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 10px',
-                    borderRadius: 6,
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#eaecef',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => {
-                    pick(k)
-                  }}
+                  className="w-full text-left px-2 py-1.5 rounded text-[11px] text-[#eaecef] hover:bg-[#1e2329] flex justify-between gap-2"
+                  onClick={() => pick(k)}
                 >
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {labelFor(k)}
-                  </span>
-                  {openCount > 0 ? (
-                    <span style={{ fontSize: 10, color: '#848e9c' }}>{openCount} open</span>
-                  ) : null}
+                  <span>{labelFor(k)}</span>
+                  {n > 0 && <span className="text-[9px] text-[#5e6673]">{n}</span>}
                 </button>
               )
             })}
           </div>,
-          document.body,
+          document.body
         )
       : null
 
   return (
-    <div className="relative flex items-center gap-1.5 mr-1">
-      <button
-        type="button"
-        className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 hover:text-[#f0b90b] font-medium"
-        onClick={() => addChartPanel()}
-      >
-        + Chart
-      </button>
-      <button
-        type="button"
-        className="text-[11px] px-2.5 py-1 rounded border border-[#0ecb81]/40 bg-[#0ecb81]/10 text-[#0ecb81] hover:border-[#0ecb81] hover:bg-[#0ecb81]/20 font-medium"
-        title="Open Battlefield (bulls vs bears)"
-        onClick={() => pick('battlefield')}
-      >
-        ⚔ Battlefield
-      </button>
-      <button
-        type="button"
-        className="text-[11px] px-2.5 py-1 rounded border border-[#0ecb81]/40 bg-[#0ecb81]/10 text-[#0ecb81] hover:border-[#0ecb81] hover:bg-[#0ecb81]/20 font-medium"
-        title="Order Block market X-ray"
-        onClick={() => pick('orderblock')}
-      >
-        ▣ Order Block
-      </button>
+    <div className="flex items-center gap-1.5 relative">
       <button
         ref={btnRef}
         type="button"
-        className="text-[11px] px-2.5 py-1 rounded border border-[#2b3139] bg-[#12161c] text-[#eaecef] hover:border-[#f0b90b]/50 hover:text-[#f0b90b] font-medium"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="menu"
+        className="px-2 py-1 rounded border border-[#2b3139] text-[10px] text-[#848e9c] hover:text-[#eaecef] hover:border-[#848e9c]"
+        onClick={() => setOpen((o) => !o)}
       >
         + Panel
       </button>
+      <button
+        type="button"
+        className="px-2 py-1 rounded border border-[#2b3139] text-[10px] text-[#848e9c] hover:text-[#eaecef]"
+        onClick={() => {
+          addChartPanel()
+          setFlash('Added chart')
+          window.setTimeout(() => setFlash(null), 1800)
+        }}
+      >
+        + Chart
+      </button>
+      {flash && <span className="text-[9px] text-[#0ecb81]">{flash}</span>}
       {menu}
-      {flash &&
-        createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              bottom: 64,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 100000,
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: '1px solid rgba(240,185,11,0.4)',
-              background: '#12161c',
-              color: '#f0b90b',
-              fontSize: 12,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              pointerEvents: 'none',
-            }}
-          >
-            {flash}
-          </div>,
-          document.body,
-        )}
-      <style>{`
-        .nacs-panel-menu-item:hover {
-          background: #1e2329 !important;
-          color: #f0b90b !important;
-        }
-        .nacs-panel-menu-item:active {
-          background: #2b3139 !important;
-        }
-      `}</style>
     </div>
   )
 }
