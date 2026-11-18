@@ -22,8 +22,8 @@ export const onRequestOptions: PagesFunction<Env> = async (ctx) =>
   new Response(null, { status: 204, headers: cors(ctx.request) })
 
 /**
- * PATCH: { role?, level?, planId?, planNote?, disabled?, newPassword? }
- * Admin assigns desk role, course level, and commercial plan (e.g. after payment).
+ * PATCH: { role?, level?, planId?, planNote?, telegramChatId?, disabled?, newPassword? }
+ * Admin assigns desk role, course level, commercial plan, Telegram chat for OTP.
  * Never returns passwords.
  */
 export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
@@ -32,10 +32,10 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
   if (!ctx.env.WORKSPACE_KV) return bad('KV not configured', 503, ctx.request)
 
   const rawId = ctx.params.id
-  const id = Array.isArray(rawId) ? rawId[0] : rawId
-  if (!id || typeof id !== 'string') return bad('invalid id', 400, ctx.request)
+  const userId = Array.isArray(rawId) ? rawId[0] : rawId
+  if (!userId || typeof userId !== 'string') return bad('invalid id', 400, ctx.request)
 
-  const user = await getUserById(ctx.env.WORKSPACE_KV, id)
+  const user = await getUserById(ctx.env.WORKSPACE_KV, userId)
   if (!user) return bad('user not found', 404, ctx.request)
 
   let body: {
@@ -43,6 +43,7 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
     level?: string
     planId?: string
     planNote?: string
+    telegramChatId?: string | null
     disabled?: boolean
     newPassword?: string
   }
@@ -87,6 +88,17 @@ export const onRequestPatch: PagesFunction<Env> = async (ctx) => {
     }
   } else if (typeof body.planNote === 'string') {
     user.planNote = body.planNote.slice(0, 200)
+  }
+
+  if (body.telegramChatId === null || body.telegramChatId === '') {
+    delete user.telegramChatId
+  } else if (typeof body.telegramChatId === 'string') {
+    const chatId = body.telegramChatId.trim()
+    if (chatId && !/^-?\d{5,20}$/.test(chatId)) {
+      return bad('telegramChatId must be numeric chat id', 400, ctx.request)
+    }
+    if (chatId) user.telegramChatId = chatId
+    else delete user.telegramChatId
   }
 
   if (typeof body.disabled === 'boolean') {
