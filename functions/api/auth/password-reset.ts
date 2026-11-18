@@ -1,6 +1,7 @@
 /**
  * Password reset – 6-digit OTP stored in KV (15 min TTL).
- * Email/SMS delivery is operator-configured; with AUTH_DEV_RESET=1 the OTP is returned in JSON for local testing.
+ * Delivery: Telegram bot when TELEGRAM_BOT_TOKEN + user.telegramChatId are set.
+ * AUTH_DEV_RESET=1 also returns otp in JSON for local testing.
  */
 
 import {
@@ -17,10 +18,12 @@ import {
   checkRateLimit,
   clientIp,
   readJsonBody,
+  sendTelegramMessage,
 } from './_shared'
 
 interface ResetEnv extends Env {
   AUTH_DEV_RESET?: string
+  TELEGRAM_BOT_TOKEN?: string
 }
 
 const OTP_TTL_SEC = 15 * 60
@@ -66,7 +69,6 @@ export const onRequestPost: PagesFunction<ResetEnv> = async (ctx) => {
     const email = normalizeEmail(String(body.email || ''))
     if (!email) return bad('invalid email', 400, request)
     const user = await getUserByEmail(env.WORKSPACE_KV, email)
-    // Always generic response to avoid email enumeration
     const generic = {
       ok: true,
       message:
@@ -87,7 +89,6 @@ export const onRequestPost: PagesFunction<ResetEnv> = async (ctx) => {
       }),
       { expirationTtl: OTP_TTL_SEC }
     )
-    // Also keep legacy long token for API clients that still use it
     const bytes = crypto.getRandomValues(new Uint8Array(24))
     const token = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
     await env.WORKSPACE_KV.put(
@@ -96,12 +97,37 @@ export const onRequestPost: PagesFunction<ResetEnv> = async (ctx) => {
       { expirationTtl: OTP_TTL_SEC }
     )
     const payload: Record<string, unknown> = { ...generic }
+    let delivered = false
+    const chatId = user.telegramChatId?.trim()
+    if (chatId && env.TELEGRAM_BOT_TOKEN) {
+      const tg = await sendTelegramMessage(
+        env,
+        chatId,
+        `NACS Lab Terminal — codice OTP reset password:\n\n${otp}\n\nValido 15 minuti. Se non hai richiesto tu il reset, ignora questo messaggio.`
+      )
+      delivered = tg.ok
+      if (!tg.ok) {
+        payload.telegramError = tg.error
+      } else {
+        payload.message =
+          'Se l account esiste e ha Telegram collegato, abbiamo inviato un OTP sul bot.'
+      }
+    }
+
     if (env.AUTH_DEV_RESET === '1') {
       payload.otp = otp
       payload.resetToken = token
       payload.message =
-        'DEV: codice OTP generato (AUTH_DEV_RESET=1). Usa otp o resetToken.'
+        'DEV: codice OTP generato (AUTH_DEV_RESET=1). Usa otp o resetToken.' +
+        (delivered ? ' (anche inviato su Telegram)' : '')
+    } else if (!delivered && chatId && !env.TELEGRAM_BOT_TOKEN) {
+      payload.message =
+        'OTP generato ma TELEGRAM_BOT_TOKEN non configurato sul server.'
+    } else if (!delivered && !chatId) {
+      payload.message =
+        'Se l account esiste: collega il Telegram chat ID (pannello Admin) per ricevere l OTP sul bot.'
     }
+    payload.telegramDelivered = delivered
     return json(payload, 200, request)
   }
 
@@ -116,7 +142,6 @@ export const onRequestPost: PagesFunction<ResetEnv> = async (ctx) => {
 
     let userId: string | null = null
 
-    // Prefer 6-digit OTP + email
     if (emailNorm && otpRaw.length === 6) {
       const raw = await env.WORKSPACE_KV.get(otpKey(emailNorm))
       if (!raw) return bad('OTP non valido o scaduto', 400, request)
