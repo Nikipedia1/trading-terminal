@@ -6,7 +6,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAuthStore } from './authStore'
 import { BrandLogo } from '@/brand'
-import { DisclaimerBanner } from '@/ui/DisclaimerBanner'
+import { DisclaimerBanner } from '@/compliance/DisclaimerBanner'
 
 const fieldClass =
   'w-full bg-[#0b0e11] border border-[#2b3139] rounded-lg px-3 py-2.5 text-sm text-[#eaecef] placeholder:text-[#5e6673] outline-none transition-colors focus:border-[#f0b90b] focus:ring-1 focus:ring-[#f0b90b]/30 [color-scheme:dark]'
