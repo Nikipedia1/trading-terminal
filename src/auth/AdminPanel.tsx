@@ -1,7 +1,8 @@
 /**
- * Admin user management – list / role / level / plan / disable / set password.
+ * Admin user management – list / role / level / plan / Telegram / disable / set password.
  * Never displays or retrieves existing passwords.
  * After payment, admin sets planId (free|pro|team) and optional planNote.
+ * Telegram chat ID: required to receive password-reset OTP via bot.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -16,6 +17,7 @@ type AdminUser = AuthUser & {
   level?: string
   planNote?: string | null
   planUpdatedAt?: number | null
+  telegramChatId?: string | null
 }
 
 export function AdminPanel() {
@@ -60,6 +62,7 @@ export function AdminPanel() {
       level?: string
       planId?: string
       planNote?: string
+      telegramChatId?: string | null
       disabled?: boolean
       newPassword?: string
     }
@@ -112,9 +115,9 @@ export function AdminPanel() {
           </p>
         )}
         <p className="text-[9px] text-[#5e6673] leading-relaxed">
-          Dopo un pagamento imposta <span className="text-[#f0b90b]">Piano</span> (free/pro/team) e
-          opzionalmente una nota (ref bonifico / Stripe). Livello = percorso corso (base / corso /
-          premium). Ruolo = permessi desk.
+          Piano (free/pro/team) dopo pagamento. Per ricevere OTP reset password: salva il{' '}
+          <span className="text-[#229ED9]">Telegram chat ID</span> e configura{' '}
+          <code className="text-[#848e9c]">TELEGRAM_BOT_TOKEN</code> su Cloudflare.
         </p>
         {busy && users.length === 0 && (
           <p className="text-[10px] text-[#5e6673]">Loading…</p>
@@ -147,6 +150,11 @@ export function AdminPanel() {
               >
                 plan:{u.planId || 'free'}
               </span>
+              {u.telegramChatId && (
+                <span className="text-[9px] px-1 rounded bg-[#229ED9]/15 text-[#229ED9]">
+                  tg:{u.telegramChatId}
+                </span>
+              )}
               {u.disabled && <span className="text-[9px] text-[#f6465d]">disabled</span>}
             </div>
             <div className="text-[9px] text-[#5e6673]">
@@ -207,6 +215,31 @@ export function AdminPanel() {
                 </select>
               </label>
             </div>
+
+            <label className="flex flex-col gap-0.5 text-[9px] text-[#5e6673]">
+              Telegram chat ID (OTP)
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="es. 123456789"
+                  className="flex-1 bg-[#0b0e11] border border-[#2b3139] rounded px-1.5 py-1 text-[11px] text-[#eaecef]"
+                  defaultValue={u.telegramChatId || ''}
+                  id={`tg-${u.id}`}
+                />
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded border border-[#229ED9]/40 text-[#229ED9] text-[10px]"
+                  onClick={() => {
+                    const el = document.getElementById(`tg-${u.id}`) as HTMLInputElement | null
+                    const v = el?.value?.trim() || ''
+                    void patch(u.id, { telegramChatId: v || null })
+                  }}
+                >
+                  Salva TG
+                </button>
+              </div>
+            </label>
 
             <div className="flex flex-wrap gap-1">
               <button
