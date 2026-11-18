@@ -32,6 +32,7 @@ export const WIDGET_META: Record<
   wallet: { title: 'Wallet', minW: 3, minH: 8, defaultW: 4, defaultH: 14 },
   bots: { title: 'Bots', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
   admin: { title: 'Admin', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  plans: { title: 'Plans', minW: 3, minH: 8, defaultW: 5, defaultH: 14 },
   liquidity: { title: 'Liquidity', minW: 3, minH: 6, defaultW: 3, defaultH: 10 },
   backtest: { title: 'Backtest', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
   livekeys: { title: 'Live Keys', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
@@ -47,28 +48,28 @@ export const WIDGET_META: Record<
   quantlab: { title: 'Quant Lab', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
   battlefield: { title: 'Battlefield', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
   orderblock: { title: 'Order Block', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
-  draw: { title: 'Draw', minW: 2, minH: 4, defaultW: 3, defaultH: 8 },
-  orderflow: { title: 'Orderflow', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
-  cycles: { title: 'Cycles', minW: 3, minH: 6, defaultW: 4, defaultH: 10 },
-  deepprint: { title: 'Deep Print', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
-  volprofile: { title: 'Volume Profile', minW: 3, minH: 6, defaultW: 3, defaultH: 12 },
-  domladder: { title: 'DOM Ladder', minW: 2, minH: 6, defaultW: 3, defaultH: 14 },
-  footprint: { title: 'Footprint', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
-  cluster: { title: 'Cluster', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
-  tpo: { title: 'TPO', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
-  gex: { title: 'GEX', minW: 3, minH: 6, defaultW: 4, defaultH: 10 },
-  cvd: { title: 'CVD', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
-  absorption: { title: 'Absorption', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
-  imbalance: { title: 'Imbalance', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
-  deeptrades: { title: 'Deep Trades', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
-  ofi: { title: 'OFI', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
-  iceberg: { title: 'Iceberg', minW: 3, minH: 5, defaultW: 3, defaultH: 10 },
-  tradingdesk: { title: 'Trading Desk', minW: 4, minH: 10, defaultW: 5, defaultH: 16 },
-  opscanner: { title: 'Ops Scanner', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
+  draw: { title: 'Draw Tools', minW: 2, minH: 4, defaultW: 3, defaultH: 8 },
+  orderflow: { title: 'Order Flow', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  cycles: { title: 'Cycles', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  deepprint: { title: 'Deep Print', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
+  volprofile: { title: 'Volume Profile', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  domladder: { title: 'DOM Ladder', minW: 3, minH: 8, defaultW: 3, defaultH: 14 },
+  footprint: { title: 'Footprint', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
+  cluster: { title: 'Cluster Chart', minW: 4, minH: 8, defaultW: 5, defaultH: 14 },
+  tpo: { title: 'TPO Profile', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  gex: { title: 'Gamma / GEX', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  cvd: { title: 'CVD / Delta', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  absorption: { title: 'Absorption', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  imbalance: { title: 'Imbalance', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  deeptrades: { title: 'Deep Trades', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  ofi: { title: 'OFI / VPIN', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  iceberg: { title: 'Iceberg', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
+  tradingdesk: { title: 'Trading Desk', minW: 4, minH: 8, defaultW: 6, defaultH: 14 },
+  opscanner: { title: 'Ops Scanner', minW: 3, minH: 6, defaultW: 4, defaultH: 12 },
 }
 
 const DEFAULT_CHART: ChartPanelConfig = {
-  id: 'panel-main',
+  id: 'chart-main',
   symbol: 'BTCUSDT',
   interval: '15m',
   exchange: 'binance',
@@ -76,7 +77,7 @@ const DEFAULT_CHART: ChartPanelConfig = {
 }
 
 function defaultLayout(): GridLayoutItem[] {
-  return [{ i: DEFAULT_CHART.id, x: 0, y: 0, w: 12, h: 18, minW: 4, minH: 8 }]
+  return [{ i: DEFAULT_CHART.id, x: 0, y: 0, w: 8, h: 16, minW: 4, minH: 8 }]
 }
 
 interface LayoutState {
@@ -84,11 +85,10 @@ interface LayoutState {
   widgets: WidgetPanelConfig[]
   layout: GridLayoutItem[]
   primaryPanelId: string
-  addChartPanel: () => void
-  removePanel: (id: string) => void
-  updatePanel: (id: string, patch: Partial<ChartPanelConfig>) => void
   setLayout: (layout: GridLayoutItem[]) => void
-  setPrimary: (id: string) => void
+  addChartPanel: () => void
+  removeChartPanel: (id: string) => void
+  updateChartPanel: (id: string, patch: Partial<ChartPanelConfig>) => void
   setPrimaryPanel: (id: string) => void
   addWidget: (kind: WidgetKind) => void
   removeWidget: (id: string) => void
@@ -106,103 +106,79 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   layout: defaultLayout(),
   primaryPanelId: DEFAULT_CHART.id,
 
+  setLayout: (layout) => set({ layout }),
+
   addChartPanel: () => {
-    if (get().panels.length >= MAX_CHART_PANELS) {
-      console.warn(`[desk] MAX_CHART_PANELS=${MAX_CHART_PANELS} reached`)
-      return
-    }
+    const s = get()
+    if (s.panels.length >= MAX_CHART_PANELS) return
     const id = uid('chart')
     const panel: ChartPanelConfig = {
       id,
-      symbol: 'BTCUSDT',
-      interval: '15m',
-      exchange: 'binance',
+      symbol: s.panels[0]?.symbol ?? 'BTCUSDT',
+      interval: s.panels[0]?.interval ?? '15m',
+      exchange: s.panels[0]?.exchange ?? 'binance',
       syncGroup: null,
     }
     const item: GridLayoutItem = {
       i: id,
-      x: 0,
+      x: (s.panels.length * 4) % 12,
       y: Infinity,
       w: 6,
       h: 12,
       minW: 4,
       minH: 8,
     }
-    set((s) => ({
+    set({
       panels: [...s.panels, panel],
       layout: [...s.layout, item],
       primaryPanelId: id,
-    }))
-  },
-
-  removePanel: (id) => {
-    set((s) => {
-      const panels = s.panels.filter((p) => p.id !== id)
-      const layout = s.layout.filter((l) => l.i !== id)
-      let primaryPanelId = s.primaryPanelId
-      if (primaryPanelId === id) primaryPanelId = panels[0]?.id ?? ''
-      return { panels, layout, primaryPanelId }
     })
   },
 
-  updatePanel: (id, patch) => {
+  removeChartPanel: (id) => {
+    set((s) => {
+      const panels = s.panels.filter((p) => p.id !== id)
+      return {
+        panels,
+        layout: s.layout.filter((l) => l.i !== id),
+        primaryPanelId:
+          s.primaryPanelId === id ? panels[0]?.id ?? '' : s.primaryPanelId,
+      }
+    })
+  },
+
+  updateChartPanel: (id, patch) => {
     set((s) => ({
       panels: s.panels.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     }))
   },
 
-  setLayout: (layout) => set({ layout }),
-  setPrimary: (id) => set({ primaryPanelId: id }),
   setPrimaryPanel: (id) => set({ primaryPanelId: id }),
 
   addWidget: (kind) => {
+    const s = get()
+    if (s.widgets.length >= MAX_WIDGETS) return
     const meta = WIDGET_META[kind]
     if (!meta) return
-    if (get().widgets.length >= MAX_WIDGETS) {
-      console.warn(`[desk] MAX_WIDGETS=${MAX_WIDGETS} reached`)
-      return
-    }
     const id = uid(kind)
     const widget: WidgetPanelConfig = {
       id,
       kind,
       title: meta.title,
     }
-    const occupiedRight = get().layout.some((it) => it.x >= 6)
     const item: GridLayoutItem = {
       i: id,
-      x: occupiedRight ? 0 : 6,
+      x: 0,
       y: Infinity,
       w: meta.defaultW,
       h: meta.defaultH,
       minW: meta.minW,
       minH: meta.minH,
     }
-    set((s) => {
-      let nextLayout = [...s.layout]
-      if (!occupiedRight) {
-        nextLayout = nextLayout.map((it) => {
-          if (it.w >= 10 && it.x === 0) {
-            return { ...it, w: 6 }
-          }
-          return it
-        })
-      }
-      nextLayout = [...nextLayout, item]
-      return {
-        widgets: [...s.widgets, widget],
-        layout: nextLayout,
-      }
-    })
-    try {
-      queueMicrotask(() => {
-        document
-          .querySelector(`[data-panel-id="${id}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-      })
-    } catch {
-      /* */
-    }
+    set((st) => ({
+      widgets: [...st.widgets, widget],
+      layout: [...st.layout, item],
+    }))
   },
 
   removeWidget: (id) => {
